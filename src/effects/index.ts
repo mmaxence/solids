@@ -1,4 +1,4 @@
-import { effects, type EffectDef, type Meta } from '../core/registry';
+import { effects, type EffectDef, type Meta, type UniformDef } from '../core/registry';
 import glow from './glow/manifest.json';
 import glowFrag from './glow/frag.glsl';
 import beam from './beam/manifest.json';
@@ -38,4 +38,9 @@ export const all: EffectDef[] = [
   { manifest: chroma as Meta, frag: chromaFrag },
   { manifest: ripple as Meta, frag: rippleFrag },
 ];
-for (const e of all) effects.set(e.manifest.name, e);
+// Every effect gets a mix param (the core footer blends by it), so `<effect>-mix` and its site control come for free.
+const mix: UniformDef = { name: 'mix', type: 'float', default: 1, min: 0, max: 2, step: 0.05, label: 'Mix' };
+for (const e of all) {
+  if (!e.manifest.params.some((p) => p.name === 'mix')) e.manifest.params.push(mix);
+  effects.set(e.manifest.name, e);
+}

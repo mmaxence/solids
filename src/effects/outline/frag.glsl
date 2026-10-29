@@ -4,7 +4,7 @@ uniform float strength;
 vec4 at(float x, float y) { return texture(uScene, vUv + vec2(x, y) * width / uResolution); }
 float k(vec4 s) { return sdLuma(s.rgb) * 0.5 + s.a * 0.5; }
 
-void main() {
+vec4 sdEffect() {
   vec4 c = texture(uScene, vUv);
   vec4 l = at(-1.0, 0.0), r = at(1.0, 0.0), b = at(0.0, -1.0), t = at(0.0, 1.0);
   float tl = k(at(-1.0, 1.0)), tr = k(at(1.0, 1.0)), bl = k(at(-1.0, -1.0)), br = k(at(1.0, -1.0));
@@ -18,5 +18,5 @@ void main() {
   vec3 tint = m.rgb / max(max(m.r, max(m.g, m.b)), 1e-3);
   tint *= mix(1.0, 0.6, uTheme);
   // Premultiplied scaling: the body darkens on dark pages and pales on light ones.
-  fragColor = vec4(tint, 1.0) * e + c * (1.0 - 0.7 * strength) * (1.0 - e);
+  return vec4(tint, 1.0) * e + c * (1.0 - 0.7 * strength) * (1.0 - e);
 }

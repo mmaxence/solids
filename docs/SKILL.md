@@ -120,17 +120,19 @@ Plain sentences, no em dashes, no marketing. The README is shown on the object's
 
 ## Adding an effect
 
-Same shape under `src/effects/<name>/` with `manifest.json` (`name`, `description`, `params`, all floats with min and max) and `frag.glsl`. Register it in `src/effects/index.ts`. An effect is one fullscreen pass:
+Same shape under `src/effects/<name>/` with `manifest.json` (`name`, `description`, `params`, all floats with min and max) and `frag.glsl`. Register it in `src/effects/index.ts`. An effect is one fullscreen pass. Define `vec4 sdEffect()` and return the premultiplied color; do not write `main` or `fragColor`, the core does:
 
 ```glsl
 uniform float amount;
-void main() {
+vec4 sdEffect() {
   vec4 c = texture(uScene, vUv);
-  fragColor = c;
+  return vec4(c.rgb * amount, c.a);
 }
 ```
 
-It receives `uScene` (the previous pass, premultiplied), `uResolution`, `uTime`, `uTheme`, `sdLuma(rgb)`, and `sdBayer(px)` for jittering sparse kernels. Params become `<effect>-<param>` attributes on a scene or an object. Keep to one pass; sample at most a few dozen taps.
+It receives `uScene` (the previous pass, premultiplied), `uResolution`, `uTime`, `uTheme`, `sdLuma(rgb)`, and `sdBayer(px)` for jittering sparse kernels. Params become `<effect>-<param>` attributes on a scene or an object.
+
+Every effect also gets a `mix` param (0 to 2, default 1) without declaring it: the core blends your result with the incoming scene, `mix(scene, sdEffect(), mix)`, and clamps to valid premultiplied color (`a` in 0..1, `rgb` at most `a`). 0 is a plain copy, 1 is the effect as designed, 2 pushes it further. Return the look as designed and let `<effect>-mix` dial it. Keep to one pass; sample at most a few dozen taps.
 
 ## Checklist before a PR
 

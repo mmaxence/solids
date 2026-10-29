@@ -176,7 +176,7 @@ export class SdScene extends HTMLElement {
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.tex);
     const defaults: Record<string, number> = {};
     for (const d of e.manifest.params) defaults[d.name] = d.default as number;
-    setUniforms(gl, p, { uScene: [0], uResolution: res, uTime: t, uTheme: theme, ...defaults, ...params });
+    setUniforms(gl, p, { uScene: [0], uResolution: res, uTime: t, uTheme: theme, uMix: params?.mix ?? 1, ...defaults, ...params });
     drawQuad(gl);
   }
 

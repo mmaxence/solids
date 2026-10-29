@@ -2,7 +2,7 @@ uniform float angle;
 uniform float reach;
 uniform float strength;
 
-void main() {
+vec4 sdEffect() {
   vec4 base = texture(uScene, vUv);
   float a = radians(angle);
   vec2 dir = vec2(cos(a), sin(a)) * reach / uResolution;
@@ -18,5 +18,5 @@ void main() {
     acc += c * smoothstep(0.25, 0.7, sdLuma(c.rgb)) * w;
     wsum += w;
   }
-  fragColor = base + acc / wsum * strength;
+  return base + acc / wsum * strength;
 }

@@ -288,6 +288,13 @@ await frame(); await frame();
 result.cases.fx = { delta: differ(plain, pix), objPixels: pixels(objFx), hiddenPixels: pixels(hidden), glError: hidden.gl?.getError(), everyPixels: pixels(every), effects: [...registry.effects.keys()] };
 const free = (...scs) => { for (const sc of scs) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); } };
 free(plain, pix, objFx, hidden, every);
+// Case P: effect mix. 0 copies the scene byte for byte, 2 accentuates; every effect carries a mix param.
+const m0 = mk({ effect: 'glow', 'glow-mix': '0' }), none = mk({}), m1 = mk({ effect: 'glow' }), m2 = mk({ effect: 'glow', 'glow-mix': '2' });
+await frame(); await frame();
+const b0 = read(m0), bn = read(none);
+result.cases.mix = { zero: differ(b0, bn), same: b0.length === bn.length && b0.every((v, i) => v === bn[i]), one: differ(m1, none), two: differ(m2, m1),
+  missing: [...registry.effects.values()].filter((e) => !e.manifest.params.some((p) => p.name === 'mix')).map((e) => e.manifest.name) };
+free(m0, none, m1, m2);
 
 // Case N: repel, magnet, collide, scroll. Frames are driven by hand so the counts are exact.
 const run = (sc, n) => { for (let i = 0; i < n; i++) sc.frame(i / 60, 16); };
@@ -365,7 +372,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.tags.length})`);
@@ -380,6 +387,10 @@ async function smoke() {
     if (!(r.cases.fx.everyPixels > 1000)) fail(`all-effects chain drew ${r.cases.fx.everyPixels} pixels`);
     if (!(r.cases.fx.objPixels > 1000)) fail(`object-level effect drew ${r.cases.fx.objPixels} pixels`);
     if (!(r.cases.fx.hiddenPixels > 1000) || r.cases.fx.glError !== 0) fail(`hidden-then-shown scene: ${JSON.stringify({ px: r.cases.fx.hiddenPixels, glError: r.cases.fx.glError })}`);
+    const mx = r.cases.mix, pct = (v) => (v * 100).toFixed(2) + '%';
+    if (!(mx.zero < 0.01) || !mx.same) fail(`glow-mix="0" should match no effect byte for byte: ${pct(mx.zero)} differ, identical ${mx.same}`);
+    if (!(mx.two > 0.02)) fail(`glow-mix="2" barely differs from glow-mix="1": ${pct(mx.two)} (mix 1 vs none: ${pct(mx.one)})`);
+    if (!Array.isArray(mx.missing) || mx.missing.length) fail(`effects without a mix param: ${JSON.stringify(mx.missing)}`);
     const g = r.cases.gravity, moved = (v) => Math.hypot(v[0], v[1]) > 0.01;
     if (!g.finite) fail('gravity produced NaN');
     if (moved(g.first)) fail(`gravity: the first center moved ${g.first}`);
@@ -435,6 +446,8 @@ async function site() {
     if (!/<title>[^<]+<\/title>/.test(html)) fail(`site/${f}: no <title>`);
     const m = f.match(/^objects\/(.+)\.html$/);
     if (m && !html.includes(`<sd-${m[1]}`)) fail(`site/${f}: does not mount <sd-${m[1]}>`);
+    const fx = f.match(/^effects\/(.+)\.html$/);
+    if (fx && !html.includes(`${fx[1]}-mix`)) fail(`site/${f}: no ${fx[1]}-mix option`);
     if (/\u2014/.test(html)) fail(`site/${f}: contains an em dash`);
   }
   const chrome = chromePath();

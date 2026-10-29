@@ -15,3 +15,15 @@ float sdBayer(vec2 p) {
   int v = ((x ^ y) & 1) * 8 + ((y & 1) * 4) + (((x >> 1) ^ (y >> 1)) & 1) * 2 + ((y >> 1) & 1);
   return float(v) / 16.0;
 }
+// The effect defines sdEffect(); main blends it with the scene by uMix (0 copy, 1 as designed, 2 accentuated),
+// then clamps to valid premultiplied color. Calling a prototyped function defined later is plain GLSL.
+uniform float uMix;
+vec4 sdEffect();
+void main() {
+  vec4 r = sdEffect();
+  vec4 s = texture(uScene, vUv);
+  vec4 o = mix(s, r, uMix);
+  o.a = clamp(o.a, 0.0, 1.0);
+  o.rgb = min(o.rgb, vec3(o.a));
+  fragColor = o;
+}

@@ -7,7 +7,7 @@ vec4 bright(vec2 uv) {
   return c * smoothstep(threshold, threshold + 0.3, sdLuma(c.rgb));
 }
 
-void main() {
+vec4 sdEffect() {
   vec4 base = texture(uScene, vUv);
   vec2 px = radius / uResolution;
   // Four rings of 8 taps, each ring rotated by a per-pixel jitter so the rings never show.
@@ -23,5 +23,5 @@ void main() {
       wsum += w;
     }
   }
-  fragColor = base + acc / wsum * strength * 1.6;
+  return base + acc / wsum * strength * 1.6;
 }
