@@ -4,7 +4,7 @@ The objects are decorative. They carry no text and are not announced by screen r
 
 ## Motion
 
-When the system asks for reduced motion, animations freeze at their rest pose. Interactions that answer a direct pointer movement still respond, because the person caused that motion.
+When the system asks for reduced motion, animations freeze at their rest pose. Interactions that answer a direct pointer movement or scrolling still respond, because the person caused that motion.
 
 ## Keyboard and focus
 
@@ -16,4 +16,4 @@ Objects render on a transparent canvas over your own background. The default col
 
 ## Performance
 
-A scene pauses when it leaves the viewport and when the tab is hidden. Device pixel ratio is capped at 2. Each object marches at most 64 steps per pixel. On a low-end phone, prefer fewer and smaller objects over scene-wide effects. Each scene, and each lone object outside a scene, owns one WebGL context, and browsers keep about sixteen alive per page, so group objects into scenes when a page has many.
+A scene pauses when it leaves the viewport and when the tab is hidden. Device pixel ratio is capped at 2, or lower when a scene sets `dpr`, as the home page hero does with `dpr="1.5"`. Each object marches at most 64 steps per pixel. On a low-end phone, prefer fewer and smaller objects over scene-wide effects. Each scene, and each lone object outside a scene, owns one WebGL context, and browsers keep about sixteen alive per page, so group objects into scenes when a page has many.

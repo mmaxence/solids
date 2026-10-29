@@ -16,7 +16,7 @@ export class SdScene extends HTMLElement {
   effectParams: Record<string, Record<string, number>> = {};
   interactionParams: Record<string, Record<string, number>> = {};
   theme: 'auto' | 'dark' | 'light' = 'auto';
-  dpr = 1; maxDpr = 2; width = 0; height = 0;
+  pixelRatio = 1; maxDpr = 2; width = 0; height = 0;
   private raf = 0; private last = 0; private t0 = 0;
   private visible = true; private paused = false;
   private ro: ResizeObserver | null = null;
@@ -96,9 +96,9 @@ export class SdScene extends HTMLElement {
 
   measure() {
     const host = this.getBoundingClientRect();
-    this.dpr = Math.min(devicePixelRatio || 1, this.maxDpr);
+    this.pixelRatio = Math.min(devicePixelRatio || 1, this.maxDpr);
     this.width = host.width; this.height = host.height;
-    const w = Math.round(host.width * this.dpr), h = Math.round(host.height * this.dpr);
+    const w = Math.round(host.width * this.pixelRatio), h = Math.round(host.height * this.pixelRatio);
     if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; }
     for (const o of this.objects) {
       const r = o.getBoundingClientRect();
@@ -185,8 +185,8 @@ export class SdScene extends HTMLElement {
     const bleed = o.manifest.bleed ?? 1.5;
     const cx = r.x + r.width / 2 + o.anim.offset[0], cy = r.y + r.height / 2 + o.anim.offset[1];
     const qw = r.width * bleed, qh = r.height * bleed;
-    const x = Math.round((cx - qw / 2) * this.dpr), y = Math.round((this.height - cy - qh / 2) * this.dpr);
-    const w = Math.round(qw * this.dpr), h = Math.round(qh * this.dpr);
+    const x = Math.round((cx - qw / 2) * this.pixelRatio), y = Math.round((this.height - cy - qh / 2) * this.pixelRatio);
+    const w = Math.round(qw * this.pixelRatio), h = Math.round(qh * this.pixelRatio);
     if (w <= 0 || h <= 0) return;
     let p: Program;
     try { p = program(gl, o.frag); }

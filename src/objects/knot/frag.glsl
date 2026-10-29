@@ -12,7 +12,7 @@ vec3 knot(float s, float q, out vec3 dc) {
 float map(vec3 p) {
   // Rest pose: facing the viewer, tipped back so the crossings read.
   p.yz = mat2(0.342, -0.94, 0.94, 0.342) * p.yz;
-  float q = floor(twist + 0.5), a = atan(p.z, p.x), d = 1e9;
+  float q = 2.0 * floor(twist * 0.5) + 1.0, a = atan(p.z, p.x), d = 1e9; // odd only: even values would unknot into one loop
   vec3 dc;
   // The tube passes this point's angle twice; from each pass, one Newton step onto the nearest curve point.
   for (int i = 0; i < 2; i++) {

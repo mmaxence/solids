@@ -26,10 +26,10 @@ $$('.tabs').forEach((tabs) => {
 });
 
 // Serialize the demo scene as the markup a user would paste.
-const SKIP = new Set(['style', 'class', 'id', 'theme']);
+const SKIP = new Set(['class', 'id', 'theme']);
 function serialize(el, depth = 0) {
   const pad = '  '.repeat(depth);
-  const attrs = [...el.attributes].filter((a) => !SKIP.has(a.name) && a.value !== '').map((a) => ` ${a.name}="${a.value}"`).join('');
+  const attrs = [...el.attributes].filter((a) => !SKIP.has(a.name) && a.value !== '' && !(a.name === 'style' && depth === 0 && !('keepStyle' in el.dataset))).map((a) => ` ${a.name}="${a.value}"`).join('');
   const kids = [...el.children].filter((c) => c.tagName.startsWith('SD-'));
   if (!kids.length) return `${pad}<${el.localName}${attrs}></${el.localName}>`;
   return `${pad}<${el.localName}${attrs}>\n${kids.map((k) => serialize(k, depth + 1)).join('\n')}\n${pad}</${el.localName}>`;
@@ -63,6 +63,7 @@ if (specEl) {
       label.className = 'check';
       input = Object.assign(document.createElement('input'), { type: 'checkbox', checked: !!c.value });
     }
+    c.input = input;
     const apply = () => {
       const v = c.kind === 'check' ? (input.checked ? c.on : '') : input.value;
       if (c.attr === 'object') { // swap the demo subject for another object type, keeping its attributes
@@ -75,9 +76,8 @@ if (specEl) {
         refresh(); return;
       }
       for (const t of targets(c)) {
-        if (c.kind === 'check') {
-          const cur = (t.getAttribute(c.attr) || '').split(/\s+/).filter(Boolean).filter((x) => x !== c.on);
-          if (input.checked) cur.push(c.on);
+        if (c.kind === 'check') { // rebuild in control order so interactions keep their documented order
+          const cur = spec.controls.filter((x) => x.kind === 'check' && x.attr === c.attr && x.input?.checked).map((x) => x.on);
           cur.length ? t.setAttribute(c.attr, cur.join(' ')) : t.removeAttribute(c.attr);
         } else if (v === '' || v === String(c.default ?? '\u0000')) t.removeAttribute(c.attr);
         else t.setAttribute(c.attr, v);
@@ -117,8 +117,13 @@ if (location.search.includes('__check')) {
     const strength = $$('#controls label').find((l) => l.querySelector('span')?.firstChild?.textContent === 'Gravity strength')?.querySelector('input');
     if (strength) { strength.value = '0'; strength.dispatchEvent(new Event('input')); }
     const h1 = $('h1')?.getBoundingClientRect(), dock = $('.dock')?.getBoundingClientRect();
+    const toggle = (name, on) => { const t = $$('#controls label.check').find((l) => l.textContent.trim() === name)?.querySelector('input'); if (t && t.checked !== on) { t.checked = on; t.dispatchEvent(new Event('input')); } };
+    let interactionAttr;
+    if ($('.dock')) { toggle('collide', true); toggle('gravity', false); toggle('gravity', true); interactionAttr = $('#demo').getAttribute('interaction'); }
+    const demo = $('#demo');
     fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent,
-      objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top }) });
+      objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top,
+      markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr }) });
   };
   const tick = () => (++n < 6 ? requestAnimationFrame(tick) : report());
   requestAnimationFrame(tick);

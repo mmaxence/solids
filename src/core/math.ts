@@ -31,7 +31,7 @@ const parsed = new Map<string, Rgb | null>();
 
 /**
  * Any CSS color → [0..1, 0..1, 0..1] in `space`; null when the browser rejects it.
- * sRGB hex and rgb() take a fast path; everything else is painted on a 1×1 canvas and read back in `space`.
+ * sRGB hex takes a fast path; everything else is painted on a 1×1 canvas and read back in `space`.
  */
 export function parseColor(s: string, space: 'display-p3' | 'srgb' = 'srgb'): Rgb | null {
   s = s.trim();
@@ -40,8 +40,6 @@ export function parseColor(s: string, space: 'display-p3' | 'srgb' = 'srgb'): Rg
     if (m) return [...m[1]].map((c) => parseInt(c + c, 16) / 255) as Rgb;
     m = s.match(/^#([0-9a-f]{6})$/i);
     if (m) return [0, 2, 4].map((i) => parseInt(m![1].slice(i, i + 2), 16) / 255) as Rgb;
-    m = s.match(/^rgba?\(([^)]+)\)$/i);
-    if (m) { const p = m[1].split(/[\s,\/]+/).map(Number); if (p.length >= 3 && p.every((n) => !isNaN(n))) return [p[0] / 255, p[1] / 255, p[2] / 255]; }
   }
   const key = space + s;
   if (parsed.has(key)) return parsed.get(key)!;
@@ -60,4 +58,15 @@ export function parseColor(s: string, space: 'display-p3' | 'srgb' = 'srgb'): Rg
   if (parsed.size > 256) parsed.clear(); // ponytail: wipe, not LRU; a color picker drag adds one entry per value
   parsed.set(key, rgb);
   return rgb;
+}
+
+let p3Probe: boolean | null = null;
+/** True when the 2D canvas can paint and read back in Display P3 (sRGB red reads with a non-zero green channel). */
+export function canvasSupportsP3(): boolean {
+  if (p3Probe !== null) return p3Probe;
+  try {
+    const c = parseColor('#ff0000', 'display-p3');
+    p3Probe = !!c && c[1] > 0.05;
+  } catch { p3Probe = false; }
+  return p3Probe;
 }

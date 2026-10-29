@@ -1,4 +1,5 @@
 import quadVert from './quad.vert.glsl';
+import { canvasSupportsP3 } from './math';
 import prelude from './prelude.glsl';
 import effectPrelude from './effect.glsl';
 
@@ -17,7 +18,8 @@ export function createGL(canvas: HTMLCanvasElement): { gl: WebGL2RenderingContex
 
 /** GL state the renderer relies on; call again after a context restore, which resets everything. */
 export function initState(gl: WebGL2RenderingContext) {
-  if ('drawingBufferColorSpace' in gl) gl.drawingBufferColorSpace = 'display-p3'; // the guard keeps an expando off browsers without P3
+  // Only when the 2D canvas can also parse in P3; otherwise colors would be read in sRGB and drawn as P3. The `in` guard keeps an expando off browsers without P3.
+  if ('drawingBufferColorSpace' in gl) gl.drawingBufferColorSpace = canvasSupportsP3() ? 'display-p3' : 'srgb';
   gl.bindVertexArray(gl.createVertexArray());
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);

@@ -1,4 +1,4 @@
-# solids v2 — design
+# solids v2 design
 
 Date: 2026-10-29. Status: approved by Max in conversation (three streams, all equal priority, no urgency, built in parallel). Builds on `2026-10-29-solids-design.md`; everything there still holds.
 

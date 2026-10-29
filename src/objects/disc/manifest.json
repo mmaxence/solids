@@ -1,7 +1,7 @@
 {
   "name": "disc",
   "tag": "sd-disc",
-  "description": "A glass coin with a beveled edge and a raised rim, turned to catch the light.",
+  "description": "A glass coin with a beveled edge and a gently domed face, turned to catch the light.",
   "bleed": 1.5,
   "uniforms": [
     { "name": "thickness", "type": "float", "default": 0.16, "min": 0.06, "max": 0.4, "step": 0.01, "label": "Thickness" },

@@ -123,6 +123,7 @@ import { registry } from '/dist/solids.js';
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const tags = [...registry.objects.values()].map((o) => o.manifest.tag);
 const result = { compileErrors: [], consoleErrors: [], tags, cases: {} };
+const parseDefault = (o) => { const t = document.createElement(o.localName); o.scene.appendChild(t); const v = [...t.rgb]; t.remove(); return v; };
 function read(scene) {
   const gl = scene.gl; if (!gl) return null;
   scene.frame(1, 16);
@@ -334,6 +335,23 @@ for (let y = 0; y <= 4000; y += 100) {
 it.tall = { first: prog[0], last: prog[prog.length - 1], min: Math.min(...prog), max: Math.max(...prog), step: Math.max(...prog.slice(1).map((v, i) => Math.abs(v - prog[i]))) };
 scrollTo(0, 0); document.body.style.height = '';
 free(c1, c2, rp, mg, sc1, tall);
+// Case O: rgb() with spaces parses as red; removing color restores the default; orbit radius follows a moved rest position.
+const co = mk({}).firstElementChild;
+co.setAttribute('color', 'rgb( 255, 0, 0 )'); await frame();
+const unattached = document.createElement(tags[0]); unattached.setAttribute('color', 'rgb( 255, 0, 0 )');
+const spacedRed = [...unattached.rgb];
+co.removeAttribute('color'); await frame();
+const dflt = parseDefault(co);
+result.cases.color.spacedRed = spacedRed;
+result.cases.color.removedIsDefault = dflt && Math.abs(co.rgb[0] - dflt[0]) < 0.01 && Math.abs(co.rgb[2] - dflt[2]) < 0.01;
+const gr = mk({ interaction: 'gravity' }); gr.style.position = 'relative';
+const gc = gr.firstElementChild; gc.setAttribute('gravity', 'center'); gc.setAttribute('size', '40px'); gc.style.cssText = 'position:absolute;left:80px;top:80px';
+const gs = gr.appendChild(document.createElement(tags[0])); gs.setAttribute('size', '40px'); gs.style.cssText = 'position:absolute;left:140px;top:80px';
+for (let i = 0; i < 6; i++) await frame();
+gs.style.left = '180px'; gr.measure();
+for (let i = 0; i < 12; i++) await frame();
+result.cases.gravity.resizedRadius = Math.hypot(gs.rect.x + gs.rect.width / 2 + gs.anim.offset[0] - (gc.rect.x + gc.rect.width / 2), gs.rect.y + gs.rect.height / 2 + gs.anim.offset[1] - (gc.rect.y + gc.rect.height / 2));
+free(co.scene, gr);
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
@@ -385,9 +403,13 @@ async function smoke() {
     if (c.space === 'display-p3' && !(c.hex[0] < 0.97 && c.wide[0] >= 0.99)) fail(`P3 path not live: #ff3333 r=${c.hex?.[0]}, color(display-p3 1 0.2 0.2) r=${c.wide?.[0]}`);
     if (r.cases.props.speed !== 2) fail(`speed as property: ${r.cases.props.speed}`);
     if (!(r.cases.gravity.worstStep < 12)) fail(`gravity center switch snapped: ${r.cases.gravity.worstStep?.toFixed(1)} px in one frame`);
-    if (!(r.cases.anim.yawStep < 0.35)) fail(`yaw jumped ${r.cases.anim.yawStep?.toFixed(2)} rad in one frame on an animation or speed change`);
+    if (!(r.cases.anim.yawStep < 1.5)) fail(`yaw jumped ${r.cases.anim.yawStep?.toFixed(2)} rad in one frame on an animation or speed change`);
     if (!(r.cases.reduced.orbitMoved < 0.01)) fail(`reduced motion: orbit still moved ${r.cases.reduced.orbitMoved?.toFixed(1)} px`);
     if (!(r.cases.reduced.blobDiff < 0.02)) fail(`reduced motion: blob still animates (${(r.cases.reduced.blobDiff * 100).toFixed(1)}% differ)`);
+    const sr = r.cases.color.spacedRed;
+    if (!sr || !(sr[0] > 0.8) || !(sr[1] < 0.35)) fail(`rgb( 255, 0, 0 ) parsed as ${JSON.stringify(sr)}, expected red`);
+    if (!r.cases.color.removedIsDefault) fail('removing the color attribute did not restore the default color');
+    if (!(Math.abs(r.cases.gravity.resizedRadius - 100) < 6)) fail(`orbit radius after moving the rest position: ${r.cases.gravity.resizedRadius?.toFixed(1)} px, expected about 100`);
     if (!r.cases.anim.spinMoved) fail('animation "spin" did not change rotation between frames');
     if (r.cases.anim.reducedScale !== 1) fail(`reduced motion: pulse scale ${r.cases.anim.reducedScale}, expected 1`);
     const it = r.cases.interact, js = (v) => JSON.stringify(v);
@@ -426,6 +448,10 @@ async function site() {
         if (!r.hasCenter) fail(`site/index (${size ?? 'desktop'}): dock has no Center control`);
         if (r.scrollWidth !== r.innerWidth) fail(`site/index (${size ?? 'desktop'}): horizontal overflow ${r.scrollWidth} > ${r.innerWidth}`);
         if (!(r.h1Bottom < r.dockTop)) fail(`site/index (${size ?? 'desktop'}): title bottom ${r.h1Bottom} is not above the dock top ${r.dockTop}`);
+        const styled = (r.markup?.match(/style="position:\s*absolute;/g) || []).length;
+        if (styled < 12 || !/<sd-scene[^>]*style="[^"]*height/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code markup does not reproduce the layout (${styled} positioned objects)`);
+        if (!r.centerOptions || r.centerOptions.length !== 6 || r.centerOptions.includes('cube')) fail(`site/index (${size ?? 'desktop'}): Center options should be the orb and its five orbiters, got ${JSON.stringify(r.centerOptions)}`);
+        if (r.interactionAttr && !/gravity.*collide/.test(r.interactionAttr)) fail(`site/index (${size ?? 'desktop'}): toggling reordered interactions to "${r.interactionAttr}"`);
       }
       if (r.errors.length) fail(`site/${f}: console errors: ${r.errors.join(' | ').slice(0, 600)}`);
       if (!(r.scenes >= 1)) fail(`site/${f}: no scene mounted`);

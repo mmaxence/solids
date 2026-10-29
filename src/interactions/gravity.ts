@@ -46,6 +46,7 @@ export const gravity: Interaction = {
           if (!frozen) b.r += (stop - b.r) * (1 - Math.exp(-dt / 700)) * (0.3 + strength);
         } else {
           if (!frozen) b.angle += (dt / 1000) * 0.25 * strength;
+          b.r = Math.hypot(rest[0] - c![0], rest[1] - c![1]); // layout can change under us (resize, vmin positions)
           z = Math.sin(b.angle);
         }
         target = [c![0] + Math.cos(b.angle) * b.r - rest[0], c![1] + Math.sin(b.angle) * b.r - rest[1]];

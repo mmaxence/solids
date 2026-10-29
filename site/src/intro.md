@@ -24,7 +24,7 @@ Four layers compose on any object. The object is the shape. An animation moves i
 
 ## Sizing and placement
 
-An object is an inline block, 160 px square by default. Set `size` or the `--sd-size` custom property to change it, and place objects with normal CSS. A scene owns one canvas that covers its own box, so give the scene a size and the objects can move anywhere inside it.
+An object is an inline block, 160 px square by default. Set `size` or the `--sd-size` custom property to change it, and place objects with normal CSS. A scene owns one canvas that covers its own box, so give the scene a size and the objects can move anywhere inside it. A scene's `dpr` attribute caps the device pixel ratio it renders at (default 2); large scenes can set `dpr="1.5"` to stay smooth on dense screens.
 
 ## Color
 

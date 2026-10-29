@@ -71,7 +71,7 @@ function page(path, { title, description, main, hero = '' }) {
 function hero({ sceneAttrs, inner, controls, title, pitch }) {
   const spec = JSON.stringify({ controls, prompt: '' }).replace(/</g, '\\u003c');
   return `<section class="hero-full">
-  <div class="stage scatter hero-stage"><sd-scene id="demo" ${sceneAttrs}>${inner}</sd-scene></div>
+  <div class="stage scatter hero-stage"><sd-scene id="demo" data-keep-style style="position:relative;height:100%;min-height:560px" ${sceneAttrs}>${inner}</sd-scene></div>
   <div class="hero-title"><h1>${esc(title)}</h1><p>${esc(pitch)}</p></div>
   <form id="controls" class="controls dock" onsubmit="return false"><button type="button" class="btn" id="copy-code">Copy code</button></form>
   <script type="application/json" id="spec">${spec}</script>
@@ -83,7 +83,7 @@ function preview({ sceneAttrs = '', inner, controls, prompt, stageClass = '' }) 
   const spec = JSON.stringify({ controls, prompt }).replace(/</g, '\\u003c');
   return `<div class="tabs" role="tablist"><button role="tab" aria-selected="true" data-panel="preview">Preview</button><button role="tab" aria-selected="false" data-panel="install">Install</button></div>
 <section id="preview" class="panel">
-  <div class="stage ${stageClass}"><sd-scene id="demo" ${sceneAttrs}>${inner}</sd-scene></div>
+  <div class="stage ${stageClass}"><sd-scene id="demo"${stageClass.includes('scatter') ? ' data-keep-style style="position:relative;height:100%;min-height:340px"' : ''} ${sceneAttrs}>${inner}</sd-scene></div>
   <form id="controls" class="controls" onsubmit="return false"></form>
   <div class="codebar"><pre><code id="live"></code></pre><div class="actions"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button><button type="button" class="btn" id="copy-code">Copy code</button></div></div>
 </section>
@@ -121,10 +121,10 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
   const intro = md(readFileSync('site/src/intro.md', 'utf8'));
   // Hand-placed hero. Orbiters sit on a ring of about 27vmin around the center; the others float at the edges.
   const sz = (px) => `clamp(${Math.round(px * 0.6)}px, ${(px / 6.5).toFixed(1)}vmin, ${Math.round(px * 1.3)}px)`;
-  const orbit = (tag, id, size, dx, dy, color, anim) => `<${tag} id="${id}" size="${sz(size)}" color="${color}" animation="${anim}" style="left:calc(50% + ${dx}vmin - ${sz(size)} / 2);top:calc(50% + ${dy}vmin - ${sz(size)} / 2)"></${tag}>`;
-  const edge = (tag, id, size, left, top, color, anim) => `<${tag} id="${id}" gravity="none" size="${sz(size)}" color="${color}" animation="${anim}" style="left:${left}%;top:${top}%"></${tag}>`;
+  const orbit = (tag, id, size, dx, dy, color, anim) => `<${tag} id="${id}" size="${sz(size)}" color="${color}" animation="${anim}" style="position:absolute;left:calc(50% + ${dx}vmin - ${sz(size)} / 2);top:calc(50% + ${dy}vmin - ${sz(size)} / 2)"></${tag}>`;
+  const edge = (tag, id, size, left, top, color, anim) => `<${tag} id="${id}" gravity="none" size="${sz(size)}" color="${color}" animation="${anim}" style="position:absolute;left:${left}%;top:${top}%"></${tag}>`;
   const heroInner = [
-    `<sd-orb id="orb" gravity="center" size="${sz(200)}" color="${colorOf(0)}" animation="breathe" glow="0.8" style="left:calc(50% - ${sz(200)} / 2);top:calc(50% - ${sz(200)} / 2)"></sd-orb>`,
+    `<sd-orb id="orb" gravity="center" size="${sz(200)}" color="${colorOf(0)}" animation="breathe" glow="0.8" style="position:absolute;left:calc(50% - ${sz(200)} / 2);top:calc(50% - ${sz(200)} / 2)"></sd-orb>`,
     orbit('sd-ring', 'ring', 90, 30, -8, colorOf(1), 'spin'),
     orbit('sd-crystal', 'crystal', 80, -28, 12, colorOf(2), 'idle'),
     orbit('sd-knot', 'knot', 84, 21, 22, colorOf(3), 'spin'),
@@ -139,7 +139,7 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
   ].join('\n');
   const ids = ['orb', 'ring', 'crystal', 'knot', 'capsule', 'star', 'cube', 'coil', 'blob', 'prism', 'shell', 'disc'];
   const heroControls = [
-    { kind: 'select', attr: 'center', label: 'Center', options: ids, value: 'orb', target: 'scene' },
+    { kind: 'select', attr: 'center', label: 'Center', options: ids.slice(0, 6), value: 'orb', target: 'scene' },
     { kind: 'select', attr: 'effect', label: 'Effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
     { kind: 'range', attr: 'gravity-strength', label: 'Gravity', min: 0, max: 1, step: 0.01, value: 0.35, default: 0.6, target: 'scene' },
     ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: ['gravity', 'pointer-follow', 'hover-lift'].includes(i.name), target: 'scene' })),
@@ -156,7 +156,7 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
 <li><b>Animations</b><span>${animations.map((a) => a.name).join(', ')}. Pure functions of time, composable.</span></li>
 <li><b>Effects</b><span>${effects.map((e) => e.name).join(', ')}. Post passes on an object or a whole scene.</span></li>
 <li><b>Interactions</b><span>${interactions.map((i) => i.name).join(', ')}. Scene rules that react to the pointer, to scrolling, and to each other.</span></li></ul>`;
-  const main = `<h1 class="intro-h1">solids</h1>${rest.join('\n').replace('</p>\n<h2>Sizing', `</p>${layers}\n<h2>Sizing`)}`;
+  const main = `${rest.join('\n').replace('</p>\n<h2>Sizing', `</p>${layers}\n<h2>Sizing`)}`;
   page('index.html', { title: 'solids', description: 'Lightweight 3D objects for the web. Zero dependencies.', main, hero: heroHtml });
   page('accessibility.html', { title: 'Accessibility', description: 'How solids objects behave for assistive tech, reduced motion, and low-end devices.', main: md(readFileSync('site/src/accessibility.md', 'utf8')) });
 }
@@ -196,12 +196,12 @@ effects.forEach((e) => {
 });
 
 // --- Interaction pages and the Scene page ---
-const sceneInner = `<sd-orb id="orb" gravity="center" animation="breathe" color="${colorOf(0)}" size="150px" style="left:calc(50% - 75px);top:calc(50% - 75px)"></sd-orb>
-<sd-ring id="ring" animation="spin" color="${colorOf(1)}" size="90px" style="left:14%;top:16%"></sd-ring>
-<sd-crystal id="crystal" animation="idle" color="${colorOf(2)}" size="80px" style="left:76%;top:58%"></sd-crystal>
-<sd-cube id="cube" animation="idle" color="${colorOf(5)}" size="64px" style="left:22%;top:68%"></sd-cube>
-<sd-knot id="knot" animation="spin" speed="0.4" color="${colorOf(3)}" size="84px" style="left:70%;top:12%"></sd-knot>
-<sd-prism id="prism" animation="idle" color="${colorOf(4)}" size="70px" style="left:48%;top:76%"></sd-prism>`;
+const sceneInner = `<sd-orb id="orb" gravity="center" animation="breathe" color="${colorOf(0)}" size="150px" style="position:absolute;left:calc(50% - 75px);top:calc(50% - 75px)"></sd-orb>
+<sd-ring id="ring" animation="spin" color="${colorOf(1)}" size="90px" style="position:absolute;left:14%;top:16%"></sd-ring>
+<sd-crystal id="crystal" animation="idle" color="${colorOf(2)}" size="80px" style="position:absolute;left:76%;top:58%"></sd-crystal>
+<sd-cube id="cube" animation="idle" color="${colorOf(5)}" size="64px" style="position:absolute;left:22%;top:68%"></sd-cube>
+<sd-knot id="knot" animation="spin" speed="0.4" color="${colorOf(3)}" size="84px" style="position:absolute;left:70%;top:12%"></sd-knot>
+<sd-prism id="prism" animation="idle" color="${colorOf(4)}" size="70px" style="position:absolute;left:48%;top:76%"></sd-prism>`;
 const sceneControls = (active) => [
   { kind: 'select', attr: 'center', label: 'Center of gravity', options: ['orb', 'ring', 'crystal', 'cube', 'knot', 'prism'], value: 'orb', target: 'scene' },
   { kind: 'range', attr: 'gravity-strength', label: 'Gravity strength', min: 0, max: 1, step: 0.01, value: 0.6, default: 0.6, target: 'scene' },

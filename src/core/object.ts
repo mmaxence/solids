@@ -67,7 +67,7 @@ export class SdObject extends HTMLElement {
       case 'effect': this.effectNames = val.split(/\s+/).filter(Boolean); return;
       case 'speed': { const n = Number(val); this.speedValue = val === '' || isNaN(n) ? 1 : n; return; }
       case 'state': this.stateTarget = STATES[val] ?? 0.25; return;
-      case 'color': this.recolor(val); return;
+      case 'color': this.recolor(val || '#9bd1ff'); return;
       case 'size': this.style.setProperty('--sd-size', val); return;
       case 'gravity': case 'gravity-gap': return; // read by the gravity interaction
     }
