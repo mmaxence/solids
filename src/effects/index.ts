@@ -23,6 +23,8 @@ import chroma from './chroma/manifest.json';
 import chromaFrag from './chroma/frag.glsl';
 import ripple from './ripple/manifest.json';
 import rippleFrag from './ripple/frag.glsl';
+import defocus from './defocus/manifest.json';
+import defocusFrag from './defocus/frag.glsl';
 
 export const all: EffectDef[] = [
   { manifest: glow as Meta, frag: glowFrag },
@@ -37,6 +39,7 @@ export const all: EffectDef[] = [
   { manifest: vignette as Meta, frag: vignetteFrag },
   { manifest: chroma as Meta, frag: chromaFrag },
   { manifest: ripple as Meta, frag: rippleFrag },
+  { manifest: defocus as Meta, frag: defocusFrag },
 ];
 // Every effect gets a mix param (the core footer blends by it), so `<effect>-mix` and its site control come for free.
 const mix: UniformDef = { name: 'mix', type: 'float', default: 1, min: 0, max: 2, step: 0.05, label: 'Mix' };

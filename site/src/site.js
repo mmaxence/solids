@@ -5,7 +5,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 // Theme
 // The site is dark unless the person picked light; scenes follow the site, not the OS.
 function applyTheme(t) {
-  $$('sd-scene').forEach((s) => s.setAttribute('theme', t));
+  $$('sd-scene, sd-universe').forEach((s) => s.setAttribute('theme', t));
   $$('*').filter((e) => e.localName.startsWith('sd-')).forEach((e) => e.shadowRoot?.querySelector('sd-scene')?.setAttribute('theme', t));
 }
 $('.theme')?.addEventListener('click', () => {
@@ -121,7 +121,7 @@ if (location.search.includes('__check')) {
     let interactionAttr;
     if ($('.dock')) { toggle('collide', true); toggle('gravity', false); toggle('gravity', true); interactionAttr = $('#demo').getAttribute('interaction'); }
     const demo = $('#demo');
-    fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent,
+    fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene, sd-universe').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent,
       objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top,
       markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr }) });
   };

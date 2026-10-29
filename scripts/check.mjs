@@ -110,7 +110,7 @@ export function runPage(url, chrome, result, timeoutMs = 30000, size = '1400,900
 }
 
 const CHECK_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>solids check</title>
-<style>body{margin:0;background:#0a0a0c;display:flex;flex-wrap:wrap;align-content:flex-start}sd-scene{width:600px;height:400px;display:block}sd-scene.small{width:200px;height:200px}</style></head><body>
+<style>body{margin:0;background:#0a0a0c;display:flex;flex-wrap:wrap;align-content:flex-start}sd-scene{width:600px;height:400px;display:block}sd-scene.small{width:200px;height:200px}sd-universe{width:600px;height:400px;display:block}</style></head><body>
 <script>
 window.__errors = [];
 const ce = console.error.bind(console);
@@ -359,6 +359,42 @@ gs.style.left = '180px'; gr.measure();
 for (let i = 0; i < 12; i++) await frame();
 result.cases.gravity.resizedRadius = Math.hypot(gs.rect.x + gs.rect.width / 2 + gs.anim.offset[0] - (gc.rect.x + gc.rect.width / 2), gs.rect.y + gs.rect.height / 2 + gs.anim.offset[1] - (gc.rect.y + gc.rect.height / 2));
 free(co.scene, gr);
+// Case U: universe. Seeded light-DOM children, depth and focus without regenerating, a gravity center, odd inputs, one context.
+const uni = (attrs) => { const u = document.createElement('sd-universe'); u.setAttribute('theme', 'dark'); for (const [k, v] of Object.entries(attrs)) u.setAttribute(k, v); return document.body.appendChild(u); };
+const sig = (u) => [...u.children].map((c) => c.localName + ' ' + c.getAttribute('style') + ' ' + c.getAttribute('size')).join('|');
+const radii = (u) => [...u.children].map((c) => (c.effectNames.includes('defocus') ? Number(c.getAttribute('defocus-radius')) : 0));
+const ua = uni({ count: '12', seed: '3' }), ub = uni({ count: '12', seed: '3' }), uc = uni({ count: '12', seed: '4' });
+await frame();
+const uv = result.cases.universe = { count: ua.children.length, objects: ua.objects.size, same: sig(ua) === sig(ub), other: sig(ua) !== sig(uc) };
+const kids0 = [...ua.children], pos0 = sig(ua), d0 = radii(ua);
+ua.setAttribute('depth', '1'); const d1 = radii(ua);
+ua.setAttribute('focus', '0.6'); const d2 = radii(ua);
+ua.setAttribute('depth', '0'); uv.depthZero = radii(ua);
+uv.kept = [...ua.children].every((c, i) => c === kids0[i]) && sig(ua) === pos0;
+uv.depthMoved = d1.some((v, i) => v !== d0[i]) && d2.some((v, i) => v !== d1[i]) && d0.some((v) => v > 0);
+free(ua, ub, uc);
+const ug = uni({ count: '12', seed: '3', gravity: '' }), u0 = uni({ count: '0' }), uk = uni({ count: '8', shapes: 'sd-orb sd-nope ring' }), un = uni({ shapes: 'sd-nope' });
+for (let i = 0; i < 8; i++) await frame();
+const roles = [...ug.children].map((c) => c.getAttribute('gravity'));
+uv.gravity = { centers: roles.filter((g) => g === 'center').length, orbit: roles.filter((g) => g === 'orbit').length, on: ug.interactionNames.includes('gravity'),
+  moved: [...ug.children].some((c) => c.getAttribute('gravity') === 'orbit' && Math.hypot(...c.anim.offset) > 0.01) };
+uv.zero = u0.children.length; uv.known = [...uk.children].map((c) => c.localName); uv.none = un.children.length;
+free(ug, u0, uk, un);
+// Pasted markup (what Copy code gives) keeps its children and gets its depth applied.
+const paste = document.body.appendChild(document.createElement('div'));
+paste.innerHTML = '<sd-universe count="5" theme="dark"><sd-orb data-z="0.8" size="60px" style="position:absolute;left:50%;top:50%"></sd-orb></sd-universe>';
+const pu = paste.firstElementChild; await frame();
+uv.pasted = { children: pu.children.length, attached: pu.objects.size, radius: pu.firstElementChild.getAttribute('defocus-radius') };
+free(pu); paste.remove();
+const ubig = uni({ count: '120', seed: '7' });
+await frame(); await frame();
+uv.big = { children: ubig.children.length, pixels: pixels(ubig), stray: [...ubig.children].filter((c) => c.scene !== ubig || c.shadowRoot.querySelector('sd-scene')).length };
+free(ubig);
+// The defocus effect blurs; at radius 0 it is a copy.
+const dp = mk({}), db = mk({ effect: 'defocus', 'defocus-radius': '12' }), dz = mk({ effect: 'defocus', 'defocus-radius': '0' });
+await frame(); await frame();
+uv.defocus = { blur: differ(db, dp), zero: differ(dz, dp) };
+free(dp, db, dz);
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
@@ -372,7 +408,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'universe']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.tags.length})`);
@@ -431,6 +467,18 @@ async function smoke() {
     if (!(it.scroll?.diff > 0.01)) fail(`scroll: rotation did not change with the page scroll under reduced motion: ${js(it.scroll)}`);
     const tl = it.tall;
     if (!tl || Math.abs(tl.first) > 1e-4 || Math.abs(tl.last - 1) > 1e-4 || tl.min < -1e-4 || tl.max > 1 + 1e-4 || !(tl.step < 0.06)) fail(`scroll on a scene taller than the viewport: progress must clamp 0..1 without jumps: ${js(tl)}`);
+    const uv = r.cases.universe;
+    if (uv.count !== 12 || uv.objects !== 12) fail(`universe count="12": ${uv.count} children, ${uv.objects} attached`);
+    if (!uv.same || !uv.other) fail(`universe seed: same seed same layout ${uv.same}, other seed differs ${uv.other}`);
+    if (!uv.kept) fail('universe: depth or focus change regenerated the children');
+    if (!uv.depthMoved) fail('universe: depth and focus changes did not update the defocus radii');
+    if (!uv.depthZero?.length || !uv.depthZero.every((v) => v === 0)) fail(`universe depth="0": defocus radii ${js(uv.depthZero)}`);
+    if (uv.gravity?.centers !== 1 || !(uv.gravity.orbit > 0) || !uv.gravity.on || !uv.gravity.moved) fail(`universe gravity: ${js(uv.gravity)}`);
+    if (uv.pasted?.children !== 1 || uv.pasted.attached !== 1 || uv.pasted.radius !== '5.6') fail(`pasted universe markup should keep its one child and refocus it: ${js(uv.pasted)}`);
+    if (uv.zero !== 0 || uv.none !== 0) fail(`universe count="0" or only unknown shapes: ${uv.zero} and ${uv.none} children, expected 0`);
+    if (uv.known?.length !== 8 || !uv.known.every((t) => t === 'sd-orb' || t === 'sd-ring')) fail(`universe shapes="sd-orb sd-nope ring": ${js(uv.known)}`);
+    if (uv.big?.children !== 120 || !(uv.big.pixels > 1000) || uv.big.stray !== 0) fail(`universe count="120": ${js(uv.big)}`);
+    if (!(uv.defocus?.blur > 0.05) || !(uv.defocus.zero < 0.01)) fail(`defocus: radius 12 vs none ${pct(uv.defocus?.blur ?? 0)}, radius 0 vs none ${pct(uv.defocus?.zero ?? 1)}`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px, color space ${r.cases.color.space})`);
     return r;
   } catch (e) { fail(`smoke: ${e.message.split('\n')[0]}`); }
@@ -452,7 +500,7 @@ async function site() {
   }
   const chrome = chromePath();
   if (!chrome) return;
-  for (const [f, size] of [['scene.html'], ['index.html'], ['index.html', '500,800'], ['objects/orb.html'], ['effects/glow.html']]) {
+  for (const [f, size] of [['scene.html'], ['index.html'], ['index.html', '500,800'], ['objects/orb.html'], ['effects/glow.html'], ['universe.html']]) {
     const { srv, port, result } = await serve('site/dist');
     try {
       const r = await runPage(`http://127.0.0.1:${port}/${f}?__check`, chrome, result, 30000, size);
@@ -472,6 +520,7 @@ async function site() {
       if (f.startsWith('effects/') && r.subject !== 'sd-cube') fail(`site/${f}: Object select left subject "${r.subject}"`);
       if (f === 'scene.html' && !/<sd-ring[^>]*gravity="center"/.test(r.live)) fail(`site/${f}: center select did not mark the ring: ${r.live?.slice(0, 160)}`);
       if (f === 'scene.html' && /<sd-scene[^>]*gravity="/.test(r.live)) fail(`site/${f}: junk gravity attribute on the scene`);
+      if (f === 'universe.html' && (!(r.objects >= 30) || !/<sd-universe[^>]*count="36"/.test(r.live) || !/data-z="/.test(r.live))) fail(`site/${f}: universe markup: ${r.objects} children, ${r.live?.slice(0, 160)}`);
       if (f === 'scene.html' && !/gravity-strength="0"/.test(r.live)) fail(`site/${f}: strength slider at 0 did not stick: ${r.live?.slice(0, 160)}`);
     } catch (e) { fail(`site/${f}: ${e.message}`); }
     finally { srv.close(); }

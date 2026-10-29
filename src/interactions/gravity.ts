@@ -62,7 +62,7 @@ export const gravity: Interaction = {
       b.offset = target;
       o.anim.offset[0] += target[0];
       o.anim.offset[1] += target[1];
-      o.anim.z = z;
+      o.anim.z += z; // on top of the object's base depth (a universe sets one)
       o.anim.scale *= 1 + 0.06 * z;
     }
   },

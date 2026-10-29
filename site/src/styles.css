@@ -139,3 +139,8 @@ td:first-child code { white-space: nowrap; }
   .dock .btn { margin-left: 0; }
   .hero-full #disc { display: none; }
 }
+
+/* Universe page: a tall stage, and the live markup scrolls instead of growing the page */
+.stage.universe { height: 70vh; min-height: 420px; }
+.stage.universe sd-universe { width: 100%; }
+.codebar pre { max-height: 16em; }
