@@ -78,7 +78,7 @@ if (specEl) {
       for (const t of targets(c)) {
         if (c.kind === 'check') { // rebuild in control order so interactions keep their documented order
           const cur = spec.controls.filter((x) => x.kind === 'check' && x.attr === c.attr && x.input?.checked).map((x) => x.on);
-          cur.length ? t.setAttribute(c.attr, cur.join(' ')) : t.removeAttribute(c.attr);
+          cur.length || c.attr === 'camera' ? t.setAttribute(c.attr, cur.join(' ')) : t.removeAttribute(c.attr); // an empty camera is a fixed view, not the default
         } else if (v === '' || v === String(c.default ?? '\u0000')) t.removeAttribute(c.attr);
         else t.setAttribute(c.attr, v);
       }

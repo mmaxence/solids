@@ -613,6 +613,7 @@ async function site() {
   const index = text('index.html');
   const h2s = [...index.slice(index.indexOf('<main')).matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
   const ORDER = ['Built for agents', 'Install', 'Four layers', 'Universe', 'Catalogue', 'Performance', 'Details'];
+  if (!/<sd-universe class="band-universe"[^>]*\bgravity\b[^>]*\bcollide\b/.test(index)) fail('site/index: the universe band should run with gravity and collide');
   if (h2s.join('|') !== ORDER.join('|')) fail(`site/index: sections ${JSON.stringify(h2s)}, expected ${JSON.stringify(ORDER)}`);
   const dock = index.match(/class="controls dock"[\s\S]*?<\/form>/)?.[0] ?? '';
   const heroPrompt = JSON.parse(index.match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}').prompt ?? '';
@@ -660,7 +661,7 @@ async function site() {
       if (f.startsWith('effects/') && r.subject !== 'sd-cube') fail(`site/${f}: Object select left subject "${r.subject}"`);
       if (f === 'scene.html' && !/<sd-ring[^>]*gravity="center"/.test(r.live)) fail(`site/${f}: center select did not mark the ring: ${r.live?.slice(0, 160)}`);
       if (f === 'scene.html' && /<sd-scene[^>]*gravity="/.test(r.live)) fail(`site/${f}: junk gravity attribute on the scene`);
-      if (f === 'universe.html' && (!(r.objects >= 30) || !/<sd-universe[^>]*count="36"/.test(r.live) || !/data-z="/.test(r.live))) fail(`site/${f}: universe markup: ${r.objects} children, ${r.live?.slice(0, 160)}`);
+      if (f === 'universe.html' && (!(r.objects >= 30) || !/<sd-universe[^>]*count="36"/.test(r.live) || !/data-pos="/.test(r.live) || /data-z="/.test(r.live))) fail(`site/${f}: universe markup: ${r.objects} children, ${r.live?.slice(0, 160)}`);
       if (f === 'scene.html' && !/gravity-strength="0"/.test(r.live)) fail(`site/${f}: strength slider at 0 did not stick: ${r.live?.slice(0, 160)}`);
     } catch (e) { fail(`site/${f}: ${e.message}`); }
     finally { srv.close(); }
