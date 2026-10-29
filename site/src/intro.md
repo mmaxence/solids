@@ -1,6 +1,18 @@
-# Lightweight 3D objects for the web
+## Built for agents
 
-solids is a small library of glassy 3D objects you drop into HTML. Each object is a web component drawn by a fragment shader, so a page can hold a handful of them for a few kilobytes and no dependencies. Objects can sit still, run an animation, respond to the pointer, and interact with each other inside a scene.
+solids is made to be extended by a coding agent. Every object follows one short contract, a manifest, a shader with a `map()` function and a README, so an agent that reads it can add a shape that fits the family. The new object gets its own page here, with the shared controls.
+
+1. Clone the repo and give your agent [skill.md](skill.md), the contract.
+2. Describe the shape you want in a sentence or two.
+3. Run `npm run check`. When it prints `ok`, the object compiles, draws and fits the size budget.
+
+```text
+Read https://mmaxence.github.io/solids/skill.md, then add an object to solids:
+a pebble, a flattened stone with a soft edge, with one parameter for how flat it is.
+Run npm run check until it prints ok.
+```
+
+Agents that browse can start from [llms.txt](llms.txt), a plain index of every page. Each page has a Copy prompt button that hands over its markup and options.
 
 ## Install
 
@@ -16,28 +28,32 @@ Add one script tag, then use the tags anywhere in your markup.
 </sd-scene>
 ```
 
-The whole bundle, with every object and effect, is about 11 KB gzipped. There is no build step and nothing to configure.
+## Four layers
 
-## How it fits together
+Four layers compose on any object. Each one is a single attribute, and each name links to its page.
 
-Four layers compose on any object. The object is the shape. An animation moves it on its own. An effect is a post pass over the rendered image. An interaction is a rule at the scene level that reacts to the pointer or to other objects.
+## Catalogue
 
-## Sizing and placement
+Every object, effect and interaction has a page with a live preview, its options and the markup to copy.
 
-An object is an inline block, 160 px square by default. Set `size` or the `--sd-size` custom property to change it, and place objects with normal CSS. A scene owns one canvas that covers its own box, so give the scene a size and the objects can move anywhere inside it. A scene's `dpr` attribute caps the device pixel ratio it renders at (default 2); large scenes can set `dpr="1.5"` to stay smooth on dense screens.
+## Performance
 
-## Color
+One script and no dependencies. A scene draws all of its objects on one canvas, and pauses when it leaves the screen.
 
-`color` takes any CSS color: hex, `rgb()`, `oklch()`, or `color(display-p3 r g b)`. Where the browser supports it, the canvas draws in Display P3, so a P3 color outside sRGB shows at full strength on a wide-gamut screen. Other browsers and screens show the closest sRGB color, and a hex color looks the same everywhere.
+## Details
 
-```html
-<sd-orb color="color(display-p3 1 0.55 0.8)"></sd-orb>
-```
+### Sizing and placement
 
-## Fallback
+An object is an inline block, 160 px square by default. Set `size` or the `--sd-size` custom property to change it, and place objects with normal CSS. A scene owns one canvas that covers its own box, so give the scene a size and the objects can move anywhere inside it. A scene's `dpr` attribute caps the device pixel ratio it renders at (default 2).
 
-Without WebGL2 the elements keep their box and draw nothing, and get a `data-fallback` attribute you can style.
+### Color
 
-## Adding your own object
+`color` takes any CSS color: hex, `rgb()`, `oklch()`, or `color(display-p3 r g b)`. Where the browser supports it, the canvas draws in Display P3, so a P3 color outside sRGB shows at full strength on a wide-gamut screen. Elsewhere it shows the closest sRGB color.
 
-An object is one folder with a manifest, a fragment shader, and a short README. The contract is written for coding agents in [SKILL.md](https://github.com/mmaxence/solids/blob/main/docs/SKILL.md). Copy it into your agent's context, describe the shape you want, and it can add one that shows up here with the shared controls.
+### Fallback
+
+Without WebGL2 the elements keep their box, draw nothing, and get a `data-fallback` attribute you can style.
+
+### Accessibility
+
+Objects are decorative, freeze under reduced motion, and pause off screen. Read [Accessibility](accessibility.html) for focus, contrast and the context limit.

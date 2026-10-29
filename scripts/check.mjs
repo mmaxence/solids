@@ -437,6 +437,21 @@ async function site() {
     if (m && !html.includes(`<sd-${m[1]}`)) fail(`site/${f}: does not mount <sd-${m[1]}>`);
     if (/\u2014/.test(html)) fail(`site/${f}: contains an em dash`);
   }
+  // Agent-first outputs: skill.md is the contract verbatim, llms.txt indexes every library page.
+  const text = (f) => (existsSync(`site/dist/${f}`) ? readFileSync(`site/dist/${f}`, 'utf8') : '');
+  if (!existsSync('site/dist/skill.md') || !readFileSync('site/dist/skill.md').equals(readFileSync('docs/SKILL.md'))) fail('site/skill.md is not a byte copy of docs/SKILL.md');
+  const llms = text('llms.txt');
+  const unlisted = pages.filter((f) => /^(objects|effects|interactions)\//.test(f) && !llms.includes(f));
+  if (!llms.startsWith('# solids') || !llms.includes('skill.md') || unlisted.length) fail(`site/llms.txt: title, skill.md and every object, effect and interaction page expected; missing ${unlisted.join(', ') || 'none'}`);
+  for (const f of ['skill.md', 'llms.txt']) if (/\u2014/.test(text(f))) fail(`site/${f}: contains an em dash`);
+  // Landing: the sections under the hero, in the spec order, and a Copy prompt in the dock.
+  const index = text('index.html');
+  const h2s = [...index.slice(index.indexOf('<main')).matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
+  const ORDER = ['Built for agents', 'Install', 'Four layers', 'Catalogue', 'Performance', 'Details'];
+  if (h2s.join('|') !== ORDER.join('|')) fail(`site/index: sections ${JSON.stringify(h2s)}, expected ${JSON.stringify(ORDER)}`);
+  const dock = index.match(/class="controls dock"[\s\S]*?<\/form>/)?.[0] ?? '';
+  const heroPrompt = JSON.parse(index.match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}').prompt ?? '';
+  if (!dock.includes('id="copy-prompt"') || !heroPrompt.includes('{{markup}}') || !heroPrompt.includes('skill.md')) fail('site/index: the dock needs a Copy prompt with the scene markup and the skill.md link');
   const chrome = chromePath();
   if (!chrome) return;
   for (const [f, size] of [['scene.html'], ['index.html'], ['index.html', '500,800'], ['objects/orb.html'], ['effects/glow.html']]) {
@@ -452,6 +467,8 @@ async function site() {
         if (styled < 12 || !/<sd-scene[^>]*style="[^"]*height/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code markup does not reproduce the layout (${styled} positioned objects)`);
         if (!r.centerOptions || r.centerOptions.length !== 6 || r.centerOptions.includes('cube')) fail(`site/index (${size ?? 'desktop'}): Center options should be the orb and its five orbiters, got ${JSON.stringify(r.centerOptions)}`);
         if (r.interactionAttr && !/gravity.*collide/.test(r.interactionAttr)) fail(`site/index (${size ?? 'desktop'}): toggling reordered interactions to "${r.interactionAttr}"`);
+        if (!(r.contexts <= 6)) fail(`site/index (${size ?? 'desktop'}): ${r.contexts} WebGL scenes, expected at most 6 (one per section row, never one per card)`);
+        if (!r.sceneObjects?.length || r.sceneObjects.some((n) => !(n > 0))) fail(`site/index (${size ?? 'desktop'}): a scene holds no objects: ${JSON.stringify(r.sceneObjects)}`);
       }
       if (r.errors.length) fail(`site/${f}: console errors: ${r.errors.join(' | ').slice(0, 600)}`);
       if (!(r.scenes >= 1)) fail(`site/${f}: no scene mounted`);

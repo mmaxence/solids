@@ -91,10 +91,6 @@ td:first-child code { white-space: nowrap; }
 
 .hero { display: grid; grid-template-columns: 1fr; gap: 28px; margin-bottom: 36px; }
 .hero .stage { height: 420px; border: 1px solid var(--line); border-radius: var(--radius); }
-.layers { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 18px 0 0; padding: 0; list-style: none; }
-.layers li { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
-.layers b { display: block; font-weight: 600; margin-bottom: 4px; }
-.layers span { color: var(--muted); font-size: 14px; }
 .foot { display: flex; justify-content: space-between; gap: 16px; padding: 18px 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 .foot a { color: var(--fg); }
 
@@ -106,7 +102,6 @@ td:first-child code { white-space: nowrap; }
   .side ul { display: flex; flex-wrap: wrap; gap: 2px 4px; }
   .main { padding: 28px 16px 60px; }
   .main > h1 { font-size: 32px; }
-  .layers { grid-template-columns: 1fr; }
   .stage { height: 280px; }
   .hero .stage { height: 320px; }
 }
@@ -137,5 +132,61 @@ td:first-child code { white-space: nowrap; }
   .dock label { min-width: 0; flex: 1 1 120px; }
   .dock label.check, .dock label:has(input[type="range"]) { display: none; }
   .dock .btn { margin-left: 0; }
+  .dock label, .dock .btn { flex: 1 1 40%; }
   .hero-full #disc { display: none; }
+}
+
+/* Landing under the hero: one band per job. Inside a live row the canvas sits above
+   non-positioned content, so cards keep their backgrounds and nothing inside is positioned. */
+.main:has(> .landing) { max-width: 1120px; }
+.band { padding: 0 0 56px; }
+.band + .band { border-top: 1px solid var(--line); padding-top: 48px; }
+.main .band > h2 { font-size: 28px; line-height: 1.15; letter-spacing: -0.02em; font-weight: 650; margin: 0 0 12px; }
+.band > h2 + p { font-size: 17px; color: var(--muted); }
+.landing sd-scene { display: block; }
+.band > p:not(.chips) a, .band ol a { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--fg) 35%, transparent); text-underline-offset: 3px; }
+.band > p:not(.chips) a:hover, .band ol a:hover { text-decoration-color: currentColor; }
+.landing ul, .landing ol, .landing dl { list-style: none; padding: 0; margin: 24px 0; }
+.landing li { max-width: none; margin: 0; }
+#built-for-agents li, .layer, .catalogue a, .numbers div { border: 1px solid var(--line); border-radius: 14px; background: var(--glass); }
+
+#built-for-agents ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; counter-reset: step; }
+#built-for-agents li { counter-increment: step; padding: 16px 18px; }
+#built-for-agents li::before { content: counter(step); display: grid; place-items: center; width: 26px; height: 26px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 50%; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.layers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.layer { padding: 0 18px 16px; }
+.layer .mini { display: grid; place-items: center; height: 150px; margin: 0 -18px 14px; border-bottom: 1px solid var(--line); }
+.layer .mini > * { grid-area: 1 / 1; }
+.layer h3 { margin: 0 0 4px; font-size: 16px; }
+.layer p { margin: 0; font-size: 14px; color: var(--muted); }
+.names { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 10px !important; }
+.names a, .chips a { color: var(--fg); }
+
+.catalogue { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.catalogue a { display: grid; justify-items: center; gap: 4px; padding: 16px 6px 12px; font-size: 14px; color: var(--muted); }
+.catalogue a:hover { color: var(--fg); border-color: color-mix(in srgb, var(--fg) 45%, transparent); text-decoration: none; }
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: none !important; margin: 14px 0 0; }
+.chips span { min-width: 96px; color: var(--muted); font-size: 14px; }
+.chips a { padding: 3px 12px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; }
+.chips a:hover { border-color: var(--fg); text-decoration: none; }
+
+.numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.numbers div { display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 2px; padding: 18px 20px; }
+.numbers dd { margin: 0; font-size: 36px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.numbers dt { color: var(--muted); font-size: 14px; }
+
+@media (max-width: 1100px) {
+  .layers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .catalogue { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  #built-for-agents ol { grid-template-columns: minmax(0, 1fr); }
+  .band + .band { padding-top: 36px; }
+  .band { padding-bottom: 40px; }
+  .main .band > h2 { font-size: 24px; }
+}
+@media (max-width: 600px) {
+  .catalogue { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .chips span { width: 100%; }
 }
