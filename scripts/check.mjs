@@ -122,6 +122,8 @@ import { registry } from '/dist/solids.js';
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const tags = [...registry.objects.values()].map((o) => o.manifest.tag);
 const result = { compileErrors: [], consoleErrors: [], tags, cases: {} };
+const mk = (attrs, objAttrs = {}) => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.className = 'small'; for (const [k, v] of Object.entries(attrs)) sc.setAttribute(k, v); const o = sc.appendChild(document.createElement(tags[0])); for (const [k, v] of Object.entries(objAttrs)) o.setAttribute(k, v); return sc; };
+try {
 
 // Case A: every object once, in one scene.
 const all = document.body.appendChild(document.createElement('sd-scene'));
@@ -160,6 +162,20 @@ for (let i = 0; i < 12; i++) await frame();
 const off = (o) => o.anim.offset.map((v) => Math.round(v * 1000) / 1000);
 result.cases.gravity = { first: off(gObjs[0]), second: off(gObjs[1]), third: off(gObjs[2]), finite: gObjs.every((o) => o.anim.offset.every(Number.isFinite) && Number.isFinite(o.anim.z)) };
 
+// Case G: a lone object outside any scene draws; a lost-then-restored context draws again without errors.
+const lone = document.body.appendChild(document.createElement(tags[tags.length - 1]));
+lone.setAttribute('size', '120px');
+await frame(); await frame();
+const loneScene = lone.shadowRoot?.querySelector('sd-scene') ?? lone.scene;
+const lost = mk({});
+await frame();
+const ext = lost.gl.getExtension('WEBGL_lose_context');
+ext.loseContext();
+await frame(); await frame();
+ext.restoreContext();
+await frame(); await frame(); await frame();
+result.cases.lone = { pixels: loneScene ? pixels(loneScene) : -1, restoredPixels: pixels(lost), restoredError: lost.gl.getError() };
+
 function read(scene) {
   const gl = scene.gl; if (!gl) return null;
   scene.frame(1, 16);
@@ -175,7 +191,6 @@ function pixels(scene) {
 }
 function sum(scene) { const buf = read(scene); let s = 0; for (const b of buf) s += b; return s; }
 // Case E: effects change the image; per-object effects draw; a hidden scene shown later has no GL error.
-const mk = (attrs, objAttrs = {}) => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.className = 'small'; for (const [k, v] of Object.entries(attrs)) sc.setAttribute(k, v); const o = sc.appendChild(document.createElement(tags[0])); for (const [k, v] of Object.entries(objAttrs)) o.setAttribute(k, v); return sc; };
 const plain = mk({});
 const pix = mk({ effect: 'pixelate', 'pixelate-size': '32' });
 const objFx = mk({}, { effect: 'pixelate', 'pixelate-size': '32' });
@@ -191,7 +206,7 @@ result.cases.empty = { pixels: pixels(empty), objects: empty.objects.size };
 result.cases.odd = { pixels: pixels(odd), objects: odd.objects.size };
 result.cases.dyn = { pixels: pixels(dyn), objects: dyn.objects.size };
 for (const o of all.objects) if (o.broken) result.compileErrors.push(o.manifest.tag);
-window.__check?.(result, { frame, registry, pixels });
+} catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
 </script></body></html>`;
@@ -204,10 +219,11 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result);
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.tags.length})`);
-    if (r.consoleErrors.length) fail(`console errors: ${r.consoleErrors.join(' | ').slice(0, 800)}`);
+    if (r.consoleErrors.length) fail(`console errors: ${r.consoleErrors.join(' | ').slice(0, 1200)}`);
     if (!(r.cases.all.pixels > 1000)) fail(`smoke: scene drew ${r.cases.all.pixels} pixels, expected > 1000`);
     if (r.cases.empty.objects !== 0 || r.cases.empty.pixels !== 0) fail(`empty scene: ${JSON.stringify(r.cases.empty)}`);
     if (!(r.cases.odd.pixels > 100)) fail(`unknown animation/effect names should still render: ${JSON.stringify(r.cases.odd)}`);
@@ -222,6 +238,8 @@ async function smoke() {
     if (!g.finite) fail('gravity produced NaN');
     if (moved(g.first)) fail(`gravity: the first center moved ${g.first}`);
     if (!moved(g.second) || !moved(g.third)) fail(`gravity: second ${g.second} and third ${g.third} should orbit`);
+    if (!(r.cases.lone.pixels > 500)) fail(`lone object drew ${r.cases.lone.pixels} pixels`);
+    if (!(r.cases.lone.restoredPixels > 500) || r.cases.lone.restoredError !== 0) fail(`context restore: ${JSON.stringify({ px: r.cases.lone.restoredPixels, err: r.cases.lone.restoredError })}`);
     if (!r.cases.anim.spinMoved) fail('animation "spin" did not change rotation between frames');
     if (r.cases.anim.reducedScale !== 1) fail(`reduced motion: pulse scale ${r.cases.anim.reducedScale}, expected 1`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px)`);

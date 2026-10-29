@@ -31,7 +31,7 @@ export class SdScene extends HTMLElement {
   connectedCallback() {
     if (!this.gl) {
       this.gl = createGL(this.canvas);
-      if (!this.gl) { this.dataset.fallback = ''; }
+      if (!this.gl) { this.dataset.fallback = ''; for (const o of this.objects) o.dataset.fallback = ''; }
       this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.stop(); });
       this.canvas.addEventListener('webglcontextrestored', () => { clearCache(this.gl!); this.fbos = null; this.start(); });
     }
@@ -43,6 +43,7 @@ export class SdScene extends HTMLElement {
     this.addEventListener('pointerleave', this.onLeave);
     document.addEventListener('visibilitychange', this.onVis);
     for (const el of this.querySelectorAll('*')) if (el instanceof SdObject) this.attach(el);
+    for (const o of this.objects) this.ro.observe(o);
     this.measure();
     this.start();
   }
@@ -63,6 +64,7 @@ export class SdScene extends HTMLElement {
   attach(o: SdObject) {
     if (this.objects.has(o)) return;
     this.objects.add(o); o.scene = this;
+    if (this.isConnected && !this.gl) o.dataset.fallback = '';
     this.ro?.observe(o);
     this.measure();
   }

@@ -31,7 +31,7 @@ export class SdObject extends HTMLElement {
   constructor() {
     super();
     const root = this.attachShadow({ mode: 'open' });
-    root.innerHTML = `<style>:host{display:inline-block;width:var(--sd-size,160px);aspect-ratio:1;vertical-align:middle}</style>`;
+    root.innerHTML = `<style>:host{display:inline-block;position:relative;width:var(--sd-size,160px);aspect-ratio:1;vertical-align:middle}sd-scene{position:absolute;inset:0}</style>`;
     for (const u of this.manifest.uniforms) this.uniforms[u.name] = coerce(u.default, u.type) ?? 0;
   }
 
@@ -41,8 +41,13 @@ export class SdObject extends HTMLElement {
     else this.standalone();
   }
   disconnectedCallback() { this.scene?.detach(this); }
-  /** Lone object outside any scene; implemented in a later task. */
-  protected standalone() { /* ponytail: filled in by Task 7 */ }
+  /** Lone object outside any scene: it hosts a one-object scene in its own shadow root, so the page layout is untouched. */
+  protected standalone() {
+    if (this.scene) return;
+    const scene = document.createElement('sd-scene') as SdScene;
+    this.shadowRoot!.append(scene);
+    scene.attach(this);
+  }
 
   attributeChangedCallback(name: string, _old: string | null, v: string | null) {
     const val = v ?? '';
