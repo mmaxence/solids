@@ -14,7 +14,7 @@ export const hoverLift: Interaction = {
       const l = ease(lift.get(o) ?? 0, hit ? 1 : 0, dt, 160);
       lift.set(o, l);
       o.anim.scale *= 1 + 0.08 * l;
-      o.anim.state += l * (1 - o.state);
+      o.anim.state += l * (1 - o.stateValue);
     }
   },
 };

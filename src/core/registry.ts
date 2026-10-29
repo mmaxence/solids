@@ -31,15 +31,16 @@ export const interactions = new Map<string, Interaction>();
 export const effectAttrs = () => [...effects.values()].flatMap((e) => e.manifest.params.map((p) => `${e.manifest.name}-${kebab(p.name)}`));
 export const kebab = (s: string) => s.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
 /** Parse `glow-strength="0.8"` style attributes into { glow: { strength: 0.8 } }. */
-export function effectParam(name: string, value: string, into: Record<string, Record<string, number>>): boolean {
+export function effectParam(name: string, value: string | null, into: Record<string, Record<string, number>>): boolean {
   for (const e of effects.values()) {
     const prefix = e.manifest.name + '-';
     if (!name.startsWith(prefix)) continue;
     const p = e.manifest.params.find((p) => kebab(p.name) === name.slice(prefix.length));
     if (!p) continue;
-    const n = Number(value);
-    (into[e.manifest.name] ??= {})[p.name] = isNaN(n) ? (p.default as number) : n;
+    (into[e.manifest.name] ??= {})[p.name] = num(value, p.default as number);
     return true;
   }
   return false;
 }
+/** Attribute number with a default for missing, empty or unparseable values; 0 is a value. */
+export const num = (v: string | null | undefined, d: number) => { if (v == null || v === '') return d; const n = Number(v); return isNaN(n) ? d : n; };

@@ -54,7 +54,7 @@ function nav(root, current) {
 
 function page(path, { title, description, main }) {
   const root = path.includes('/') ? '../' : './';
-  const html = shell.replace(/{{root}}/g, root).replace('{{title}}', esc(title)).replace('{{description}}', esc(description)).replace('{{nav}}', nav(root, path)).replace('{{main}}', main);
+  const html = shell.replace(/{{root}}/g, root).replace('{{title}}', () => esc(title)).replace('{{description}}', () => esc(description)).replace('{{nav}}', () => nav(root, path)).replace('{{main}}', () => main);
   mkdirSync(`${OUT}/${path}`.replace(/\/[^/]+$/, ''), { recursive: true });
   writeFileSync(`${OUT}/${path}`, html);
 }
@@ -144,7 +144,7 @@ animations.forEach((a, i) => {
 effects.forEach((e) => {
   const rows = e.params.map((p) => [`${e.name}-${kebab(p.name)}`, 'number', String(p.default), `${p.min} to ${p.max}`, p.label]);
   const controls = [
-    { kind: 'select', attr: 'data-object', label: 'Object', options: objects.map((o) => o.tag), value: 'sd-orb', target: 'scene' },
+    { kind: 'select', attr: 'object', label: 'Object', options: objects.map((o) => o.tag), value: 'sd-orb', target: 'scene' },
     ...e.params.map((p) => rangeControl(p, 'scene', `${e.name}-${kebab(p.name)}`)),
     { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: e.name, target: 'scene' },
   ];
@@ -158,7 +158,7 @@ const sceneInner = `<sd-orb id="orb" gravity="center" animation="breathe" color=
 <sd-crystal id="crystal" animation="idle" color="#ff9bd1" size="80px" style="left:76%;top:58%"></sd-crystal>
 <sd-cube id="cube" animation="idle" color="#9bffb0" size="64px" style="left:22%;top:68%"></sd-cube>`;
 const sceneControls = (active) => [
-  { kind: 'select', attr: 'gravity', label: 'Center of gravity', options: ['orb', 'ring', 'crystal', 'cube'], value: 'orb', target: 'scene' },
+  { kind: 'select', attr: 'center', label: 'Center of gravity', options: ['orb', 'ring', 'crystal', 'cube'], value: 'orb', target: 'scene' },
   { kind: 'range', attr: 'gravity-strength', label: 'Gravity strength', min: 0, max: 1, step: 0.01, value: 0.6, default: 0.6, target: 'scene' },
   ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: active.includes(i.name), target: 'scene' })),
   { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },

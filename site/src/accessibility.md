@@ -16,4 +16,4 @@ Objects render on a transparent canvas over your own background. The default col
 
 ## Performance
 
-A scene pauses when it leaves the viewport and when the tab is hidden. Device pixel ratio is capped at 2. Each object marches at most 64 steps per pixel. On a low-end phone, prefer fewer and smaller objects over scene-wide effects.
+A scene pauses when it leaves the viewport and when the tab is hidden. Device pixel ratio is capped at 2. Each object marches at most 64 steps per pixel. On a low-end phone, prefer fewer and smaller objects over scene-wide effects. Each scene, and each lone object outside a scene, owns one WebGL context, and browsers keep about sixteen alive per page, so group objects into scenes when a page has many.

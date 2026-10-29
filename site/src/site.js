@@ -3,15 +3,19 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 // Theme
+// The site is dark unless the person picked light; scenes follow the site, not the OS.
+function applyTheme(t) {
+  $$('sd-scene').forEach((s) => s.setAttribute('theme', t));
+  $$('*').filter((e) => e.localName.startsWith('sd-')).forEach((e) => e.shadowRoot?.querySelector('sd-scene')?.setAttribute('theme', t));
+}
 $('.theme')?.addEventListener('click', () => {
-  const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-  const next = cur === 'light' ? 'dark' : 'light';
+  const next = (document.documentElement.dataset.theme || 'dark') === 'light' ? 'dark' : 'light';
   document.documentElement.dataset.theme = next;
   try { localStorage.setItem('sd-theme', next); } catch {}
-  $$('sd-scene').forEach((s) => s.setAttribute('theme', next));
+  applyTheme(next);
 });
-// The site is dark unless the person picked light; scenes follow the site, not the OS.
-$$('sd-scene').forEach((s) => s.setAttribute('theme', document.documentElement.dataset.theme || 'dark'));
+applyTheme(document.documentElement.dataset.theme || 'dark');
+customElements.whenDefined('sd-orb').then(() => applyTheme(document.documentElement.dataset.theme || 'dark'));
 
 // Tabs
 $$('.tabs').forEach((tabs) => {
@@ -61,6 +65,15 @@ if (specEl) {
     }
     const apply = () => {
       const v = c.kind === 'check' ? (input.checked ? c.on : '') : input.value;
+      if (c.attr === 'object') { // swap the demo subject for another object type, keeping its attributes
+        const old = $('#demo > *'); const nu = document.createElement(v);
+        for (const a of old.attributes) nu.setAttribute(a.name, a.value);
+        old.replaceWith(nu); refresh(); return;
+      }
+      if (c.attr === 'center') { // exactly one center
+        $$('sd-scene > *', scene).forEach((o) => (o.id === v ? o.setAttribute('gravity', 'center') : o.getAttribute('gravity') === 'center' && o.removeAttribute('gravity')));
+        refresh(); return;
+      }
       for (const t of targets(c)) {
         if (c.kind === 'check') {
           const cur = (t.getAttribute(c.attr) || '').split(/\s+/).filter(Boolean).filter((x) => x !== c.on);
@@ -68,9 +81,6 @@ if (specEl) {
           cur.length ? t.setAttribute(c.attr, cur.join(' ')) : t.removeAttribute(c.attr);
         } else if (v === '' || v === String(c.default ?? '\u0000')) t.removeAttribute(c.attr);
         else t.setAttribute(c.attr, v);
-      }
-      if (c.attr === 'gravity') { // the center control: one object only
-        $$('sd-scene > *', scene).forEach((o) => (o.id === v ? o.setAttribute('gravity', 'center') : o.getAttribute('gravity') === 'center' && o.removeAttribute('gravity')));
       }
       refresh();
     };
@@ -98,6 +108,16 @@ if (location.search.includes('__check')) {
   console.error = (...a) => { errors.push(a.map(String).join(' ')); ce(...a); };
   addEventListener('error', (e) => errors.push(String(e.message)));
   let n = 0;
-  const tick = () => (++n < 6 ? requestAnimationFrame(tick) : fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene').length }) }));
+  const report = () => {
+    $('.theme')?.click();
+    const sel = $$('#controls label').find((l) => l.querySelector('span')?.textContent === 'Object')?.querySelector('select');
+    if (sel) { sel.value = 'sd-cube'; sel.dispatchEvent(new Event('input')); }
+    const center = $$('#controls label').find((l) => l.querySelector('span')?.textContent === 'Center of gravity')?.querySelector('select');
+    if (center) { center.value = 'ring'; center.dispatchEvent(new Event('input')); }
+    const strength = $$('#controls label').find((l) => l.querySelector('span')?.firstChild?.textContent === 'Gravity strength')?.querySelector('input');
+    if (strength) { strength.value = '0'; strength.dispatchEvent(new Event('input')); }
+    fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent }) });
+  };
+  const tick = () => (++n < 6 ? requestAnimationFrame(tick) : report());
   requestAnimationFrame(tick);
 }

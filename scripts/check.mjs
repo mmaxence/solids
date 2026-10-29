@@ -104,8 +104,9 @@ export function runPage(url, chrome, result, timeoutMs = 30000) {
   const args = ['--headless=new', '--disable-gpu', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-first-run',
     '--disable-crash-reporter', '--no-sandbox', `--user-data-dir=${profile}`, '--window-size=1400,900', url];
   const child = spawn(chrome, args, { stdio: 'ignore' });
-  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error(`page did not report within ${timeoutMs} ms`)), timeoutMs));
-  return Promise.race([result, timeout]).finally(() => child.kill('SIGKILL'));
+  let timer;
+  const timeout = new Promise((_, rej) => (timer = setTimeout(() => rej(new Error(`page did not report within ${timeoutMs} ms`)), timeoutMs)));
+  return Promise.race([result, timeout]).finally(() => { clearTimeout(timer); child.kill('SIGKILL'); });
 }
 
 const CHECK_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>solids check</title>
@@ -122,6 +123,36 @@ import { registry } from '/dist/solids.js';
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const tags = [...registry.objects.values()].map((o) => o.manifest.tag);
 const result = { compileErrors: [], consoleErrors: [], tags, cases: {} };
+function read(scene) {
+  const gl = scene.gl; if (!gl) return null;
+  scene.frame(1, 16);
+  const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+  const buf = new Uint8Array(w * h * 4);
+  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+  return buf;
+}
+function pixels(scene) {
+  const buf = read(scene); if (!buf) return -1;
+  let n = 0; for (let i = 3; i < buf.length; i += 4) if (buf[i] > 8) n++;
+  return n;
+}
+function readAt(scene, t) {
+  const gl = scene.gl; if (!gl) return null;
+  scene.frame(t, 16);
+  const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+  const buf = new Uint8Array(w * h * 4);
+  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+  return buf;
+}
+// Fraction of painted pixels that differ noticeably between two scenes (or two buffers) of the same size.
+function differ(a, b) {
+  const x = a instanceof Uint8Array ? a : read(a), y = b instanceof Uint8Array ? b : read(b); let n = 0, painted = 0;
+  for (let i = 0; i < x.length; i += 4) {
+    if (x[i + 3] > 8 || y[i + 3] > 8) painted++;
+    if (Math.abs(x[i] - y[i]) > 16 || Math.abs(x[i + 1] - y[i + 1]) > 16 || Math.abs(x[i + 2] - y[i + 2]) > 16 || Math.abs(x[i + 3] - y[i + 3]) > 16) n++;
+  }
+  return painted ? n / painted : 0;
+}
 const mk = (attrs, objAttrs = {}) => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.className = 'small'; sc.setAttribute('theme', 'dark'); for (const [k, v] of Object.entries(attrs)) sc.setAttribute(k, v); const o = sc.appendChild(document.createElement(tags[0])); for (const [k, v] of Object.entries(objAttrs)) o.setAttribute(k, v); return sc; };
 try {
 
@@ -141,6 +172,13 @@ const extra = dyn.appendChild(document.createElement(tags[0]));
 await frame();
 extra.remove();
 await frame(); await frame();
+// Browsers cap live WebGL contexts (about 16), so measure early and drop finished scenes.
+result.cases.all = { pixels: pixels(all), objects: all.objects.size };
+result.cases.empty = { pixels: pixels(empty), objects: empty.objects.size };
+result.cases.odd = { pixels: pixels(odd), objects: odd.objects.size };
+result.cases.dyn = { pixels: pixels(dyn), objects: dyn.objects.size };
+for (const o of all.objects) if (o.broken) result.compileErrors.push(o.manifest.tag);
+for (const sc of [all, empty, odd, dyn]) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); }
 // Case D: animations move things; reduced motion freezes them.
 const an = document.body.appendChild(document.createElement('sd-scene')); an.className = 'small';
 const spin = document.createElement(tags[0]); spin.setAttribute('animation', 'spin'); an.appendChild(spin);
@@ -176,28 +214,58 @@ ext.restoreContext();
 await frame(); await frame(); await frame();
 result.cases.lone = { pixels: loneScene ? pixels(loneScene) : -1, restoredPixels: pixels(lost), restoredError: lost.gl.getError() };
 
-function read(scene) {
-  const gl = scene.gl; if (!gl) return null;
-  scene.frame(1, 16);
-  const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
-  const buf = new Uint8Array(w * h * 4);
-  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
-  return buf;
-}
-function pixels(scene) {
-  const buf = read(scene); if (!buf) return -1;
-  let n = 0; for (let i = 3; i < buf.length; i += 4) if (buf[i] > 8) n++;
-  return n;
-}
-// Fraction of painted pixels that differ noticeably between two scenes of the same size.
-function differ(a, b) {
-  const x = read(a), y = read(b); let n = 0, painted = 0;
-  for (let i = 0; i < x.length; i += 4) {
-    if (x[i + 3] > 8 || y[i + 3] > 8) painted++;
-    if (Math.abs(x[i] - y[i]) > 16 || Math.abs(x[i + 1] - y[i + 1]) > 16 || Math.abs(x[i + 2] - y[i + 2]) > 16 || Math.abs(x[i + 3] - y[i + 3]) > 16) n++;
-  }
-  return painted ? n / painted : 0;
-}
+// Case H: a lone object re-inserted keeps one inner scene; claimed by a real scene, it drops it.
+const lone2 = document.body.appendChild(document.createElement(tags[0]));
+await frame();
+lone2.remove(); await frame();
+document.body.appendChild(lone2); await frame();
+const reinsert = lone2.shadowRoot.querySelectorAll('sd-scene').length;
+const host = mk({}); host.appendChild(lone2); await frame();
+result.cases.lone.reinsert = reinsert;
+result.cases.lone.claimed = lone2.shadowRoot.querySelectorAll('sd-scene').length;
+// Case I: two overlapping objects look the same before a context loss and after the restore.
+const ov = mk({}); ov.style.position = 'relative';
+const ovB = ov.appendChild(document.createElement(tags[0])); ovB.style.cssText = 'position:absolute;left:60px;top:40px'; ovB.setAttribute('color', '#ff9bd1');
+await frame(); await frame();
+const before = readAt(ov, 1);
+const ext2 = ov.gl.getExtension('WEBGL_lose_context');
+ext2.loseContext(); await frame(); await frame(); ext2.restoreContext(); await frame(); await frame(); await frame();
+result.cases.lone.restoreDiff = differ(before, readAt(ov, 1));
+// Case J: color, state and speed work as properties.
+const po = mk({}).firstElementChild;
+po.state = 'active'; po.color = '#ff0000'; po.speed = 2;
+await frame();
+result.cases.props = { stateAttr: po.getAttribute('state'), stateTarget: po.stateTarget, rgb: po.rgb, speed: po.speedValue };
+// Case K: switching or removing the gravity center never snaps.
+const stepOf = (objs) => objs.map((o) => [...o.anim.offset]);
+const maxStep = (a, b) => Math.max(...a.map((v, i) => Math.hypot(v[0] - b[i][0], v[1] - b[i][1])));
+let worst = 0, prev = stepOf(gObjs);
+gObjs[0].removeAttribute('gravity'); gObjs[2].setAttribute('gravity', 'center');
+for (let i = 0; i < 10; i++) { await frame(); const cur = stepOf(gObjs); worst = Math.max(worst, maxStep(prev, cur)); prev = cur; }
+gObjs[2].removeAttribute('gravity'); gObjs[1].removeAttribute('gravity');
+for (let i = 0; i < 10; i++) { await frame(); const cur = stepOf(gObjs); worst = Math.max(worst, maxStep(prev, cur)); prev = cur; }
+result.cases.gravity.worstStep = worst;
+// Case L: yaw stays continuous through an animation change and a speed change.
+let yawStep = 0, lastYaw = spin.pose.rotation[1];
+spin.setAttribute('animation', 'idle');
+for (let i = 0; i < 8; i++) { await frame(); const y = spin.pose.rotation[1]; yawStep = Math.max(yawStep, Math.abs(y - lastYaw)); lastYaw = y; }
+spin.setAttribute('animation', 'spin'); for (let i = 0; i < 30; i++) await frame(); lastYaw = spin.pose.rotation[1];
+spin.setAttribute('speed', '3');
+for (let i = 0; i < 8; i++) { await frame(); const y = spin.pose.rotation[1]; yawStep = Math.max(yawStep, Math.abs(y - lastYaw)); lastYaw = y; }
+result.cases.anim.yawStep = yawStep;
+// Case M: reduced motion freezes orbits and time-driven shaders.
+window.__SD_REDUCED = true;
+const rg = mk({ interaction: 'gravity' }); rg.firstElementChild.setAttribute('gravity', 'center'); rg.firstElementChild.setAttribute('size', '40px');
+const rgo = rg.appendChild(document.createElement(tags[0])); rgo.setAttribute('size', '40px');
+for (let i = 0; i < 6; i++) await frame();
+const o1 = [...rgo.anim.offset]; for (let i = 0; i < 4; i++) await frame(); const o2 = [...rgo.anim.offset];
+for (const sc of [an, host, ov, rg]) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); }
+const blobTag = tags.find((t) => t === 'sd-blob');
+const rb = mk({}, {}); if (blobTag) { rb.firstElementChild.remove(); rb.appendChild(document.createElement(blobTag)); }
+await frame(); await frame();
+result.cases.reduced = { orbitMoved: Math.hypot(o1[0] - o2[0], o1[1] - o2[1]), blobDiff: differ(readAt(rb, 1), readAt(rb, 4)) };
+window.__SD_REDUCED = false;
+
 // Case E: effects change the image; per-object effects draw; a hidden scene shown later has no GL error.
 const plain = mk({});
 const pix = mk({ effect: 'pixelate', 'pixelate-size': '32' });
@@ -208,11 +276,6 @@ await frame(); await frame();
 hidden.style.display = '';
 await frame(); await frame();
 result.cases.fx = { delta: differ(plain, pix), objPixels: pixels(objFx), hiddenPixels: pixels(hidden), glError: hidden.gl?.getError(), everyPixels: pixels(every), effects: [...registry.effects.keys()] };
-result.cases.all = { pixels: pixels(all), objects: all.objects.size };
-result.cases.empty = { pixels: pixels(empty), objects: empty.objects.size };
-result.cases.odd = { pixels: pixels(odd), objects: odd.objects.size };
-result.cases.dyn = { pixels: pixels(dyn), objects: dyn.objects.size };
-for (const o of all.objects) if (o.broken) result.compileErrors.push(o.manifest.tag);
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
@@ -226,7 +289,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.tags.length})`);
@@ -247,6 +310,16 @@ async function smoke() {
     if (!moved(g.second) || !moved(g.third)) fail(`gravity: second ${g.second} and third ${g.third} should orbit`);
     if (!(r.cases.lone.pixels > 500)) fail(`lone object drew ${r.cases.lone.pixels} pixels`);
     if (!(r.cases.lone.restoredPixels > 500) || r.cases.lone.restoredError !== 0) fail(`context restore: ${JSON.stringify({ px: r.cases.lone.restoredPixels, err: r.cases.lone.restoredError })}`);
+    if (r.cases.lone.reinsert !== 1) fail(`lone object re-inserted has ${r.cases.lone.reinsert} inner scenes, expected 1`);
+    if (r.cases.lone.claimed !== 0) fail(`lone object claimed by a scene still has ${r.cases.lone.claimed} inner scene(s)`);
+    if (!(r.cases.lone.restoreDiff < 0.05)) fail(`after context restore ${(r.cases.lone.restoreDiff * 100).toFixed(1)}% of pixels differ (blend state lost?)`);
+    if (r.cases.props.stateAttr !== 'active' || !Number.isFinite(r.cases.props.stateTarget) || r.cases.props.stateTarget !== 1) fail(`state as property: ${JSON.stringify(r.cases.props)}`);
+    if (!r.cases.props.rgb || Math.abs(r.cases.props.rgb[0] - 1) > 0.01 || r.cases.props.rgb[1] > 0.01) fail(`color as property: ${JSON.stringify(r.cases.props.rgb)}`);
+    if (r.cases.props.speed !== 2) fail(`speed as property: ${r.cases.props.speed}`);
+    if (!(r.cases.gravity.worstStep < 12)) fail(`gravity center switch snapped: ${r.cases.gravity.worstStep?.toFixed(1)} px in one frame`);
+    if (!(r.cases.anim.yawStep < 0.35)) fail(`yaw jumped ${r.cases.anim.yawStep?.toFixed(2)} rad in one frame on an animation or speed change`);
+    if (!(r.cases.reduced.orbitMoved < 0.01)) fail(`reduced motion: orbit still moved ${r.cases.reduced.orbitMoved?.toFixed(1)} px`);
+    if (!(r.cases.reduced.blobDiff < 0.02)) fail(`reduced motion: blob still animates (${(r.cases.reduced.blobDiff * 100).toFixed(1)}% differ)`);
     if (!r.cases.anim.spinMoved) fail('animation "spin" did not change rotation between frames');
     if (r.cases.anim.reducedScale !== 1) fail(`reduced motion: pulse scale ${r.cases.anim.reducedScale}, expected 1`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px)`);
@@ -274,6 +347,11 @@ async function site() {
       const r = await runPage(`http://127.0.0.1:${port}/${f}?__check`, chrome, result);
       if (r.errors.length) fail(`site/${f}: console errors: ${r.errors.join(' | ').slice(0, 600)}`);
       if (!(r.scenes >= 1)) fail(`site/${f}: no scene mounted`);
+      if (r.theme !== 'light') fail(`site/${f}: one click on Theme gave "${r.theme}", expected light`);
+      if (f.startsWith('effects/') && r.subject !== 'sd-cube') fail(`site/${f}: Object select left subject "${r.subject}"`);
+      if (f === 'scene.html' && !/<sd-ring[^>]*gravity="center"/.test(r.live)) fail(`site/${f}: center select did not mark the ring: ${r.live?.slice(0, 160)}`);
+      if (f === 'scene.html' && /<sd-scene[^>]*gravity="/.test(r.live)) fail(`site/${f}: junk gravity attribute on the scene`);
+      if (f === 'scene.html' && !/gravity-strength="0"/.test(r.live)) fail(`site/${f}: strength slider at 0 did not stick: ${r.live?.slice(0, 160)}`);
     } catch (e) { fail(`site/${f}: ${e.message}`); }
     finally { srv.close(); }
   }

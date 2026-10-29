@@ -1,9 +1,11 @@
 import type { Interaction } from '../core/registry';
+import { num } from '../core/registry';
 import type { SdObject } from '../core/object';
+import { reducedMotion } from '../core/object';
 import type { SdScene } from '../core/scene';
 import { lerp } from '../core/math';
 
-type Body = { angle: number; r: number; center: SdObject | null; from: [number, number]; k: number };
+type Body = { angle: number; r: number; center: SdObject | null; offset: [number, number]; from: [number, number]; k: number };
 const bodies = new WeakMap<SdObject, Body>();
 const mid = (o: SdObject): [number, number] => [o.rect!.x + o.rect!.width / 2, o.rect!.y + o.rect!.height / 2];
 const smooth = (k: number) => k * k * (3 - 2 * k);
@@ -19,41 +21,44 @@ export const gravity: Interaction = {
   },
   frame(scene: SdScene, dt) {
     const objs = [...scene.objects].filter((o) => o.rect);
-    const center = objs.find((o) => o.getAttribute('gravity') === 'center');
-    if (!center) return;
-    const strength = Number(scene.getAttribute('gravity-strength')) || 0.6;
-    const c = mid(center);
+    const center = objs.find((o) => o.getAttribute('gravity') === 'center') ?? null;
+    const strength = num(scene.getAttribute('gravity-strength'), 0.6);
+    const c = center ? mid(center) : null;
+    const frozen = reducedMotion();
     for (const o of objs) {
-      if (o === center) continue;
       const mode = o.getAttribute('gravity');
-      if (mode === 'none') continue;
-      const rest = mid(o);
-      const b: Body = bodies.get(o) ?? bodies.set(o, { angle: 0, r: 0, center: null, from: [0, 0], k: 1 }).get(o)!;
-      if (b.center !== center) {
-        // New center: start a blend from where the object is now toward its new path.
-        b.from = [o.anim.offset[0], o.anim.offset[1]];
-        b.k = b.center ? 0 : 1;
-        b.center = center;
-        b.angle = Math.atan2(rest[1] - c[1], rest[0] - c[0]);
-        b.r = Math.hypot(rest[0] - c[0], rest[1] - c[1]);
-      }
-      let target: [number, number];
+      const active = !!c && o !== center && mode !== 'none';
+      let b = bodies.get(o);
+      if (!b && !active) continue;
+      if (!b) bodies.set(o, (b = { angle: 0, r: 0, center: null, offset: [0, 0], from: [0, 0], k: 1 }));
+      let target: [number, number] = [0, 0];
       let z = 0;
-      if (mode === 'fall') {
-        const gap = Number(o.getAttribute('gravity-gap')) || 24;
-        const stop = gap + (center.rect!.width + o.rect!.width) / 4;
-        b.r += (stop - b.r) * (1 - Math.exp(-dt / 700)) * (0.3 + strength);
-        target = [c[0] + Math.cos(b.angle) * b.r - rest[0], c[1] + Math.sin(b.angle) * b.r - rest[1]];
-      } else {
-        b.angle += (dt / 1000) * 0.25 * strength;
-        z = Math.sin(b.angle);
-        target = [c[0] + Math.cos(b.angle) * b.r - rest[0], c[1] + Math.sin(b.angle) * b.r - rest[1]];
+      if (active) {
+        const rest = mid(o);
+        if (b.center !== center) {
+          // New center: blend from where the object is now onto its new path, which starts at its rest position.
+          b.from = [b.offset[0], b.offset[1]]; b.k = 0; b.center = center;
+          b.angle = Math.atan2(rest[1] - c![1], rest[0] - c![0]);
+          b.r = Math.hypot(rest[0] - c![0], rest[1] - c![1]);
+        }
+        if (mode === 'fall') {
+          const stop = num(o.getAttribute('gravity-gap'), 24) + (center!.rect!.width + o.rect!.width) / 4;
+          if (!frozen) b.r += (stop - b.r) * (1 - Math.exp(-dt / 700)) * (0.3 + strength);
+        } else {
+          if (!frozen) b.angle += (dt / 1000) * 0.25 * strength;
+          z = Math.sin(b.angle);
+        }
+        target = [c![0] + Math.cos(b.angle) * b.r - rest[0], c![1] + Math.sin(b.angle) * b.r - rest[1]];
+      } else if (b.center) {
+        // Lost its center (it became the center, opted out, or the scene has none): ease home.
+        b.from = [b.offset[0], b.offset[1]]; b.k = 0; b.center = null;
       }
       if (b.k < 1) {
         b.k = Math.min(1, b.k + dt / 800);
         const s = smooth(b.k);
         target = [lerp(b.from[0], target[0], s), lerp(b.from[1], target[1], s)];
       }
+      b.offset = target;
       o.anim.offset[0] += target[0];
       o.anim.offset[1] += target[1];
       o.anim.z = z;

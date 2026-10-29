@@ -8,10 +8,15 @@ const cache = new WeakMap<WebGL2RenderingContext, Map<string, Program>>();
 export function createGL(canvas: HTMLCanvasElement): WebGL2RenderingContext | null {
   const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false });
   if (!gl) return null;
+  initState(gl);
+  return gl;
+}
+
+/** GL state the renderer relies on; call again after a context restore, which resets everything. */
+export function initState(gl: WebGL2RenderingContext) {
   gl.bindVertexArray(gl.createVertexArray());
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-  return gl;
 }
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string) {

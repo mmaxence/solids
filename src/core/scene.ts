@@ -1,7 +1,7 @@
-import { createGL, program, setUniforms, drawQuad, clearCache, type Program } from './gl';
+import { createGL, initState, program, setUniforms, drawQuad, clearCache, type Program } from './gl';
 import { createFBO, resizeFBO, type FBO } from './fbo';
 import { interactions, effects, effectAttrs, effectParam, type Pointer } from './registry';
-import { SdObject } from './object';
+import { SdObject, reducedMotion } from './object';
 import copyFrag from './copy.glsl';
 
 export class SdScene extends HTMLElement {
@@ -20,6 +20,7 @@ export class SdScene extends HTMLElement {
   private ro: ResizeObserver | null = null;
   private io: IntersectionObserver | null = null;
   private fbos: { scene: FBO; a: FBO; b: FBO; oa: FBO; ob: FBO } | null = null;
+  private clock = 0;   // shader time; stops advancing under reduced motion
 
   constructor() {
     super();
@@ -33,7 +34,11 @@ export class SdScene extends HTMLElement {
       this.gl = createGL(this.canvas);
       if (!this.gl) { this.dataset.fallback = ''; for (const o of this.objects) o.dataset.fallback = ''; }
       this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.stop(); });
-      this.canvas.addEventListener('webglcontextrestored', () => { clearCache(this.gl!); this.fbos = null; this.start(); });
+      this.canvas.addEventListener('webglcontextrestored', () => {
+        clearCache(this.gl!); this.fbos = null; initState(this.gl!);
+        for (const o of this.objects) o.broken = false;
+        this.start();
+      });
     }
     this.ro = new ResizeObserver(() => this.measure());
     this.ro.observe(this);
@@ -58,12 +63,14 @@ export class SdScene extends HTMLElement {
     else if (name === 'effect') this.effectNames = val.split(/\s+/).filter(Boolean);
     else if (name === 'theme') this.theme = (val as typeof this.theme) || 'auto';
     else if (name === 'paused') { this.paused = v !== null; this.paused ? this.stop() : this.start(); }
-    else effectParam(name, val, this.effectParams);
+    else effectParam(name, v, this.effectParams);
   }
 
   attach(o: SdObject) {
     if (this.objects.has(o)) return;
     this.objects.add(o); o.scene = this;
+    // Keep DOM order: "first center wins" and draw-order ties follow the markup.
+    this.objects = new Set([...this.objects].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)));
     if (this.isConnected && !this.gl) o.dataset.fallback = '';
     this.ro?.observe(o);
     this.measure();
@@ -96,7 +103,7 @@ export class SdScene extends HTMLElement {
   }
 
   start() {
-    if (this.raf || !this.gl || !this.isConnected || this.paused || !this.visible || document.hidden) return;
+    if (this.raf || !this.gl || this.gl.isContextLost() || !this.isConnected || this.paused || !this.visible || document.hidden) return;
     this.last = 0;
     this.raf = requestAnimationFrame(this.tick);
   }
@@ -116,7 +123,9 @@ export class SdScene extends HTMLElement {
     const gl = this.gl;
     const W = this.canvas.width, H = this.canvas.height;
     if (!gl || W === 0 || H === 0) return;
-    for (const o of this.objects) o.update(t, dt);
+    if (!reducedMotion()) this.clock = t;
+    t = this.clock;
+    for (const o of this.objects) o.update(dt);
     for (const n of this.interactionNames) interactions.get(n)?.frame(this, dt, this.pointer);
     const f = this.fbos ??= { scene: createFBO(gl, W, H), a: createFBO(gl, W, H), b: createFBO(gl, W, H), oa: createFBO(gl, 1, 1), ob: createFBO(gl, 1, 1) };
     resizeFBO(gl, f.scene, W, H); resizeFBO(gl, f.a, W, H); resizeFBO(gl, f.b, W, H);
@@ -186,7 +195,7 @@ export class SdScene extends HTMLElement {
     const px = this.pointer.inside ? [((this.pointer.x - cx) / qw) * 2, -((this.pointer.y - cy) / qh) * 2] : [0, 0];
     setUniforms(gl, p, {
       uTime: t, uResolution: [w, h], uPointer: px, uRotation: o.anim.rotation,
-      uScale: o.anim.scale / bleed, uState: Math.min(1, Math.max(0, o.state + o.anim.state)), uTheme: theme, uColor: o.color,
+      uScale: o.anim.scale / bleed, uState: Math.min(1, Math.max(0, o.stateValue + o.anim.state)), uTheme: theme, uColor: o.rgb,
       ...o.uniforms,
     });
     drawQuad(gl);

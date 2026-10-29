@@ -6,6 +6,8 @@ const STATES: Record<string, number> = { off: 0, idle: 0.25, busy: 0.6, active: 
 const CORE_ATTRS = ['animation', 'speed', 'effect', 'state', 'color', 'size', 'gravity', 'gravity-gap'];
 const camel = (s: string) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
+export type Pose = { rotation: [number, number, number]; offset: [number, number]; scale: number; state: number };
+
 export class SdObject extends HTMLElement {
   static manifest: Manifest;
   static frag: string;
@@ -17,16 +19,18 @@ export class SdObject extends HTMLElement {
   scene: SdScene | null = null;
   rect: DOMRect | null = null;           // layout rect relative to the scene, px
   uniforms: Record<string, number | number[]> = {};
-  color: [number, number, number] = [0.61, 0.82, 1];
-  state = 0.25; stateTarget = 0.25;
-  speed = 1;
+  rgb: [number, number, number] = [0.61, 0.82, 1];
+  stateValue = 0.25; stateTarget = 0.25;
+  speedValue = 1;
   animNames: string[] = [];
   effectNames: string[] = [];
   effectParams: Record<string, Record<string, number>> = {};
   anim = { rotation: new Float32Array(IDENTITY) as Mat3, offset: [0, 0] as [number, number], scale: 1, z: 0, state: 0 };
+  pose: Pose | null = null;               // last composed animation pose
+  broken = false;                         // shader failed to compile; skip drawing
+  private phase = 0;                      // animation time, advanced by dt × speed
   private prevPose: Pose | null = null;   // pose at the moment `animation` changed, for the cross-fade
   private blend = 1;                      // 0 → 1 over 400 ms after a change
-  broken = false;                         // shader failed to compile; skip drawing
 
   constructor() {
     super();
@@ -36,50 +40,51 @@ export class SdObject extends HTMLElement {
   }
 
   connectedCallback() {
-    const scene = this.closest('sd-scene') as SdScene | null;
-    if (scene) scene.attach?.(this);
-    else this.standalone();
+    const outer = this.closest('sd-scene') as SdScene | null;
+    const inner = this.shadowRoot!.querySelector('sd-scene') as SdScene | null;
+    if (outer) {
+      if (inner) { inner.detach(this); inner.remove(); }
+      outer.attach?.(this);
+    } else if (inner) {
+      inner.attach(this);
+    } else {
+      // Lone object: host a one-object scene in the shadow root so the page layout is untouched.
+      const scene = document.createElement('sd-scene') as SdScene;
+      this.shadowRoot!.append(scene);
+      scene.attach(this);
+    }
   }
   disconnectedCallback() { this.scene?.detach(this); }
-  /** Lone object outside any scene: it hosts a one-object scene in its own shadow root, so the page layout is untouched. */
-  protected standalone() {
-    if (this.scene) return;
-    const scene = document.createElement('sd-scene') as SdScene;
-    this.shadowRoot!.append(scene);
-    scene.attach(this);
-  }
 
   attributeChangedCallback(name: string, _old: string | null, v: string | null) {
     const val = v ?? '';
     switch (name) {
       case 'animation':
         this.animNames = val.split(/\s+/).filter(Boolean);
-        if (this.lastPose) { this.prevPose = this.lastPose; this.blend = 0; }
+        if (this.pose) { this.prevPose = this.pose; this.blend = 0; }
         return;
       case 'effect': this.effectNames = val.split(/\s+/).filter(Boolean); return;
-      case 'speed': this.speed = Number(val) || 1; return;
+      case 'speed': { const n = Number(val); this.speedValue = val === '' || isNaN(n) ? 1 : n; return; }
       case 'state': this.stateTarget = STATES[val] ?? 0.25; return;
-      case 'color': { const c = parseColor(val); if (c) this.color = c; return; }
+      case 'color': { const c = parseColor(val); if (c) this.rgb = c; return; }
       case 'size': this.style.setProperty('--sd-size', val); return;
       case 'gravity': case 'gravity-gap': return; // read by the gravity interaction
     }
-    if (effectParam(name, val, this.effectParams)) return;
+    if (effectParam(name, v, this.effectParams)) return;
     const u = this.manifest.uniforms.find((u) => kebab(u.name) === name);
     if (u) {
-      const c = coerce(val, u.type);
+      const c = coerce(v === null || v === '' ? u.default : v, u.type);
       if (c !== null) this.uniforms[u.name] = c;
     }
   }
 
-  private lastPose: Pose | null = null;
-
-  /** Per-frame: ease state, run animations, cross-fade after an `animation` change. */
-  update(t: number, dt: number) {
-    this.state = ease(this.state, this.stateTarget, dt, 150);
-    const tt = reducedMotion() ? 0 : t * this.speed;
+  /** Per-frame: ease state, advance the animation phase, run animations, cross-fade after an `animation` change. */
+  update(dt: number) {
+    this.stateValue = ease(this.stateValue, this.stateTarget, dt, 150);
+    if (!reducedMotion()) this.phase += (dt / 1000) * this.speedValue;
     const pose: Pose = { rotation: [0, 0, 0], offset: [0, 0], scale: 1, state: 0 };
     for (const name of this.animNames) {
-      const r: AnimResult | undefined = animations.get(name)?.fn(tt, this.speed, this);
+      const r: AnimResult | undefined = animations.get(name)?.fn(this.phase, this.speedValue, this);
       if (!r) continue;
       if (r.rotation) for (let i = 0; i < 3; i++) pose.rotation[i] += r.rotation[i];
       if (r.offset) { pose.offset[0] += r.offset[0]; pose.offset[1] += r.offset[1]; }
@@ -93,12 +98,12 @@ export class SdObject extends HTMLElement {
       const k = this.blend * this.blend * (3 - 2 * this.blend);
       const p = this.prevPose;
       out = {
-        rotation: [0, 1, 2].map((i) => lerp(p.rotation[i], pose.rotation[i], k)) as Pose['rotation'],
+        rotation: [0, 1, 2].map((i) => lerpAngle(p.rotation[i], pose.rotation[i], k)) as Pose['rotation'],
         offset: [lerp(p.offset[0], pose.offset[0], k), lerp(p.offset[1], pose.offset[1], k)],
         scale: lerp(p.scale, pose.scale, k), state: lerp(p.state, pose.state, k),
       };
     }
-    this.lastPose = out;
+    this.pose = out;
     this.anim.rotation = rotXYZ(out.rotation[0], out.rotation[1], out.rotation[2]);
     this.anim.offset = [out.offset[0], out.offset[1]];
     this.anim.scale = out.scale;
@@ -107,13 +112,10 @@ export class SdObject extends HTMLElement {
   }
 }
 
-type Pose = { rotation: [number, number, number]; offset: [number, number]; scale: number; state: number };
-
-let rmq: MediaQueryList | null = null;
-function reducedMotion() {
-  if ((window as any).__SD_REDUCED !== undefined) return !!(window as any).__SD_REDUCED;
-  rmq ??= matchMedia('(prefers-reduced-motion: reduce)');
-  return rmq.matches;
+/** Interpolate angles along the short way round, so a long-running spin never unwinds. */
+function lerpAngle(a: number, b: number, k: number) {
+  const d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+  return a + d * k;
 }
 
 function coerce(v: unknown, type: 'float' | 'vec3' | 'color'): number | number[] | null {
@@ -124,7 +126,14 @@ function coerce(v: unknown, type: 'float' | 'vec3' | 'color'): number | number[]
   return parts.length === 3 && parts.every((n) => !isNaN(n)) ? parts : null;
 }
 
-// Attributes mirror as properties on the prototype (animation, speed, …, and manifest uniforms via defineObject).
+let rmq: MediaQueryList | null = null;
+export function reducedMotion() {
+  if ((window as any).__SD_REDUCED !== undefined) return !!(window as any).__SD_REDUCED;
+  rmq ??= matchMedia('(prefers-reduced-motion: reduce)');
+  return rmq.matches;
+}
+
+// Every observed attribute is also a property (camelCase), reflecting to the attribute.
 export function reflect(proto: object, attrs: string[]) {
   for (const a of attrs) {
     if (Object.getOwnPropertyDescriptor(proto, camel(a))) continue;
@@ -139,6 +148,6 @@ export function defineObject(manifest: Manifest, frag: string) {
   if (!manifest?.tag || customElements.get(manifest.tag)) return;
   objects.set(manifest.name, { manifest, frag });
   const El = class extends SdObject { static manifest = manifest; static frag = frag; };
-  reflect(El.prototype, El.observedAttributes.filter((a) => !['color', 'speed', 'state'].includes(a)));
+  reflect(El.prototype, El.observedAttributes);
   customElements.define(manifest.tag, El);
 }
