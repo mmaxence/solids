@@ -24,6 +24,7 @@ void main() {
   vec4 s = texture(uScene, vUv);
   vec4 o = mix(s, r, uMix);
   o.a = clamp(o.a, 0.0, 1.0);
-  o.rgb = min(o.rgb, vec3(o.a));
+  // Keep premultiplied validity without flattening glass highlights: rgb may exceed alpha where an input already did.
+  o.rgb = min(o.rgb, max(vec3(o.a), max(s.rgb, r.rgb)));
   fragColor = o;
 }

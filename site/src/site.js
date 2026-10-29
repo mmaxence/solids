@@ -102,11 +102,12 @@ if (specEl) {
 function flash(btn, text) { const t = btn.textContent; btn.textContent = text; setTimeout(() => (btn.textContent = t), 1200); }
 
 // Live numbers from the demo scene: the hero dock readout, and the meter on the Performance page.
-const demo = $('#demo'), readout = $('#readout'), meter = $('#meter');
-if (demo && (readout || meter)) {
+const demo = $('#demo'), readout = $('#readout'), meter = $('#meter'), liveFrame = $('#live-frame');
+if (demo && (readout || meter || liveFrame)) {
   const show = () => {
     const fps = Math.round(demo.fps);
-    if (readout) readout.textContent = `${fps} fps · ${demo.frameTime.toFixed(2)} ms`;
+    if (readout) readout.textContent = `${fps} fps, ${demo.frameTime.toFixed(2)} ms`;
+    if (liveFrame) liveFrame.textContent = `${demo.frameTime.toFixed(2)} ms`;
     if (!meter) return;
     const gpu = demo.gpuTime;   // reading it turns the GPU timer on for this scene
     const pr = +demo.pixelRatio.toFixed(2), dpr = +(devicePixelRatio || 1).toFixed(2);
@@ -208,7 +209,7 @@ if (location.search.includes('__check')) {
     fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene, sd-universe').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent,
       objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top,
       markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr,
-contexts: $$('sd-scene').length + $$('*').filter((e) => e.shadowRoot?.querySelector('sd-scene')).length, sceneObjects: $$('sd-scene').map((s) => s.objects?.size),
+contexts: $$('sd-scene, sd-universe').length + $$('*').filter((e) => e.shadowRoot?.querySelector('sd-scene')).length, sceneObjects: $$('sd-scene, sd-universe').map((s) => s.objects?.size), liveFrame: $('#live-frame')?.textContent,
       readout: readout && (getComputedStyle(readout).display === 'none' ? 'hidden' : readout.textContent), meter: meter?.textContent, bench, benchRow: benchRowText, noTimerRow, scenesBeforeBench }) });
   };
   const tick = () => (++n < 6 ? requestAnimationFrame(tick) : report());

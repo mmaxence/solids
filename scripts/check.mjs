@@ -407,6 +407,26 @@ const dp = mk({}), db = mk({ effect: 'defocus', 'defocus-radius': '12' }), dz = 
 await frame(); await frame();
 uv.defocus = { blur: differ(db, dp), zero: differ(dz, dp) };
 free(dp, db, dz);
+// Case V: the blit must not flatten glass highlights (rgb above alpha survives); the effect buffer pool keeps
+// every size in use and drops sizes no longer drawn; a universe with no author height still draws.
+const hv = mk({}, { state: 'active' });
+await frame(); await frame();
+const hb = read(hv); let bright = 0;
+for (let i = 0; i < hb.length; i += 4) if (Math.max(hb[i], hb[i + 1], hb[i + 2]) > hb[i + 3] + 2) bright++;
+result.cases.look = { bright };
+const pv = mk({}); pv.firstElementChild.remove(); pv.style.cssText = 'position:relative;width:200px;height:200px';
+for (let i = 0; i < 40; i++) { const o = pv.appendChild(document.createElement(tags[0])); o.setAttribute('size', (20 + i) + 'px'); o.setAttribute('effect', 'defocus'); o.setAttribute('defocus-radius', '4'); o.style.cssText = 'position:absolute;left:10px;top:10px'; }
+await frame(); await frame(); await frame();
+const poolFull = pv.fbos?.pool.size;
+for (const o of [...pv.children]) o.remove();
+await frame(); await frame();
+result.cases.pool = { full: poolFull, empty: pv.fbos?.pool.size };
+free(hv, pv);
+const udef = document.body.appendChild(document.createElement('sd-universe')); udef.setAttribute('count', '8'); udef.setAttribute('theme', 'dark'); udef.style.cssText = 'height:auto;width:400px;display:block';
+await frame(); await frame();
+result.cases.universe.defaultHeight = udef.getBoundingClientRect().height;
+result.cases.universe.defaultPixels = pixels(udef);
+free(udef);
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
@@ -420,7 +440,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.tags.length})`);
@@ -494,6 +514,9 @@ async function smoke() {
     if (uv.known?.length !== 8 || !uv.known.every((t) => t === 'sd-orb' || t === 'sd-ring')) fail(`universe shapes="sd-orb sd-nope ring": ${js(uv.known)}`);
     if (uv.big?.children !== 120 || !(uv.big.pixels > 1000) || uv.big.stray !== 0) fail(`universe count="120": ${js(uv.big)}`);
     if (!(uv.defocus?.blur > 0.05) || !(uv.defocus.zero < 0.01)) fail(`defocus: radius 12 vs none ${pct(uv.defocus?.blur ?? 0)}, radius 0 vs none ${pct(uv.defocus?.zero ?? 1)}`);
+    if (!(r.cases.look.bright > 20)) fail(`glass highlights flattened: only ${r.cases.look.bright} pixels keep rgb above alpha`);
+    if (!(r.cases.pool.full >= 40) || r.cases.pool.empty !== 0) fail(`effect buffer pool: ${r.cases.pool.full} pairs with 40 sizes in use (expected >= 40), ${r.cases.pool.empty} after removal (expected 0)`);
+    if (!(uv.defaultHeight >= 300) || !(uv.defaultPixels > 1000)) fail(`universe with no author height: ${uv.defaultHeight}px tall, ${uv.defaultPixels} px drawn`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px, color space ${r.cases.color.space})`);
     return r;
   } catch (e) { fail(`smoke: ${e.message.split('\n')[0]}`); }
@@ -518,6 +541,7 @@ async function site() {
   if (!existsSync('site/dist/skill.md') || !readFileSync('site/dist/skill.md').equals(readFileSync('docs/SKILL.md'))) fail('site/skill.md is not a byte copy of docs/SKILL.md');
   const llms = text('llms.txt');
   const unlisted = pages.filter((f) => /^(objects|effects|interactions)\//.test(f) && !llms.includes(f));
+  for (const extra of ['universe.html', 'performance.html']) if (existsSync(`site/dist/${extra}`) && !llms.includes(extra)) unlisted.push(extra);
   if (!llms.startsWith('# solids') || !llms.includes('skill.md') || unlisted.length) fail(`site/llms.txt: title, skill.md and every object, effect and interaction page expected; missing ${unlisted.join(', ') || 'none'}`);
   for (const f of ['skill.md', 'llms.txt']) if (/\u2014/.test(text(f))) fail(`site/${f}: contains an em dash`);
   // Landing: the sections under the hero, in the spec order, and a Copy prompt in the dock.
@@ -551,6 +575,8 @@ async function site() {
         if (styled < 12 || !/<sd-scene[^>]*style="[^"]*height/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code markup does not reproduce the layout (${styled} positioned objects)`);
         if (!r.centerOptions || r.centerOptions.length !== 6 || r.centerOptions.includes('cube')) fail(`site/index (${size ?? 'desktop'}): Center options should be the orb and its five orbiters, got ${JSON.stringify(r.centerOptions)}`);
         if (r.interactionAttr && !/gravity.*collide/.test(r.interactionAttr)) fail(`site/index (${size ?? 'desktop'}): toggling reordered interactions to "${r.interactionAttr}"`);
+        if (!/<section class="band" id="performance">[\s\S]*?href="performance.html"/.test(index)) fail('site/index: the Performance band has no link to performance.html');
+        if (!size && !/\d+(\.\d+)? ms/.test(r.liveFrame ?? '')) fail(`site/index: the Performance band's live frame number reads ${JSON.stringify(r.liveFrame)}`);
         if (!(r.contexts <= 6)) fail(`site/index (${size ?? 'desktop'}): ${r.contexts} WebGL scenes, expected at most 6 (one per section row, never one per card)`);
         if (!r.sceneObjects?.length || r.sceneObjects.some((n) => !(n > 0))) fail(`site/index (${size ?? 'desktop'}): a scene holds no objects: ${JSON.stringify(r.sceneObjects)}`);
         if (size ? r.readout !== 'hidden' : !/\d+ fps/.test(r.readout ?? '')) fail(`site/index (${size ?? 'desktop'}): dock readout should be ${size ? 'hidden' : 'visible with fps'}, got ${JSON.stringify(r.readout)}`);

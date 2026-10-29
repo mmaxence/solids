@@ -42,7 +42,7 @@ Every object, effect and interaction has a page with a live preview, its options
 
 ## Performance
 
-One script and no dependencies. A scene draws all of its objects on one canvas, and pauses when it leaves the screen.
+One script and no dependencies. A scene draws all of its objects on one canvas, and pauses when it leaves the screen. The [Performance page](performance.html) has a live meter and a benchmark that runs in your browser.
 
 ## Details
 

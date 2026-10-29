@@ -154,7 +154,7 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
     inner: heroInner, controls: heroControls,
     title: 'Lightweight 3D objects for the web',
     pitch: `Glassy shapes you drop into HTML. One script tag, no dependencies, about ${Math.round(sizes.full / 1024)} KB. Hover, pick a center of gravity, try an effect.`,
-    prompt: `This is a solids scene: glassy 3D objects as web components, one script tag, no dependencies.\n\n\`\`\`html\n<script type="module" src="${SCRIPT}"></script>\n{{markup}}\n\`\`\`\n\nThe contract for adding an object is ${SKILL}. Read it, then add a new object to this scene that fits the family.`,
+    prompt: `This is a solids scene: glassy 3D objects as web components, one script tag, no dependencies.\n\n\`\`\`html\n<script type="module" src="${SCRIPT}"></script>\n{{markup}}\n\`\`\`\n\nThe contract for adding an object is ${SKILL}. Read it, clone https://github.com/mmaxence/solids, add the object under src/objects there, run npm run check until it prints ok, then use the new tag in this scene.`,
   });
 
   // The landing under the hero: one band per `## ` heading of intro.md, live parts appended after the prose.
@@ -170,7 +170,7 @@ ${layer('Interactions', 'Scene rules that react to the pointer and to each other
   const catalogue = `<sd-scene class="row" dpr="1.5" interaction="hover-lift"><ul class="catalogue">${objects.map((o, i) => `<li><a href="objects/${o.name}.html"><${o.tag} size="96px" animation="idle" color="${colorOf(i)}"></${o.tag}><span>${esc(o.name)}</span></a></li>`).join('')}</ul></sd-scene>
 <p class="chips"><span>Effects</span>${effects.map((e) => `<a href="effects/${e.name}.html">${esc(e.name)}</a>`).join('')}</p>
 <p class="chips"><span>Interactions</span>${interactions.map((i) => `<a href="interactions/${i.name}.html">${esc(i.name)}</a>`).join('')}</p>`;
-  const numbers = `<dl class="numbers"><div><dt>The whole library, gzipped</dt><dd>${(gzipSync(readFileSync('dist/solids.js')).length / 1024).toFixed(1)} KB</dd></div><div><dt>Objects on the hero, one canvas</dt><dd>${ids.length}</dd></div></dl>`;
+  const numbers = `<dl class="numbers"><div><dt>The whole library, gzipped</dt><dd>${(gzipSync(readFileSync('dist/solids.js')).length / 1024).toFixed(1)} KB</dd></div><div><dt>Objects on the hero, one canvas</dt><dd>${ids.length}</dd></div><div><dt>One hero frame, measured now</dt><dd id="live-frame">measuring</dd></div></dl>`;
   const universe = `<sd-universe class="band-universe" count="36" seed="5" depth="0.55" dpr="1.5" style="position:relative;height:60vh;min-height:420px"></sd-universe>`;
   const live = { 'Four layers': layers, Universe: universe, Catalogue: catalogue, Performance: numbers };
   const main = `<div class="landing">${readFileSync('site/src/intro.md', 'utf8').split(/^(?=## )/m).map((s) => {
@@ -300,7 +300,7 @@ copyFileSync('docs/SKILL.md', `${OUT}/skill.md`);
 const entries = (dir, list) => list.map((x) => `- [${x.name}](${BASE}${dir}/${x.name}.html): ${x.description}`).join('\n');
 writeFileSync(`${OUT}/llms.txt`, `# solids
 
-> Lightweight 3D objects for the web: glassy shapes as web components such as <sd-orb>, each drawn by a fragment shader. Load ${SCRIPT} as a module, then use the tags in HTML; objects can animate, take post effects, and interact inside an <sd-scene>. To add an object or an effect, read skill.md: it is the whole contract, written for coding agents, and npm run check validates the result.
+> Lightweight 3D objects for the web: glassy shapes as web components such as <sd-orb>, each drawn by a fragment shader. Load ${SCRIPT} as a module, then use the tags in HTML; objects can animate, take post effects, and interact inside an <sd-scene>; <sd-universe> fills a box with seeded shapes at different depths. To add an object or an effect, read skill.md: it is the whole contract, written for coding agents, and npm run check validates the result.
 
 ## Contract
 
@@ -326,6 +326,8 @@ ${entries('interactions', interactions)}
 
 - [Introduction](${BASE}index.html): install, the four layers, the catalogue.
 - [Scene and gravity](${BASE}scene.html): objects in one scene and the center of gravity.
+- [Universe](${BASE}universe.html): a scene that fills its box with seeded shapes at different depths, with a depth of field.
+- [Performance](${BASE}performance.html): bundle sizes, a live frame meter, and a benchmark that runs in the browser.
 - [Accessibility](${BASE}accessibility.html): reduced motion, focus, contrast, the context limit.
 - [GitHub](${REPO}): source, README and the contribution flow.
 `);

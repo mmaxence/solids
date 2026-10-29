@@ -37,7 +37,7 @@ export class SdObject extends HTMLElement {
   constructor() {
     super();
     const root = this.attachShadow({ mode: 'open' });
-    root.innerHTML = `<style>:host{display:inline-block;position:relative;width:var(--sd-size,160px);aspect-ratio:1;vertical-align:middle}sd-scene{position:absolute;inset:0}</style>`;
+    root.innerHTML = `<style>:host{display:inline-block;position:relative;width:var(--sd-size,160px);aspect-ratio:1;vertical-align:middle}sd-scene{position:absolute;inset:0}</style><style></style>`;
     for (const u of this.manifest.uniforms) this.uniforms[u.name] = coerce(u.default, u.type) ?? 0;
   }
 
@@ -69,7 +69,9 @@ export class SdObject extends HTMLElement {
       case 'speed': { const n = Number(val); this.speedValue = val === '' || isNaN(n) ? 1 : n; return; }
       case 'state': this.stateTarget = STATES[val] ?? 0.25; return;
       case 'color': this.recolor(val || '#9bd1ff'); return;
-      case 'size': this.style.setProperty('--sd-size', val); return;
+      case 'size': // in the shadow stylesheet, so a framework rewriting the inline style cannot wipe it
+        (this.shadowRoot!.querySelectorAll('style')[1] as HTMLStyleElement).textContent = val ? `:host{width:${val}}` : '';
+        return;
       case 'gravity': case 'gravity-gap': return; // read by the gravity interaction
     }
     if (effectParam(name, v, this.effectParams)) return;

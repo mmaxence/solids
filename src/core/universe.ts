@@ -29,7 +29,7 @@ export class SdUniverse extends SdScene {
   constructor() {
     super();
     // Edge shapes spill past the box by half their size; the canvas clips them anyway, so clip the layout too (no page overflow).
-    this.shadowRoot!.append(Object.assign(document.createElement('style'), { textContent: ':host{overflow:hidden}' }));
+    this.shadowRoot!.append(Object.assign(document.createElement('style'), { textContent: ':host{overflow:hidden;min-height:320px}' }));
   }
 
   connectedCallback() {
@@ -60,14 +60,14 @@ export class SdUniverse extends SdScene {
     const listed = (this.getAttribute('shapes') ?? '').split(/\s+/).filter(Boolean).map((t) => (t.startsWith('sd-') ? t : 'sd-' + t));
     const tags = (listed.length ? listed : [...known]).filter((t) => known.has(t));
     // Space separated, but a color like color(display-p3 1 0.5 0.5) keeps its inner spaces.
-    const colors = this.getAttribute('palette')?.match(/[^\s(]+(\([^)]*\))?/g) ?? PALETTE;
+    const colors = this.getAttribute('palette')?.match(/[^\s,(]+(\([^)]*\))?/g) ?? PALETTE;
     const n = tags.length ? clamp(Math.round(num(this.getAttribute('count'), 24)), 0, 120) : 0;
     const rnd = mulberry32(num(this.getAttribute('seed'), 1));
     const pick = <T>(a: T[]) => a[Math.floor(rnd() * a.length)];
     const specs = Array.from({ length: n }, () => {
       const z = rnd() * 2 - 1;
       // Nearer shapes run larger on average: 40 to 140 px.
-      return { tag: pick(tags), x: 6 + rnd() * 88, y: 6 + rnd() * 88, z, size: Math.round(40 + 100 * (0.55 * rnd() + 0.225 * (z + 1))), color: pick(colors), anim: pick(ANIMS), speed: 0.2 + rnd() * 0.3, role: '' };
+      return { tag: pick(tags), x: 6 + rnd() * 88, y: 6 + rnd() * 88, z, size: 8 * Math.round((40 + 100 * (0.55 * rnd() + 0.225 * (z + 1))) / 8), color: pick(colors), anim: pick(ANIMS), speed: 0.2 + rnd() * 0.3, role: '' };
     });
     if (this.hasAttribute('gravity') && n) {
       // The largest shape is the center, moved to the middle; the nearest third of the rest orbit it.

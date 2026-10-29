@@ -28,7 +28,7 @@ export class SdScene extends HTMLElement {
   private visible = true; private paused = false;
   private ro: ResizeObserver | null = null;
   private io: IntersectionObserver | null = null;
-  private fbos: { scene: FBO; a: FBO; b: FBO; pool: Map<string, [FBO, FBO]> } | null = null;
+  private fbos: { scene: FBO; a: FBO; b: FBO; pool: Map<string, [FBO, FBO]>; used: Set<string> } | null = null;
   private clock = 0;   // shader time; stops advancing under reduced motion
 
   constructor() {
@@ -165,7 +165,7 @@ export class SdScene extends HTMLElement {
     t = this.clock;
     for (const o of this.objects) o.update(dt);
     for (const n of this.interactionNames) interactions.get(n)?.frame(this, dt, this.pointer);
-    const f = this.fbos ??= { scene: createFBO(gl, W, H), a: createFBO(gl, W, H), b: createFBO(gl, W, H), pool: new Map() };
+    const f = this.fbos ??= { scene: createFBO(gl, W, H), a: createFBO(gl, W, H), b: createFBO(gl, W, H), pool: new Map(), used: new Set() };
     resizeFBO(gl, f.scene, W, H); resizeFBO(gl, f.a, W, H); resizeFBO(gl, f.b, W, H);
     const theme = this.themeValue;
 
@@ -185,6 +185,9 @@ export class SdScene extends HTMLElement {
     }
     this.bind(gl, null, 0, 0, W, H, true);
     this.blit(gl, src);
+    // Drop per-object buffers for sizes that were not drawn this frame, so the pool never outgrows the scene.
+    for (const [key, p] of f.pool) if (!f.used.has(key)) { deleteFBO(gl, p[0]); deleteFBO(gl, p[1]); f.pool.delete(key); }
+    f.used.clear();
   }
 
   private bind(gl: WebGL2RenderingContext, fbo: FBO | null, x: number, y: number, w: number, h: number, clear: boolean) {
@@ -232,7 +235,8 @@ export class SdScene extends HTMLElement {
     if (chain.length) {
       const key = w + 'x' + h;
       pair = f.pool.get(key);
-      if (!pair) { if (f.pool.size >= 32) { for (const p of f.pool.values()) { deleteFBO(gl, p[0]); deleteFBO(gl, p[1]); } f.pool.clear(); } f.pool.set(key, (pair = [createFBO(gl, w, h), createFBO(gl, w, h)])); }
+      if (!pair) f.pool.set(key, (pair = [createFBO(gl, w, h), createFBO(gl, w, h)]));
+      f.used.add(key);
       this.bind(gl, pair[0], 0, 0, w, h, true);
     }
     else this.bind(gl, f.scene, x, y, w, h, false);
