@@ -1,0 +1,9 @@
+{
+  "name": "beam",
+  "description": "A directional light streak, like an anamorphic lens flare.",
+  "params": [
+    { "name": "angle", "type": "float", "default": 0, "min": -90, "max": 90, "step": 1, "label": "Angle (deg)" },
+    { "name": "reach", "type": "float", "default": 60, "min": 10, "max": 200, "step": 1, "label": "Reach (px)" },
+    { "name": "strength", "type": "float", "default": 0.8, "min": 0, "max": 2, "step": 0.01, "label": "Strength" }
+  ]
+}

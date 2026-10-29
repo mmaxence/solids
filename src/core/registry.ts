@@ -26,3 +26,20 @@ export const objects = new Map<string, { manifest: Manifest; frag: string }>();
 export const animations = new Map<string, Animation>();
 export const effects = new Map<string, EffectDef>();
 export const interactions = new Map<string, Interaction>();
+
+/** Attribute names every element observes for effect params: `<effect>-<param>`. */
+export const effectAttrs = () => [...effects.values()].flatMap((e) => e.manifest.params.map((p) => `${e.manifest.name}-${kebab(p.name)}`));
+export const kebab = (s: string) => s.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
+/** Parse `glow-strength="0.8"` style attributes into { glow: { strength: 0.8 } }. */
+export function effectParam(name: string, value: string, into: Record<string, Record<string, number>>): boolean {
+  for (const e of effects.values()) {
+    const prefix = e.manifest.name + '-';
+    if (!name.startsWith(prefix)) continue;
+    const p = e.manifest.params.find((p) => kebab(p.name) === name.slice(prefix.length));
+    if (!p) continue;
+    const n = Number(value);
+    (into[e.manifest.name] ??= {})[p.name] = isNaN(n) ? (p.default as number) : n;
+    return true;
+  }
+  return false;
+}

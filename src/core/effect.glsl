@@ -1,0 +1,17 @@
+#version 300 es
+precision highp float;
+// Effect pass: reads the previous pass, writes premultiplied color.
+uniform sampler2D uScene;
+uniform vec2  uResolution; // pass size in device px
+uniform float uTime;
+uniform float uTheme;
+in vec2 vUv;
+out vec4 fragColor;
+float sdLuma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+// 4x4 ordered pattern, 0..1, from a pixel position. Use it to jitter sparse kernels.
+float sdBayer(vec2 p) {
+  ivec2 i = ivec2(mod(floor(p), 4.0));
+  int x = i.x, y = i.y;
+  int v = ((x ^ y) & 1) * 8 + ((y & 1) * 4) + (((x >> 1) ^ (y >> 1)) & 1) * 2 + ((y >> 1) & 1);
+  return float(v) / 16.0;
+}

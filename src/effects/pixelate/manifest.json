@@ -1,0 +1,7 @@
+{
+  "name": "pixelate",
+  "description": "Snaps the image to a coarse grid.",
+  "params": [
+    { "name": "size", "type": "float", "default": 8, "min": 2, "max": 48, "step": 1, "label": "Cell size (px)" }
+  ]
+}

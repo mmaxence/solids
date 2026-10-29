@@ -1,16 +1,15 @@
 import { ease, lerp, rotXYZ, IDENTITY, parseColor, type Mat3 } from './math';
-import { objects, animations, type Manifest, type AnimResult } from './registry';
+import { objects, animations, effectAttrs, effectParam, kebab, type Manifest, type AnimResult } from './registry';
 import type { SdScene } from './scene';
 
 const STATES: Record<string, number> = { off: 0, idle: 0.25, busy: 0.6, active: 1 };
 const CORE_ATTRS = ['animation', 'speed', 'effect', 'state', 'color', 'size', 'gravity'];
 const camel = (s: string) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-const kebab = (s: string) => s.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
 
 export class SdObject extends HTMLElement {
   static manifest: Manifest;
   static frag: string;
-  static get observedAttributes() { return [...CORE_ATTRS, ...this.manifest.uniforms.map((u) => kebab(u.name))]; }
+  static get observedAttributes() { return [...CORE_ATTRS, ...this.manifest.uniforms.map((u) => kebab(u.name)), ...effectAttrs()]; }
 
   get manifest(): Manifest { return (this.constructor as typeof SdObject).manifest; }
   get frag(): string { return (this.constructor as typeof SdObject).frag; }
@@ -23,6 +22,7 @@ export class SdObject extends HTMLElement {
   speed = 1;
   animNames: string[] = [];
   effectNames: string[] = [];
+  effectParams: Record<string, Record<string, number>> = {};
   anim = { rotation: new Float32Array(IDENTITY) as Mat3, offset: [0, 0] as [number, number], scale: 1, z: 0, state: 0 };
   private prevPose: Pose | null = null;   // pose at the moment `animation` changed, for the cross-fade
   private blend = 1;                      // 0 → 1 over 400 ms after a change
@@ -58,6 +58,7 @@ export class SdObject extends HTMLElement {
       case 'size': this.style.setProperty('--sd-size', val); return;
       case 'gravity': return; // read by the gravity interaction
     }
+    if (effectParam(name, val, this.effectParams)) return;
     const u = this.manifest.uniforms.find((u) => kebab(u.name) === name);
     if (u) {
       const c = coerce(val, u.type);

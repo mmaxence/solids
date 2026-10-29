@@ -1,0 +1,8 @@
+{
+  "name": "dither",
+  "description": "Ordered Bayer dithering with a reduced palette. Retro.",
+  "params": [
+    { "name": "levels", "type": "float", "default": 4, "min": 2, "max": 8, "step": 1, "label": "Levels per channel" },
+    { "name": "scale", "type": "float", "default": 2, "min": 1, "max": 6, "step": 1, "label": "Pattern scale (px)" }
+  ]
+}

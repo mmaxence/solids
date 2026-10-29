@@ -55,7 +55,20 @@ function manifests() {
       for (const u of m.uniforms ?? []) if (!new RegExp(`uniform\\s+\\w+\\s+${u.name}\\b`).test(frag)) fail(`${dir}: frag.glsl does not declare uniform ${u.name}`);
     }
   }
-  if (!fails.length) console.log(`manifests ok (${dirs.length})`);
+  const fx = existsSync('src/effects') ? readdirSync('src/effects', { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name) : [];
+  for (const d of fx) {
+    const dir = `src/effects/${d}`;
+    if (!existsSync(`${dir}/manifest.json`) || !existsSync(`${dir}/frag.glsl`)) { fail(`${dir}: needs manifest.json and frag.glsl`); continue; }
+    const m = JSON.parse(readFileSync(`${dir}/manifest.json`, 'utf8'));
+    if (m.name !== d) fail(`${dir}: manifest.name must equal folder name`);
+    if (typeof m.description !== 'string') fail(`${dir}: manifest.description missing`);
+    const frag = readFileSync(`${dir}/frag.glsl`, 'utf8');
+    for (const u of m.params ?? []) {
+      if (!/^[a-z][a-zA-Z0-9]*$/.test(u.name ?? '') || u.type !== 'float' || typeof u.min !== 'number' || typeof u.max !== 'number' || typeof u.label !== 'string') fail(`${dir}: param ${u.name} must be a float with name, min, max, label`);
+      if (!new RegExp(`uniform\\s+float\\s+${u.name}\\b`).test(frag)) fail(`${dir}: frag.glsl does not declare uniform ${u.name}`);
+    }
+  }
+  if (!fails.length) console.log(`manifests ok (${dirs.length} objects, ${fx.length} effects)`);
 }
 
 
@@ -139,15 +152,32 @@ await frame(); await frame(); await frame();
 result.cases.anim = { spinMoved: r1.some((v, i) => Math.abs(v - r2[i]) > 1e-6), reducedScale: pulse.anim.scale };
 window.__SD_REDUCED = false;
 
-function pixels(scene) {
-  const gl = scene.gl; if (!gl) return -1;
+function read(scene) {
+  const gl = scene.gl; if (!gl) return null;
   scene.frame(1, 16);
   const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
   const buf = new Uint8Array(w * h * 4);
   gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+  return buf;
+}
+function pixels(scene) {
+  const buf = read(scene); if (!buf) return -1;
   let n = 0; for (let i = 3; i < buf.length; i += 4) if (buf[i] > 8) n++;
   return n;
 }
+function sum(scene) { const buf = read(scene); let s = 0; for (const b of buf) s += b; return s; }
+// Case E: effects change the image; per-object effects draw; a hidden scene shown later has no GL error.
+const mk = (attrs, objAttrs = {}) => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.className = 'small'; for (const [k, v] of Object.entries(attrs)) sc.setAttribute(k, v); const o = sc.appendChild(document.createElement(tags[0])); for (const [k, v] of Object.entries(objAttrs)) o.setAttribute(k, v); return sc; };
+const plain = mk({});
+const pix = mk({ effect: 'pixelate', 'pixelate-size': '32' });
+const objFx = mk({}, { effect: 'pixelate', 'pixelate-size': '32' });
+const hidden = mk({}); hidden.style.display = 'none';
+const every = mk({ effect: [...registry.effects.keys()].join(' ') });
+await frame(); await frame();
+hidden.style.display = '';
+await frame(); await frame();
+const sPlain = sum(plain), sPix = sum(pix);
+result.cases.fx = { plain: sPlain, pix: sPix, delta: Math.abs(sPlain - sPix) / sPlain, objPixels: pixels(objFx), hiddenPixels: pixels(hidden), glError: hidden.gl?.getError(), everyPixels: pixels(every), effects: [...registry.effects.keys()] };
 result.cases.all = { pixels: pixels(all), objects: all.objects.size };
 result.cases.empty = { pixels: pixels(empty), objects: empty.objects.size };
 result.cases.odd = { pixels: pixels(odd), objects: odd.objects.size };
@@ -174,6 +204,12 @@ async function smoke() {
     if (r.cases.empty.objects !== 0 || r.cases.empty.pixels !== 0) fail(`empty scene: ${JSON.stringify(r.cases.empty)}`);
     if (!(r.cases.odd.pixels > 100)) fail(`unknown animation/effect names should still render: ${JSON.stringify(r.cases.odd)}`);
     if (r.cases.dyn.objects !== 1) fail(`dynamic add/remove left ${r.cases.dyn.objects} objects, expected 1`);
+    if (!(r.cases.fx.delta > 0.02)) fail(`scene effect "pixelate" barely changed the image (delta ${r.cases.fx.delta})`);
+    const fxCount = readdirSync('src/effects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
+    if (r.cases.fx.effects.length !== fxCount) fail(`registered ${r.cases.fx.effects.length} effects, expected ${fxCount}`);
+    if (!(r.cases.fx.everyPixels > 1000)) fail(`all-effects chain drew ${r.cases.fx.everyPixels} pixels`);
+    if (!(r.cases.fx.objPixels > 1000)) fail(`object-level effect drew ${r.cases.fx.objPixels} pixels`);
+    if (!(r.cases.fx.hiddenPixels > 1000) || r.cases.fx.glError !== 0) fail(`hidden-then-shown scene: ${JSON.stringify({ px: r.cases.fx.hiddenPixels, glError: r.cases.fx.glError })}`);
     if (!r.cases.anim.spinMoved) fail('animation "spin" did not change rotation between frames');
     if (r.cases.anim.reducedScale !== 1) fail(`reduced motion: pulse scale ${r.cases.anim.reducedScale}, expected 1`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px)`);

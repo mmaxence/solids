@@ -1,21 +1,25 @@
-import { createGL, program, setUniforms, drawQuad, clearCache } from './gl';
-import { interactions, type Pointer } from './registry';
+import { createGL, program, setUniforms, drawQuad, clearCache, type Program } from './gl';
+import { createFBO, resizeFBO, type FBO } from './fbo';
+import { interactions, effects, effectAttrs, effectParam, type Pointer } from './registry';
 import { SdObject } from './object';
+import copyFrag from './copy.glsl';
 
 export class SdScene extends HTMLElement {
-  static get observedAttributes() { return ['interaction', 'effect', 'theme', 'paused', 'gravity-strength']; }
+  static get observedAttributes() { return ['interaction', 'effect', 'theme', 'paused', 'gravity-strength', ...effectAttrs()]; }
   canvas!: HTMLCanvasElement;
   gl: WebGL2RenderingContext | null = null;
   objects = new Set<SdObject>();
   pointer: Pointer = { x: 0, y: 0, inside: false };
   interactionNames: string[] = [];
   effectNames: string[] = [];
+  effectParams: Record<string, Record<string, number>> = {};
   theme: 'auto' | 'dark' | 'light' = 'auto';
   dpr = 1; width = 0; height = 0;
   private raf = 0; private last = 0; private t0 = 0;
   private visible = true; private paused = false;
   private ro: ResizeObserver | null = null;
   private io: IntersectionObserver | null = null;
+  private fbos: { scene: FBO; a: FBO; b: FBO; oa: FBO; ob: FBO } | null = null;
 
   constructor() {
     super();
@@ -29,7 +33,7 @@ export class SdScene extends HTMLElement {
       this.gl = createGL(this.canvas);
       if (!this.gl) { this.dataset.fallback = ''; }
       this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.stop(); });
-      this.canvas.addEventListener('webglcontextrestored', () => { clearCache(this.gl!); this.start(); });
+      this.canvas.addEventListener('webglcontextrestored', () => { clearCache(this.gl!); this.fbos = null; this.start(); });
     }
     this.ro = new ResizeObserver(() => this.measure());
     this.ro.observe(this);
@@ -53,6 +57,7 @@ export class SdScene extends HTMLElement {
     else if (name === 'effect') this.effectNames = val.split(/\s+/).filter(Boolean);
     else if (name === 'theme') this.theme = (val as typeof this.theme) || 'auto';
     else if (name === 'paused') { this.paused = v !== null; this.paused ? this.stop() : this.start(); }
+    else effectParam(name, val, this.effectParams);
   }
 
   attach(o: SdObject) {
@@ -107,22 +112,60 @@ export class SdScene extends HTMLElement {
   /** Advance one frame and draw. Public so tests and tools can render synchronously. */
   frame(t: number, dt: number) {
     const gl = this.gl;
-    if (!gl || this.width === 0 || this.height === 0) return;
+    const W = this.canvas.width, H = this.canvas.height;
+    if (!gl || W === 0 || H === 0) return;
     for (const o of this.objects) o.update(t, dt);
     for (const n of this.interactionNames) interactions.get(n)?.frame(this, dt, this.pointer);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    gl.disable(gl.SCISSOR_TEST);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.enable(gl.SCISSOR_TEST);
+    const f = this.fbos ??= { scene: createFBO(gl, W, H), a: createFBO(gl, W, H), b: createFBO(gl, W, H), oa: createFBO(gl, 1, 1), ob: createFBO(gl, 1, 1) };
+    resizeFBO(gl, f.scene, W, H); resizeFBO(gl, f.a, W, H); resizeFBO(gl, f.b, W, H);
     const theme = this.themeValue;
+
+    // 1. Objects into the scene buffer.
+    this.bind(gl, f.scene, 0, 0, W, H, true);
     const sorted = [...this.objects].filter((o) => o.rect && !o.broken).sort((a, b) => a.anim.z - b.anim.z);
-    for (const o of sorted) this.draw(gl, o, t, theme);
-    gl.disable(gl.SCISSOR_TEST);
+    for (const o of sorted) this.draw(gl, o, t, theme, f);
+
+    // 2. Scene effect chain, ping-pong, then blit to the canvas.
+    let src = f.scene;
+    const chain = this.effectNames.filter((n) => effects.has(n));
+    for (const name of chain) {
+      const dst = src === f.a ? f.b : f.a;
+      this.bind(gl, dst, 0, 0, W, H, true);
+      this.pass(gl, name, src, this.effectParams[name], [W, H], t, theme);
+      src = dst;
+    }
+    this.bind(gl, null, 0, 0, W, H, true);
+    this.blit(gl, src);
   }
 
-  private draw(gl: WebGL2RenderingContext, o: SdObject, t: number, theme: number) {
+  private bind(gl: WebGL2RenderingContext, fbo: FBO | null, x: number, y: number, w: number, h: number, clear: boolean) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo?.fb ?? null);
+    gl.viewport(x, y, w, h);
+    gl.scissor(x, y, w, h);
+    gl.enable(gl.SCISSOR_TEST);
+    if (clear) { gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
+  }
+  private blit(gl: WebGL2RenderingContext, src: FBO) {
+    const p = program(gl, copyFrag, 'effect');
+    gl.useProgram(p.prog);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.tex);
+    setUniforms(gl, p, { uScene: [0] });
+    drawQuad(gl);
+  }
+  private pass(gl: WebGL2RenderingContext, name: string, src: FBO, params: Record<string, number> | undefined, res: [number, number], t: number, theme: number) {
+    const e = effects.get(name)!;
+    let p: Program;
+    try { p = program(gl, e.frag, 'effect'); }
+    catch (err) { console.error(`[solids] effect "${name}" shader failed:\n${(err as Error).message}`); this.blit(gl, src); return; }
+    gl.useProgram(p.prog);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.tex);
+    const defaults: Record<string, number> = {};
+    for (const d of e.manifest.params) defaults[d.name] = d.default as number;
+    setUniforms(gl, p, { uScene: [0], uResolution: res, uTime: t, uTheme: theme, ...defaults, ...params });
+    drawQuad(gl);
+  }
+
+  private draw(gl: WebGL2RenderingContext, o: SdObject, t: number, theme: number, f: NonNullable<typeof this.fbos>) {
     const r = o.rect!;
     const bleed = o.manifest.bleed ?? 1.5;
     const cx = r.x + r.width / 2 + o.anim.offset[0], cy = r.y + r.height / 2 + o.anim.offset[1];
@@ -130,11 +173,13 @@ export class SdScene extends HTMLElement {
     const x = Math.round((cx - qw / 2) * this.dpr), y = Math.round((this.height - cy - qh / 2) * this.dpr);
     const w = Math.round(qw * this.dpr), h = Math.round(qh * this.dpr);
     if (w <= 0 || h <= 0) return;
-    let p;
+    let p: Program;
     try { p = program(gl, o.frag); }
     catch (e) { o.broken = true; console.error(`[solids] <${o.manifest.tag}> shader failed:\n${(e as Error).message}`); return; }
-    gl.viewport(x, y, w, h);
-    gl.scissor(x, y, w, h);
+    const chain = o.effectNames.filter((n) => effects.has(n));
+    // With its own effects the object renders into a quad-sized buffer first.
+    if (chain.length) { resizeFBO(gl, f.oa, w, h); resizeFBO(gl, f.ob, w, h); this.bind(gl, f.oa, 0, 0, w, h, true); }
+    else this.bind(gl, f.scene, x, y, w, h, false);
     gl.useProgram(p.prog);
     const px = this.pointer.inside ? [((this.pointer.x - cx) / qw) * 2, -((this.pointer.y - cy) / qh) * 2] : [0, 0];
     setUniforms(gl, p, {
@@ -143,5 +188,15 @@ export class SdScene extends HTMLElement {
       ...o.uniforms,
     });
     drawQuad(gl);
+    if (!chain.length) return;
+    let src = f.oa;
+    for (const name of chain) {
+      const dst = src === f.oa ? f.ob : f.oa;
+      this.bind(gl, dst, 0, 0, w, h, true);
+      this.pass(gl, name, src, o.effectParams[name], [w, h], t, theme);
+      src = dst;
+    }
+    this.bind(gl, f.scene, x, y, w, h, false);
+    this.blit(gl, src);
   }
 }

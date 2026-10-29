@@ -1,5 +1,6 @@
 import quadVert from './quad.vert.glsl';
 import prelude from './prelude.glsl';
+import effectPrelude from './effect.glsl';
 
 export type Program = { prog: WebGLProgram; loc: Map<string, WebGLUniformLocation>; };
 const cache = new WeakMap<WebGL2RenderingContext, Map<string, Program>>();
@@ -21,14 +22,14 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string) {
   return sh;
 }
 
-/** Object fragment: prelude + author source. Effect fragment: passed whole, no map() prototype. */
-export function program(gl: WebGL2RenderingContext, frag: string, withPrelude = true): Program {
+/** 'object' fragments get the raymarch prelude; 'effect' fragments get the post-pass prelude. */
+export function program(gl: WebGL2RenderingContext, frag: string, kind: 'object' | 'effect' = 'object'): Program {
   let m = cache.get(gl);
   if (!m) cache.set(gl, (m = new Map()));
-  const key = (withPrelude ? 'o' : 'e') + frag;
+  const key = kind[0] + frag;
   const hit = m.get(key);
   if (hit) return hit;
-  const src = withPrelude ? prelude + '\n' + frag : frag;
+  const src = (kind === 'object' ? prelude : effectPrelude) + '\n' + frag;
   const prog = gl.createProgram()!;
   gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, quadVert));
   gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, src));
@@ -50,6 +51,7 @@ export function setUniforms(gl: WebGL2RenderingContext, p: Program, values: Reco
     const l = p.loc.get(name);
     if (l === undefined) continue;
     if (typeof v === 'number') gl.uniform1f(l, v);
+    else if (v.length === 1) gl.uniform1i(l, v[0]);
     else if (v.length === 2) gl.uniform2f(l, v[0], v[1]);
     else if (v.length === 3) gl.uniform3f(l, v[0], v[1], v[2]);
     else if (v.length === 4) gl.uniform4f(l, v[0], v[1], v[2], v[3]);

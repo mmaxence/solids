@@ -1,0 +1,7 @@
+{
+  "name": "rgb-split",
+  "description": "Chromatic aberration: red and blue pulled apart horizontally.",
+  "params": [
+    { "name": "amount", "type": "float", "default": 4, "min": 0, "max": 24, "step": 0.5, "label": "Offset (px)" }
+  ]
+}
