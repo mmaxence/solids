@@ -104,3 +104,31 @@ Site: every new entry gets its page automatically. The Scene page's default set 
 
 - Exact SDFs, parameter ranges, effect kernels, spring constants.
 - Hero composition and dock styling details, within the v1 register.
+
+## Rulings after the builder check (Claude, 2026-10-29)
+
+1. **Interaction parameters** live on the scene as `<interaction>-<param>` attributes, mirroring
+   effects (`repel-radius`, `magnet-reach`, `collide-gap`, `scroll-turns`; `gravity-strength`
+   already fits). Registry gains `interactionAttrs()` / `interactionParam()` like the effect
+   plumbing; the scene observes them and interactions read `scene.interactionParams[name]` with
+   manifest defaults. `gravity-gap` stays a per-object attribute. Interactions run in attribute
+   order; `collide` compares displaced positions (rest plus the offsets applied so far), so it is
+   documented as "put it last". Repel and magnet may both be on; they simply fight.
+2. **Hero defaults.** Center is the orb, 200 px, mid-screen. Gravity on at strength 0.35.
+   Satellites placed within the safe orbit radius are `orbit`; the outer ones are `gravity="none"`
+   with `float` or `idle`. Interactions on at load: gravity, pointer-follow, hover-lift. Collide
+   off. Title block is `pointer-events: none`; the dock is interactive. Clipping at the scene edge
+   is accepted for orbiters placed inside the safe radius.
+3. **Sequencing.** B and C run in parallel first; A runs after both merge, so the hero has all
+   twelve objects and the P3 palette. B owns the palette: `COLORS` in `gen-site.mjs` becomes the
+   six P3 strings and is the single source; A reads it. C writes its READMEs with hex; the
+   controller converts those six READMEs to the P3 picks after the merge.
+4. **Dock scope.** The home page has no tabs, install panel, options table or Copy prompt under
+   the hero. The dock holds Center, Scene effect, interaction toggles, Strength (gravity only),
+   and Copy code, which copies the script tag plus the full hero scene markup. The Install
+   section in the intro below keeps the short example.
+5. **P3 checks.** The "wider than #ff3333" assertion runs only when the scene reports
+   `display-p3`; otherwise the case asserts a finite parse. The scene's space wins; objects
+   re-parse `color` on attach. 8-bit quantisation from `getImageData` is accepted.
+6. **Hero performance.** Scene gains a `dpr` attribute (max device pixel ratio); the hero sets
+   `dpr="1.5"`. 60 fps on the hero is a target to verify on device, not a check.
