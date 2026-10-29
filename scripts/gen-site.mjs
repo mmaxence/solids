@@ -156,9 +156,11 @@ effects.forEach((e) => {
 const sceneInner = `<sd-orb id="orb" gravity="center" animation="breathe" color="#9bd1ff" size="150px" style="left:calc(50% - 75px);top:calc(50% - 75px)"></sd-orb>
 <sd-ring id="ring" animation="spin" color="#c9b3ff" size="90px" style="left:14%;top:16%"></sd-ring>
 <sd-crystal id="crystal" animation="idle" color="#ff9bd1" size="80px" style="left:76%;top:58%"></sd-crystal>
-<sd-cube id="cube" animation="idle" color="#9bffb0" size="64px" style="left:22%;top:68%"></sd-cube>`;
+<sd-cube id="cube" animation="idle" color="#9bffb0" size="64px" style="left:22%;top:68%"></sd-cube>
+<sd-knot id="knot" animation="spin" speed="0.4" color="#9bffe0" size="84px" style="left:70%;top:12%"></sd-knot>
+<sd-prism id="prism" animation="idle" color="#ffd29b" size="70px" style="left:48%;top:76%"></sd-prism>`;
 const sceneControls = (active) => [
-  { kind: 'select', attr: 'center', label: 'Center of gravity', options: ['orb', 'ring', 'crystal', 'cube'], value: 'orb', target: 'scene' },
+  { kind: 'select', attr: 'center', label: 'Center of gravity', options: ['orb', 'ring', 'crystal', 'cube', 'knot', 'prism'], value: 'orb', target: 'scene' },
   { kind: 'range', attr: 'gravity-strength', label: 'Gravity strength', min: 0, max: 1, step: 0.01, value: 0.6, default: 0.6, target: 'scene' },
   ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: active.includes(i.name), target: 'scene' })),
   { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },

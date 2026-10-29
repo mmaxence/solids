@@ -20,7 +20,7 @@ Site and live demos: https://mmaxence.github.io/solids/
 
 | Layer | What it is | Set with |
 |---|---|---|
-| Objects | orb, ring, crystal, coil, blob, cube | the tag: `<sd-orb>` |
+| Objects | orb, ring, crystal, coil, blob, cube, knot, prism, capsule, star, shell, disc | the tag: `<sd-orb>` |
 | Animations | idle, spin, pulse, breathe, float | `animation="spin breathe"` |
 | Effects | glow, beam, rgb-split, pixelate, dither, scanlines | `effect="glow"` on an object or a scene |
 | Interactions | pointer-follow, hover-lift, gravity | `interaction="gravity"` on a scene |

@@ -1,0 +1,11 @@
+{
+  "name": "capsule",
+  "tag": "sd-capsule",
+  "description": "A rounded glass pill lying on a diagonal. Soft and friendly, it reads well small.",
+  "bleed": 1.5,
+  "uniforms": [
+    { "name": "span", "type": "float", "default": 0.7, "min": 0, "max": 0.9, "step": 0.01, "label": "Length" },
+    { "name": "radius", "type": "float", "default": 0.27, "min": 0.12, "max": 0.4, "step": 0.01, "label": "Radius" }
+  ],
+  "tags": ["pill", "basic"]
+}
