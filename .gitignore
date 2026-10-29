@@ -3,3 +3,4 @@ site/dist/
 .superpowers/
 scripts/.check-page.html
 *.log
+scratch/
