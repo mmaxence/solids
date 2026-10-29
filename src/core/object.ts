@@ -1,9 +1,9 @@
 import { ease, lerp, rotXYZ, IDENTITY, parseColor, type Mat3 } from './math';
-import { objects, animations, effectAttrs, effectParam, kebab, type Manifest, type AnimResult } from './registry';
+import { objects, animations, effectAttrs, effectParam, kebab, num, type Manifest, type AnimResult } from './registry';
 import type { SdScene } from './scene';
 
 const STATES: Record<string, number> = { off: 0, idle: 0.25, busy: 0.6, active: 1 };
-const CORE_ATTRS = ['animation', 'speed', 'effect', 'state', 'color', 'size', 'gravity', 'gravity-gap'];
+const CORE_ATTRS = ['animation', 'speed', 'effect', 'state', 'color', 'size', 'phase', 'gravity', 'gravity-gap'];
 const camel = (s: string) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
 export type Pose = { rotation: [number, number, number]; offset: [number, number]; scale: number; state: number };
@@ -30,7 +30,8 @@ export class SdObject extends HTMLElement {
   pose: Pose | null = null;               // last composed animation pose
   z = 0;                                  // base draw depth: anim.z starts here each frame (the universe sets it)
   broken = false;                         // shader failed to compile; skip drawing
-  private phase = 0;                      // animation time, advanced by dt × speed
+  private clock = 0;                      // animation time, advanced by dt × speed
+  phaseOffset = 0;                        // `phase` attribute: seconds added to the animation clock, so siblings never line up
   private prevPose: Pose | null = null;   // pose at the moment `animation` changed, for the cross-fade
   private blend = 1;                      // 0 → 1 over 400 ms after a change
 
@@ -72,6 +73,7 @@ export class SdObject extends HTMLElement {
       case 'size': // in the shadow stylesheet, so a framework rewriting the inline style cannot wipe it
         (this.shadowRoot!.querySelectorAll('style')[1] as HTMLStyleElement).textContent = val ? `:host{width:${val}}` : '';
         return;
+      case 'phase': this.phaseOffset = num(val, 0); return;
       case 'gravity': case 'gravity-gap': return; // read by the gravity interaction
     }
     if (effectParam(name, v, this.effectParams)) return;
@@ -91,10 +93,10 @@ export class SdObject extends HTMLElement {
   /** Per-frame: ease state, advance the animation phase, run animations, cross-fade after an `animation` change. */
   update(dt: number) {
     this.stateValue = ease(this.stateValue, this.stateTarget, dt, 150);
-    if (!reducedMotion()) this.phase += (dt / 1000) * this.speedValue;
+    if (!reducedMotion()) this.clock += (dt / 1000) * this.speedValue;
     const pose: Pose = { rotation: [0, 0, 0], offset: [0, 0], scale: 1, state: 0 };
     for (const name of this.animNames) {
-      const r: AnimResult | undefined = animations.get(name)?.fn(this.phase, this.speedValue, this);
+      const r: AnimResult | undefined = animations.get(name)?.fn(this.clock + this.phaseOffset, this.speedValue, this);
       if (!r) continue;
       if (r.rotation) for (let i = 0; i < 3; i++) pose.rotation[i] += r.rotation[i];
       if (r.offset) { pose.offset[0] += r.offset[0]; pose.offset[1] += r.offset[1]; }

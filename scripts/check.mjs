@@ -427,6 +427,19 @@ await frame(); await frame();
 result.cases.universe.defaultHeight = udef.getBoundingClientRect().height;
 result.cases.universe.defaultPixels = pixels(udef);
 free(udef);
+// Case W: the quad follows the object's scale (a glow at scale 2 paints beyond 1.5x the rect) and the phase attribute offsets the animation clock.
+const qs = mk({}, { effect: 'glow', size: '60px' }); qs.style.cssText = 'width:200px;height:200px';
+const qo = qs.firstElementChild; const qu = qo.update.bind(qo); qo.update = (dt) => { qu(dt); qo.anim.scale = 2; };
+await frame(); await frame();
+{ const buf = read(qs), pr = qs.pixelRatio, bw = qs.gl.drawingBufferWidth, bh = qs.gl.drawingBufferHeight, r = qo.rect;
+  const cx = (r.x + r.width / 2) * pr, cy = bh - (r.y + r.height / 2) * pr, half = r.width * 0.75 * pr; let outside = 0;
+  for (let i = 0; i < buf.length; i += 4) { if (buf[i + 3] <= 8) continue; const x = (i / 4) % bw, y = Math.floor(i / 4 / bw); if (Math.abs(x - cx) > half || Math.abs(y - cy) > half) outside++; }
+  result.cases.quad = { outside }; }
+free(qs);
+const ph = mk({}, { animation: 'spin' }); const ph2 = ph.appendChild(document.createElement(tags[0])); ph2.setAttribute('animation', 'spin'); ph2.setAttribute('phase', '2');
+await frame(); await frame();
+result.cases.phase = { differ: [...ph.firstElementChild.anim.rotation].some((v, i) => Math.abs(v - ph2.anim.rotation[i]) > 0.1) };
+free(ph);
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
@@ -515,7 +528,9 @@ async function smoke() {
     if (uv.big?.children !== 120 || !(uv.big.pixels > 1000) || uv.big.stray !== 0) fail(`universe count="120": ${js(uv.big)}`);
     if (!(uv.defocus?.blur > 0.05) || !(uv.defocus.zero < 0.01)) fail(`defocus: radius 12 vs none ${pct(uv.defocus?.blur ?? 0)}, radius 0 vs none ${pct(uv.defocus?.zero ?? 1)}`);
     if (!(r.cases.look.bright > 20)) fail(`glass highlights flattened: only ${r.cases.look.bright} pixels keep rgb above alpha`);
-    if (!(r.cases.pool.full >= 40) || r.cases.pool.empty !== 0) fail(`effect buffer pool: ${r.cases.pool.full} pairs with 40 sizes in use (expected >= 40), ${r.cases.pool.empty} after removal (expected 0)`);
+    if (!(r.cases.pool.full >= 1 && r.cases.pool.full <= 12) || r.cases.pool.empty !== 0) fail(`effect buffer pool: ${r.cases.pool.full} pairs for 40 sizes in 8 px steps (expected 1 to 12), ${r.cases.pool.empty} after removal (expected 0)`);
+    if (!(r.cases.quad?.outside > 50)) fail(`quad does not follow scale: ${r.cases.quad?.outside} px painted beyond 1.5x the rect at scale 2 (expected > 50)`);
+    if (!r.cases.phase?.differ) fail('phase="2" should offset the spin against a sibling without one');
     if (!(uv.defaultHeight >= 300) || !(uv.defaultPixels > 1000)) fail(`universe with no author height: ${uv.defaultHeight}px tall, ${uv.defaultPixels} px drawn`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px, color space ${r.cases.color.space})`);
     return r;

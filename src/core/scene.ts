@@ -164,6 +164,7 @@ export class SdScene extends HTMLElement {
     if (!reducedMotion()) this.clock = t;
     t = this.clock;
     for (const o of this.objects) o.update(dt);
+    this.step(dt);
     for (const n of this.interactionNames) interactions.get(n)?.frame(this, dt, this.pointer);
     const f = this.fbos ??= { scene: createFBO(gl, W, H), a: createFBO(gl, W, H), b: createFBO(gl, W, H), pool: new Map(), used: new Set() };
     resizeFBO(gl, f.scene, W, H); resizeFBO(gl, f.a, W, H); resizeFBO(gl, f.b, W, H);
@@ -189,6 +190,9 @@ export class SdScene extends HTMLElement {
     for (const [key, p] of f.pool) if (!f.used.has(key)) { deleteFBO(gl, p[0]); deleteFBO(gl, p[1]); f.pool.delete(key); }
     f.used.clear();
   }
+
+  /** Hook for subclasses: runs each frame after the objects update and before the interactions. */
+  protected step(_dt: number) {}
 
   private bind(gl: WebGL2RenderingContext, fbo: FBO | null, x: number, y: number, w: number, h: number, clear: boolean) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo?.fb ?? null);
@@ -217,14 +221,17 @@ export class SdScene extends HTMLElement {
     drawQuad(gl);
   }
 
-  private draw(gl: WebGL2RenderingContext, o: SdObject, t: number, theme: number, f: NonNullable<typeof this.fbos>) {
+  private draw(gl: WebGL2RenderingContext, o: SdObject, t: number, theme: number, f: NonNullable<typeof this.fbos>, W = this.canvas.width, H = this.canvas.height) {
     const r = o.rect!;
     const bleed = o.manifest.bleed ?? 1.5;
     const cx = r.x + r.width / 2 + o.anim.offset[0], cy = r.y + r.height / 2 + o.anim.offset[1];
-    const qw = r.width * bleed, qh = r.height * bleed;
-    const x = Math.round((cx - qw / 2) * this.pixelRatio), y = Math.round((this.height - cy - qh / 2) * this.pixelRatio);
-    const w = Math.round(qw * this.pixelRatio), h = Math.round(qh * this.pixelRatio);
-    if (w <= 0 || h <= 0) return;
+    // The quad follows the object's scale, in 8 device px steps so the buffer pool keys stay few; uScale keeps the shape at exactly rect × scale.
+    const sz = r.width * o.anim.scale * this.pixelRatio;
+    const w = Math.ceil((sz * bleed) / 8) * 8, h = w;
+    if (!(sz > 0) || w > 8192) return;
+    const x = Math.round(cx * this.pixelRatio - w / 2), y = Math.round((this.height - cy) * this.pixelRatio - h / 2);
+    if (x >= W || y >= H || x + w <= 0 || y + h <= 0) return; // off the canvas
+    const qw = w / this.pixelRatio, qh = h / this.pixelRatio;
     let p: Program;
     try { p = program(gl, o.frag); }
     catch (e) { o.broken = true; console.error(`[solids] <${o.manifest.tag}> shader failed:\n${(e as Error).message}`); return; }
@@ -244,7 +251,7 @@ export class SdScene extends HTMLElement {
     const px = this.pointer.inside ? [((this.pointer.x - cx) / qw) * 2, -((this.pointer.y - cy) / qh) * 2] : [0, 0];
     setUniforms(gl, p, {
       uTime: t, uResolution: [w, h], uPointer: px, uRotation: o.anim.rotation,
-      uScale: o.anim.scale / bleed, uState: Math.min(1, Math.max(0, o.stateValue + o.anim.state)), uTheme: theme, uColor: o.rgb,
+      uScale: sz / w, uState: Math.min(1, Math.max(0, o.stateValue + o.anim.state)), uTheme: theme, uColor: o.rgb,
       ...o.uniforms,
     });
     drawQuad(gl);
