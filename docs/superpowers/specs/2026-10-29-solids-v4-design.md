@@ -166,3 +166,23 @@ Objects gain one core attribute: `phase` (seconds, default 0), an offset on the 
   spiral it away; immovable is simpler and still reads as physics.
 - The quad-sizing change is core, not universe-only: it removes a known clipping limit for every
   scaled object at the cost of a device-pixel rounding that no check can see.
+
+## Builder-check rulings (Claude, settled 2026-10-29)
+
+- **World radius of a body** is fixed, not measured: `r = size / 640` (a 640 px box is the reference,
+  so a 140 px shape has radius 0.22). Placement and collision both use it, so the same seed gives the
+  same `data-pos` whatever the box; on screen, touching spheres touch exactly only in a 640 px box.
+- **Projection adds to `anim.offset`** (the float bob survives) and multiplies `anim.scale`. The 2D
+  `gravity` interaction is not used inside a universe and per-object `gravity="orbit|fall|none"` is
+  ignored there; only `gravity="center"` marks the center. Scene interactions that read `rect +
+  anim.offset` (all the pointer ones) keep working inside a universe.
+- **Spin axis:** each body gets a fixed seeded tilt (±35° about x and z) composed into
+  `anim.rotation` in `step`, so `spin` turns about a different axis per shape. Seed-derived, not
+  in the markup, like velocities.
+- **Spread:** screen spread is `0.95 × (D − 0.6) / D` of the half box, so a rim shape at camera
+  z ≤ 0.6 stays inside and nearer rim shapes may pass partly out of frame. Corners of the box stay
+  emptier than the middle; a rotating ball cannot fill a rectangle and this is accepted.
+- **Markup reproduces the initial layout plus seed-derived motion.** Live positions are not written
+  back. A pasted child marked `gravity="center"` is the center; with `gravity` and no mark, the
+  largest is. Orbiters are recomputed as the closest third. v3 markup (`data-z`, inline `left/top`)
+  is not migrated: a child without `data-pos` gets a seeded position.
