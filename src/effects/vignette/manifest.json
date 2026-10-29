@@ -1,0 +1,8 @@
+{
+  "name": "vignette",
+  "description": "Darkens objects toward the edges of the scene, like an old lens.",
+  "params": [
+    { "name": "radius", "type": "float", "default": 0.15, "min": 0, "max": 1, "step": 0.01, "label": "Clear radius" },
+    { "name": "softness", "type": "float", "default": 0.45, "min": 0.05, "max": 1, "step": 0.01, "label": "Softness" }
+  ]
+}

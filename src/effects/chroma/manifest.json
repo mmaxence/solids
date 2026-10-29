@@ -1,0 +1,8 @@
+{
+  "name": "chroma",
+  "description": "Slowly swings the hue back and forth around the original color.",
+  "params": [
+    { "name": "speed", "type": "float", "default": 0.6, "min": 0, "max": 3, "step": 0.05, "label": "Speed" },
+    { "name": "range", "type": "float", "default": 0.35, "min": 0, "max": 1, "step": 0.01, "label": "Hue range (1 is the full wheel)" }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "halftone",
+  "description": "A print dot screen: the image becomes a grid of dots that grow with brightness.",
+  "params": [
+    { "name": "size", "type": "float", "default": 7, "min": 3, "max": 24, "step": 1, "label": "Dot spacing (px)" },
+    { "name": "angle", "type": "float", "default": 45, "min": 0, "max": 90, "step": 1, "label": "Screen angle (deg)" }
+  ]
+}

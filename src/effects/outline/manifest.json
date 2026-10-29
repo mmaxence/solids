@@ -1,0 +1,8 @@
+{
+  "name": "outline",
+  "description": "Traces edges in the object's own color and lets the body recede. A drawn, technical look.",
+  "params": [
+    { "name": "width", "type": "float", "default": 1.5, "min": 0.5, "max": 6, "step": 0.5, "label": "Line width (px)" },
+    { "name": "strength", "type": "float", "default": 0.8, "min": 0, "max": 1, "step": 0.01, "label": "Strength" }
+  ]
+}
