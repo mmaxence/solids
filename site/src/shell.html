@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<link rel="stylesheet" href="{{root}}styles.css">
+<script>try{var t=localStorage.getItem('sd-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="module" src="{{root}}solids.js"></script>
+<script type="module" src="{{root}}site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <a class="brand" href="{{root}}index.html"><sd-orb size="22px" color="#9bd1ff" glow="0.4"></sd-orb><span>solids</span></a>
+  <nav class="top-links" aria-label="Site">
+    <a href="https://github.com/mmaxence/solids">GitHub</a>
+    <button type="button" class="theme" aria-label="Switch theme">Theme</button>
+  </nav>
+</header>
+<div class="frame">
+  <nav class="side" aria-label="Library">{{nav}}</nav>
+  <main id="main" class="main">{{main}}</main>
+</div>
+<footer class="foot">
+  <span>solids is MIT licensed.</span>
+  <span>Built by <a href="https://mmaxence.me">Maxence Mauduit</a>.</span>
+</footer>
+</body>
+</html>

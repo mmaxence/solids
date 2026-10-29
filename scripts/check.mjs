@@ -122,11 +122,11 @@ import { registry } from '/dist/solids.js';
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const tags = [...registry.objects.values()].map((o) => o.manifest.tag);
 const result = { compileErrors: [], consoleErrors: [], tags, cases: {} };
-const mk = (attrs, objAttrs = {}) => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.className = 'small'; for (const [k, v] of Object.entries(attrs)) sc.setAttribute(k, v); const o = sc.appendChild(document.createElement(tags[0])); for (const [k, v] of Object.entries(objAttrs)) o.setAttribute(k, v); return sc; };
+const mk = (attrs, objAttrs = {}) => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.className = 'small'; sc.setAttribute('theme', 'dark'); for (const [k, v] of Object.entries(attrs)) sc.setAttribute(k, v); const o = sc.appendChild(document.createElement(tags[0])); for (const [k, v] of Object.entries(objAttrs)) o.setAttribute(k, v); return sc; };
 try {
 
 // Case A: every object once, in one scene.
-const all = document.body.appendChild(document.createElement('sd-scene'));
+const all = document.body.appendChild(document.createElement('sd-scene')); all.setAttribute('theme', 'dark');
 for (const t of tags) all.appendChild(document.createElement(t));
 // Case B: empty scene, and an object with unknown animation/effect names.
 const empty = document.body.appendChild(document.createElement('sd-scene')); empty.className = 'small';
@@ -189,7 +189,15 @@ function pixels(scene) {
   let n = 0; for (let i = 3; i < buf.length; i += 4) if (buf[i] > 8) n++;
   return n;
 }
-function sum(scene) { const buf = read(scene); let s = 0; for (const b of buf) s += b; return s; }
+// Fraction of painted pixels that differ noticeably between two scenes of the same size.
+function differ(a, b) {
+  const x = read(a), y = read(b); let n = 0, painted = 0;
+  for (let i = 0; i < x.length; i += 4) {
+    if (x[i + 3] > 8 || y[i + 3] > 8) painted++;
+    if (Math.abs(x[i] - y[i]) > 16 || Math.abs(x[i + 1] - y[i + 1]) > 16 || Math.abs(x[i + 2] - y[i + 2]) > 16 || Math.abs(x[i + 3] - y[i + 3]) > 16) n++;
+  }
+  return painted ? n / painted : 0;
+}
 // Case E: effects change the image; per-object effects draw; a hidden scene shown later has no GL error.
 const plain = mk({});
 const pix = mk({ effect: 'pixelate', 'pixelate-size': '32' });
@@ -199,8 +207,7 @@ const every = mk({ effect: [...registry.effects.keys()].join(' ') });
 await frame(); await frame();
 hidden.style.display = '';
 await frame(); await frame();
-const sPlain = sum(plain), sPix = sum(pix);
-result.cases.fx = { plain: sPlain, pix: sPix, delta: Math.abs(sPlain - sPix) / sPlain, objPixels: pixels(objFx), hiddenPixels: pixels(hidden), glError: hidden.gl?.getError(), everyPixels: pixels(every), effects: [...registry.effects.keys()] };
+result.cases.fx = { delta: differ(plain, pix), objPixels: pixels(objFx), hiddenPixels: pixels(hidden), glError: hidden.gl?.getError(), everyPixels: pixels(every), effects: [...registry.effects.keys()] };
 result.cases.all = { pixels: pixels(all), objects: all.objects.size };
 result.cases.empty = { pixels: pixels(empty), objects: empty.objects.size };
 result.cases.odd = { pixels: pixels(odd), objects: odd.objects.size };
@@ -228,7 +235,7 @@ async function smoke() {
     if (r.cases.empty.objects !== 0 || r.cases.empty.pixels !== 0) fail(`empty scene: ${JSON.stringify(r.cases.empty)}`);
     if (!(r.cases.odd.pixels > 100)) fail(`unknown animation/effect names should still render: ${JSON.stringify(r.cases.odd)}`);
     if (r.cases.dyn.objects !== 1) fail(`dynamic add/remove left ${r.cases.dyn.objects} objects, expected 1`);
-    if (!(r.cases.fx.delta > 0.02)) fail(`scene effect "pixelate" barely changed the image (delta ${r.cases.fx.delta})`);
+    if (!(r.cases.fx.delta > 0.05)) fail(`scene effect "pixelate" barely changed the image (${(r.cases.fx.delta * 100).toFixed(1)}% of painted pixels differ)`);
     const fxCount = readdirSync('src/effects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.cases.fx.effects.length !== fxCount) fail(`registered ${r.cases.fx.effects.length} effects, expected ${fxCount}`);
     if (!(r.cases.fx.everyPixels > 1000)) fail(`all-effects chain drew ${r.cases.fx.everyPixels} pixels`);
@@ -248,9 +255,35 @@ async function smoke() {
   finally { srv.close(); }
 }
 
+
+async function site() {
+  if (!existsSync('site/dist/index.html')) return fail('site/dist missing (run npm run site)');
+  const pages = readdirSync('site/dist', { recursive: true }).filter((f) => f.endsWith('.html'));
+  for (const f of pages) {
+    const html = readFileSync(`site/dist/${f}`, 'utf8');
+    if (!/<title>[^<]+<\/title>/.test(html)) fail(`site/${f}: no <title>`);
+    const m = f.match(/^objects\/(.+)\.html$/);
+    if (m && !html.includes(`<sd-${m[1]}`)) fail(`site/${f}: does not mount <sd-${m[1]}>`);
+    if (/\u2014/.test(html)) fail(`site/${f}: contains an em dash`);
+  }
+  const chrome = chromePath();
+  if (!chrome) return;
+  for (const f of ['scene.html', 'index.html', 'objects/orb.html', 'effects/glow.html']) {
+    const { srv, port, result } = await serve('site/dist');
+    try {
+      const r = await runPage(`http://127.0.0.1:${port}/${f}?__check`, chrome, result);
+      if (r.errors.length) fail(`site/${f}: console errors: ${r.errors.join(' | ').slice(0, 600)}`);
+      if (!(r.scenes >= 1)) fail(`site/${f}: no scene mounted`);
+    } catch (e) { fail(`site/${f}: ${e.message}`); }
+    finally { srv.close(); }
+  }
+  if (!fails.length) console.log(`site ok (${pages.length} pages)`);
+}
+
 sizes();
 manifests();
 await smoke();
+await site();
 
 if (fails.length) { console.error(`\n${fails.length} failure(s)`); process.exit(1); }
 console.log('ok');
