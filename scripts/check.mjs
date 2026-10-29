@@ -152,6 +152,14 @@ await frame(); await frame(); await frame();
 result.cases.anim = { spinMoved: r1.some((v, i) => Math.abs(v - r2[i]) > 1e-6), reducedScale: pulse.anim.scale };
 window.__SD_REDUCED = false;
 
+// Case F: gravity with two "center" objects: first wins, second orbits, third orbits; nothing is NaN.
+const grav = document.body.appendChild(document.createElement('sd-scene')); grav.className = 'small'; grav.setAttribute('interaction', 'gravity hover-lift pointer-follow');
+const gObjs = [0, 1, 2].map(() => { const o = grav.appendChild(document.createElement(tags[0])); o.setAttribute('size', '40px'); return o; });
+gObjs[0].setAttribute('gravity', 'center'); gObjs[1].setAttribute('gravity', 'center');
+for (let i = 0; i < 12; i++) await frame();
+const off = (o) => o.anim.offset.map((v) => Math.round(v * 1000) / 1000);
+result.cases.gravity = { first: off(gObjs[0]), second: off(gObjs[1]), third: off(gObjs[2]), finite: gObjs.every((o) => o.anim.offset.every(Number.isFinite) && Number.isFinite(o.anim.z)) };
+
 function read(scene) {
   const gl = scene.gl; if (!gl) return null;
   scene.frame(1, 16);
@@ -210,6 +218,10 @@ async function smoke() {
     if (!(r.cases.fx.everyPixels > 1000)) fail(`all-effects chain drew ${r.cases.fx.everyPixels} pixels`);
     if (!(r.cases.fx.objPixels > 1000)) fail(`object-level effect drew ${r.cases.fx.objPixels} pixels`);
     if (!(r.cases.fx.hiddenPixels > 1000) || r.cases.fx.glError !== 0) fail(`hidden-then-shown scene: ${JSON.stringify({ px: r.cases.fx.hiddenPixels, glError: r.cases.fx.glError })}`);
+    const g = r.cases.gravity, moved = (v) => Math.hypot(v[0], v[1]) > 0.01;
+    if (!g.finite) fail('gravity produced NaN');
+    if (moved(g.first)) fail(`gravity: the first center moved ${g.first}`);
+    if (!moved(g.second) || !moved(g.third)) fail(`gravity: second ${g.second} and third ${g.third} should orbit`);
     if (!r.cases.anim.spinMoved) fail('animation "spin" did not change rotation between frames');
     if (r.cases.anim.reducedScale !== 1) fail(`reduced motion: pulse scale ${r.cases.anim.reducedScale}, expected 1`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px)`);

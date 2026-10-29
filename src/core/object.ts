@@ -3,7 +3,7 @@ import { objects, animations, effectAttrs, effectParam, kebab, type Manifest, ty
 import type { SdScene } from './scene';
 
 const STATES: Record<string, number> = { off: 0, idle: 0.25, busy: 0.6, active: 1 };
-const CORE_ATTRS = ['animation', 'speed', 'effect', 'state', 'color', 'size', 'gravity'];
+const CORE_ATTRS = ['animation', 'speed', 'effect', 'state', 'color', 'size', 'gravity', 'gravity-gap'];
 const camel = (s: string) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
 export class SdObject extends HTMLElement {
@@ -56,7 +56,7 @@ export class SdObject extends HTMLElement {
       case 'state': this.stateTarget = STATES[val] ?? 0.25; return;
       case 'color': { const c = parseColor(val); if (c) this.color = c; return; }
       case 'size': this.style.setProperty('--sd-size', val); return;
-      case 'gravity': return; // read by the gravity interaction
+      case 'gravity': case 'gravity-gap': return; // read by the gravity interaction
     }
     if (effectParam(name, val, this.effectParams)) return;
     const u = this.manifest.uniforms.find((u) => kebab(u.name) === name);
