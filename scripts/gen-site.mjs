@@ -164,9 +164,11 @@ effects.forEach((e) => {
 const sceneInner = `<sd-orb id="orb" gravity="center" animation="breathe" color="${colorOf(0)}" size="150px" style="left:calc(50% - 75px);top:calc(50% - 75px)"></sd-orb>
 <sd-ring id="ring" animation="spin" color="${colorOf(1)}" size="90px" style="left:14%;top:16%"></sd-ring>
 <sd-crystal id="crystal" animation="idle" color="${colorOf(2)}" size="80px" style="left:76%;top:58%"></sd-crystal>
-<sd-cube id="cube" animation="idle" color="${colorOf(5)}" size="64px" style="left:22%;top:68%"></sd-cube>`;
+<sd-cube id="cube" animation="idle" color="${colorOf(5)}" size="64px" style="left:22%;top:68%"></sd-cube>
+<sd-knot id="knot" animation="spin" speed="0.4" color="${colorOf(3)}" size="84px" style="left:70%;top:12%"></sd-knot>
+<sd-prism id="prism" animation="idle" color="${colorOf(4)}" size="70px" style="left:48%;top:76%"></sd-prism>`;
 const sceneControls = (active) => [
-  { kind: 'select', attr: 'center', label: 'Center of gravity', options: ['orb', 'ring', 'crystal', 'cube'], value: 'orb', target: 'scene' },
+  { kind: 'select', attr: 'center', label: 'Center of gravity', options: ['orb', 'ring', 'crystal', 'cube', 'knot', 'prism'], value: 'orb', target: 'scene' },
   { kind: 'range', attr: 'gravity-strength', label: 'Gravity strength', min: 0, max: 1, step: 0.01, value: 0.6, default: 0.6, target: 'scene' },
   ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: active.includes(i.name), target: 'scene' })),
   { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
@@ -177,9 +179,9 @@ page('scene.html', { title: 'Scene and gravity', description: 'Objects in one sc
 <h2>Gravity</h2>${optionsTable([['gravity', 'keyword', 'orbit', 'center, orbit, fall, none', 'On an object: its role. Exactly one center; extra centers orbit.'], ['gravity-strength', 'number', '0.6', '0 to 1', 'On the scene: orbital speed and pull.'], ['gravity-gap', 'number', '24', '0 to 200', 'On a falling object: distance it keeps from the center, in px.']])}
 ${license}` });
 interactions.forEach((i) => {
-  const rows = i.params.map((p) => [kebab(p.name), 'number', String(p.default), `${p.min} to ${p.max}`, p.label]);
+  const rows = i.params.map((p) => [`${i.name}-${kebab(p.name)}`, 'number', String(p.default), `${p.min} to ${p.max}`, p.label]);
   const prompt = `Interaction "${i.name}": ${i.description}\n\nEnable it with interaction="${i.name}" on the scene. Several can be combined, space separated.\n\n${rows.length ? optionsMd(rows) + '\n\n' : ''}\`\`\`html\n{{markup}}\n\`\`\``;
-  page(`interactions/${i.name}.html`, { title: i.name, description: i.description, main: `<h1>${esc(i.name)}</h1><p class="lede">${esc(i.description)}</p>${preview({ sceneAttrs: `interaction="${i.name}"${i.name === 'gravity' ? ' gravity-strength="0.6"' : ''}`, inner: sceneInner, controls: sceneControls([i.name]), prompt, stageClass: 'scatter' })}<h2>Usage</h2><p>Set <code>interaction="${i.name}"</code> on the scene. Interactions are scene rules: they work on every object inside, whatever its type.</p>${rows.length ? `<h2>Options</h2>${optionsTable(rows)}` : ''}${license}` });
+  page(`interactions/${i.name}.html`, { title: i.name, description: i.description, main: `<h1>${esc(i.name)}</h1><p class="lede">${esc(i.description)}</p>${preview({ sceneAttrs: `interaction="${i.name}"${i.name === 'gravity' ? ' gravity-strength="0.6"' : ''}`, inner: sceneInner, controls: [...sceneControls([i.name]), ...(i.name === 'gravity' ? [] : i.params.map((p) => rangeControl(p, 'scene', `${i.name}-${kebab(p.name)}`)))], prompt, stageClass: 'scatter' })}<h2>Usage</h2><p>Set <code>interaction="${i.name}"</code> on the scene. Interactions are scene rules: they work on every object inside, whatever its type. Several run in the order written.</p>${rows.length ? `<h2>Options</h2>${optionsTable(rows)}` : ''}${license}` });
 });
 
 // --- static files ---

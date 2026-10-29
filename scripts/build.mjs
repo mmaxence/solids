@@ -16,7 +16,7 @@ const common = {
 const stubContent = {
   name: 'stub-content',
   setup(b) {
-    b.onResolve({ filter: /src\/(objects|effects)\/|^\.\.?\/(objects|effects)\// }, (a) => ({ path: a.path, namespace: 'stub' }));
+    b.onResolve({ filter: /src\/(objects|effects)(\/|$)|^\.\.?\/(objects|effects)(\/|$)/ }, (a) => ({ path: a.path, namespace: 'stub' }));
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export default {}; export const all = [];', loader: 'js' }));
   },
 };

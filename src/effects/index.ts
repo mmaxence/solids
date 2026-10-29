@@ -11,6 +11,18 @@ import dither from './dither/manifest.json';
 import ditherFrag from './dither/frag.glsl';
 import scanlines from './scanlines/manifest.json';
 import scanlinesFrag from './scanlines/frag.glsl';
+import halftone from './halftone/manifest.json';
+import halftoneFrag from './halftone/frag.glsl';
+import outline from './outline/manifest.json';
+import outlineFrag from './outline/frag.glsl';
+import grain from './grain/manifest.json';
+import grainFrag from './grain/frag.glsl';
+import vignette from './vignette/manifest.json';
+import vignetteFrag from './vignette/frag.glsl';
+import chroma from './chroma/manifest.json';
+import chromaFrag from './chroma/frag.glsl';
+import ripple from './ripple/manifest.json';
+import rippleFrag from './ripple/frag.glsl';
 
 export const all: EffectDef[] = [
   { manifest: glow as Meta, frag: glowFrag },
@@ -19,5 +31,11 @@ export const all: EffectDef[] = [
   { manifest: pixelate as Meta, frag: pixelateFrag },
   { manifest: dither as Meta, frag: ditherFrag },
   { manifest: scanlines as Meta, frag: scanlinesFrag },
+  { manifest: halftone as Meta, frag: halftoneFrag },
+  { manifest: outline as Meta, frag: outlineFrag },
+  { manifest: grain as Meta, frag: grainFrag },
+  { manifest: vignette as Meta, frag: vignetteFrag },
+  { manifest: chroma as Meta, frag: chromaFrag },
+  { manifest: ripple as Meta, frag: rippleFrag },
 ];
 for (const e of all) effects.set(e.manifest.name, e);
