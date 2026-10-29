@@ -139,7 +139,7 @@ export class SdScene extends HTMLElement {
     const px = this.pointer.inside ? [((this.pointer.x - cx) / qw) * 2, -((this.pointer.y - cy) / qh) * 2] : [0, 0];
     setUniforms(gl, p, {
       uTime: t, uResolution: [w, h], uPointer: px, uRotation: o.anim.rotation,
-      uScale: o.anim.scale / bleed, uState: o.state, uTheme: theme, uColor: o.color,
+      uScale: o.anim.scale / bleed, uState: Math.min(1, Math.max(0, o.state + o.anim.state)), uTheme: theme, uColor: o.color,
       ...o.uniforms,
     });
     drawQuad(gl);

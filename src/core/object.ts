@@ -1,5 +1,5 @@
-import { ease, IDENTITY, parseColor, type Mat3 } from './math';
-import { objects, type Manifest } from './registry';
+import { ease, lerp, rotXYZ, IDENTITY, parseColor, type Mat3 } from './math';
+import { objects, animations, type Manifest, type AnimResult } from './registry';
 import type { SdScene } from './scene';
 
 const STATES: Record<string, number> = { off: 0, idle: 0.25, busy: 0.6, active: 1 };
@@ -23,7 +23,9 @@ export class SdObject extends HTMLElement {
   speed = 1;
   animNames: string[] = [];
   effectNames: string[] = [];
-  anim = { rotation: new Float32Array(IDENTITY) as Mat3, offset: [0, 0] as [number, number], scale: 1, z: 0 };
+  anim = { rotation: new Float32Array(IDENTITY) as Mat3, offset: [0, 0] as [number, number], scale: 1, z: 0, state: 0 };
+  private prevPose: Pose | null = null;   // pose at the moment `animation` changed, for the cross-fade
+  private blend = 1;                      // 0 → 1 over 400 ms after a change
   broken = false;                         // shader failed to compile; skip drawing
 
   constructor() {
@@ -45,7 +47,10 @@ export class SdObject extends HTMLElement {
   attributeChangedCallback(name: string, _old: string | null, v: string | null) {
     const val = v ?? '';
     switch (name) {
-      case 'animation': this.animNames = val.split(/\s+/).filter(Boolean); return;
+      case 'animation':
+        this.animNames = val.split(/\s+/).filter(Boolean);
+        if (this.lastPose) { this.prevPose = this.lastPose; this.blend = 0; }
+        return;
       case 'effect': this.effectNames = val.split(/\s+/).filter(Boolean); return;
       case 'speed': this.speed = Number(val) || 1; return;
       case 'state': this.stateTarget = STATES[val] ?? 0.25; return;
@@ -60,10 +65,49 @@ export class SdObject extends HTMLElement {
     }
   }
 
-  /** Per-frame update: state easing; animations are applied by the scene (later task). */
-  update(_t: number, dt: number) {
+  private lastPose: Pose | null = null;
+
+  /** Per-frame: ease state, run animations, cross-fade after an `animation` change. */
+  update(t: number, dt: number) {
     this.state = ease(this.state, this.stateTarget, dt, 150);
+    const tt = reducedMotion() ? 0 : t * this.speed;
+    const pose: Pose = { rotation: [0, 0, 0], offset: [0, 0], scale: 1, state: 0 };
+    for (const name of this.animNames) {
+      const r: AnimResult | undefined = animations.get(name)?.fn(tt, this.speed, this);
+      if (!r) continue;
+      if (r.rotation) for (let i = 0; i < 3; i++) pose.rotation[i] += r.rotation[i];
+      if (r.offset) { pose.offset[0] += r.offset[0]; pose.offset[1] += r.offset[1]; }
+      if (r.scale !== undefined) pose.scale *= r.scale;
+      if (r.state !== undefined) pose.state += r.state;
+      if (r.uniforms) Object.assign(this.uniforms, r.uniforms);
+    }
+    let out = pose;
+    if (this.prevPose && this.blend < 1) {
+      this.blend = Math.min(1, this.blend + dt / 400);
+      const k = this.blend * this.blend * (3 - 2 * this.blend);
+      const p = this.prevPose;
+      out = {
+        rotation: [0, 1, 2].map((i) => lerp(p.rotation[i], pose.rotation[i], k)) as Pose['rotation'],
+        offset: [lerp(p.offset[0], pose.offset[0], k), lerp(p.offset[1], pose.offset[1], k)],
+        scale: lerp(p.scale, pose.scale, k), state: lerp(p.state, pose.state, k),
+      };
+    }
+    this.lastPose = out;
+    this.anim.rotation = rotXYZ(out.rotation[0], out.rotation[1], out.rotation[2]);
+    this.anim.offset = [out.offset[0], out.offset[1]];
+    this.anim.scale = out.scale;
+    this.anim.state = out.state;
+    this.anim.z = 0;
   }
+}
+
+type Pose = { rotation: [number, number, number]; offset: [number, number]; scale: number; state: number };
+
+let rmq: MediaQueryList | null = null;
+function reducedMotion() {
+  if ((window as any).__SD_REDUCED !== undefined) return !!(window as any).__SD_REDUCED;
+  rmq ??= matchMedia('(prefers-reduced-motion: reduce)');
+  return rmq.matches;
 }
 
 function coerce(v: unknown, type: 'float' | 'vec3' | 'color'): number | number[] | null {

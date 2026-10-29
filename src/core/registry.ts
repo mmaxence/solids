@@ -16,7 +16,7 @@ export type Manifest = {
 };
 export type Meta = { name: string; description: string; params: UniformDef[] };
 
-export type AnimResult = Partial<{ rotation: [number, number, number]; offset: [number, number]; scale: number; uniforms: Record<string, number> }>;
+export type AnimResult = Partial<{ rotation: [number, number, number]; offset: [number, number]; scale: number; state: number; uniforms: Record<string, number> }>;
 export type Animation = { meta: Meta; fn: (t: number, speed: number, o: SdObject) => AnimResult };
 export type EffectDef = { manifest: Meta; frag: string };
 export type Pointer = { x: number; y: number; inside: boolean };

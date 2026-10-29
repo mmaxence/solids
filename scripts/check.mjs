@@ -89,14 +89,14 @@ function serve(root) {
 export function runPage(url, chrome, result, timeoutMs = 30000) {
   const profile = (process.env.TMPDIR || '/tmp') + '/solids-chrome-' + process.pid;
   const args = ['--headless=new', '--disable-gpu', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-first-run',
-    '--disable-crash-reporter', '--no-sandbox', `--user-data-dir=${profile}`, '--window-size=1200,900', url];
+    '--disable-crash-reporter', '--no-sandbox', `--user-data-dir=${profile}`, '--window-size=1400,900', url];
   const child = spawn(chrome, args, { stdio: 'ignore' });
   const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error(`page did not report within ${timeoutMs} ms`)), timeoutMs));
   return Promise.race([result, timeout]).finally(() => child.kill('SIGKILL'));
 }
 
 const CHECK_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>solids check</title>
-<style>body{margin:0;background:#0a0a0c}sd-scene{width:600px;height:400px;display:block}sd-scene.small{width:200px;height:200px}</style></head><body>
+<style>body{margin:0;background:#0a0a0c;display:flex;flex-wrap:wrap;align-content:flex-start}sd-scene{width:600px;height:400px;display:block}sd-scene.small{width:200px;height:200px}</style></head><body>
 <script>
 window.__errors = [];
 const ce = console.error.bind(console);
@@ -126,6 +126,18 @@ const extra = dyn.appendChild(document.createElement(tags[0]));
 await frame();
 extra.remove();
 await frame(); await frame();
+// Case D: animations move things; reduced motion freezes them.
+const an = document.body.appendChild(document.createElement('sd-scene')); an.className = 'small';
+const spin = document.createElement(tags[0]); spin.setAttribute('animation', 'spin'); an.appendChild(spin);
+await frame(); await frame();
+const r1 = [...spin.anim.rotation];
+await frame(); await frame();
+const r2 = [...spin.anim.rotation];
+window.__SD_REDUCED = true;
+const pulse = document.createElement(tags[0]); pulse.setAttribute('animation', 'pulse'); an.appendChild(pulse);
+await frame(); await frame(); await frame();
+result.cases.anim = { spinMoved: r1.some((v, i) => Math.abs(v - r2[i]) > 1e-6), reducedScale: pulse.anim.scale };
+window.__SD_REDUCED = false;
 
 function pixels(scene) {
   const gl = scene.gl; if (!gl) return -1;
@@ -162,6 +174,8 @@ async function smoke() {
     if (r.cases.empty.objects !== 0 || r.cases.empty.pixels !== 0) fail(`empty scene: ${JSON.stringify(r.cases.empty)}`);
     if (!(r.cases.odd.pixels > 100)) fail(`unknown animation/effect names should still render: ${JSON.stringify(r.cases.odd)}`);
     if (r.cases.dyn.objects !== 1) fail(`dynamic add/remove left ${r.cases.dyn.objects} objects, expected 1`);
+    if (!r.cases.anim.spinMoved) fail('animation "spin" did not change rotation between frames');
+    if (r.cases.anim.reducedScale !== 1) fail(`reduced motion: pulse scale ${r.cases.anim.reducedScale}, expected 1`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px)`);
     return r;
   } catch (e) { fail(`smoke: ${e.message.split('\n')[0]}`); }

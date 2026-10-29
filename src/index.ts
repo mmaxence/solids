@@ -1,6 +1,7 @@
 import { SdScene } from './core/scene';
 import { SdObject, defineObject } from './core/object';
 import * as registry from './core/registry';
+import './animations';
 
 import orbManifest from './objects/orb/manifest.json';
 import orbFrag from './objects/orb/frag.glsl';
