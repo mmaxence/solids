@@ -1,10 +1,13 @@
 // Generates site/dist from src/objects, src/effects, the bundle's meta, and site/src.
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { gzipSync } from 'node:zlib';
 
 const OUT = 'site/dist';
-const SCRIPT = 'https://mmaxence.github.io/solids/solids.js';
-const SKILL = 'https://github.com/mmaxence/solids/blob/main/docs/SKILL.md';
+const BASE = 'https://mmaxence.github.io/solids/';
+const SCRIPT = BASE + 'solids.js';
+const SKILL = BASE + 'skill.md';   // the site serves docs/SKILL.md verbatim, as plain text for agents
+const REPO = 'https://github.com/mmaxence/solids';
 
 // --- load library metadata through the built bundle under a tiny DOM shim ---
 globalThis.window = globalThis;
@@ -32,7 +35,7 @@ const swatch = (p3) => {
     .map((v) => Math.round((v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055) * 255).toString(16).padStart(2, '0')).join('');
 };
 
-/** Minimal markdown: headings, paragraphs, lists, fenced code, inline code, links, bold. */
+/** Minimal markdown: headings, paragraphs, lists (bulleted and numbered), fenced code, inline code, links, bold. */
 function md(src) {
   const inline = (s) => esc(s)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -45,8 +48,9 @@ function md(src) {
     if (l.startsWith('```')) { const buf = []; while (!lines[++i].startsWith('```')) buf.push(lines[i]); out.push(`<pre><code>${esc(buf.join('\n'))}</code></pre>`); continue; }
     const h = l.match(/^(#{1,3}) (.*)/);
     if (h) { out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`); continue; }
-    if (l.startsWith('- ')) { const items = []; while (i < lines.length && lines[i].startsWith('- ')) items.push(`<li>${inline(lines[i++].slice(2))}</li>`); i--; out.push(`<ul>${items.join('')}</ul>`); continue; }
-    if (l.trim()) { const p = [l]; while (lines[i + 1]?.trim() && !/^(#|- |```)/.test(lines[i + 1])) p.push(lines[++i]); out.push(`<p>${inline(p.join(' '))}</p>`); }
+    const list = /^- /.test(l) ? [/^- /, 'ul'] : /^\d+\. /.test(l) ? [/^\d+\. /, 'ol'] : null;
+    if (list) { const items = []; while (i < lines.length && list[0].test(lines[i])) items.push(`<li>${inline(lines[i++].replace(list[0], ''))}</li>`); i--; out.push(`<${list[1]}>${items.join('')}</${list[1]}>`); continue; }
+    if (l.trim()) { const p = [l]; while (lines[i + 1]?.trim() && !/^(#|- |\d+\. |```)/.test(lines[i + 1])) p.push(lines[++i]); out.push(`<p>${inline(p.join(' '))}</p>`); }
   }
   return out.join('\n');
 }
@@ -68,12 +72,12 @@ function page(path, { title, description, main, hero = '' }) {
 }
 
 /** Full-viewport hero: the scene fills the first screen; title top-left, control dock at the bottom. */
-function hero({ sceneAttrs, inner, controls, title, pitch }) {
-  const spec = JSON.stringify({ controls, prompt: '' }).replace(/</g, '\\u003c');
+function hero({ sceneAttrs, inner, controls, title, pitch, prompt }) {
+  const spec = JSON.stringify({ controls, prompt }).replace(/</g, '\\u003c');
   return `<section class="hero-full">
   <div class="stage scatter hero-stage"><sd-scene id="demo" data-keep-style style="position:relative;height:100%;min-height:560px" ${sceneAttrs}>${inner}</sd-scene></div>
   <div class="hero-title"><h1>${esc(title)}</h1><p>${esc(pitch)}</p></div>
-  <form id="controls" class="controls dock" onsubmit="return false"><button type="button" class="btn" id="copy-code">Copy code</button></form>
+  <form id="controls" class="controls dock" onsubmit="return false"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button><button type="button" class="btn" id="copy-code">Copy code</button></form>
   <script type="application/json" id="spec">${spec}</script>
 </section>`;
 }
@@ -118,7 +122,6 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
 
 // --- Introduction ---
 {
-  const intro = md(readFileSync('site/src/intro.md', 'utf8'));
   // Hand-placed hero. Orbiters sit on a ring of about 27vmin around the center; the others float at the edges.
   const sz = (px) => `clamp(${Math.round(px * 0.6)}px, ${(px / 6.5).toFixed(1)}vmin, ${Math.round(px * 1.3)}px)`;
   const orbit = (tag, id, size, dx, dy, color, anim) => `<${tag} id="${id}" size="${sz(size)}" color="${color}" animation="${anim}" style="position:absolute;left:calc(50% + ${dx}vmin - ${sz(size)} / 2);top:calc(50% + ${dy}vmin - ${sz(size)} / 2)"></${tag}>`;
@@ -149,14 +152,28 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
     inner: heroInner, controls: heroControls,
     title: 'Lightweight 3D objects for the web',
     pitch: 'Glassy shapes you drop into HTML. One script tag, no dependencies, about 16 KB. Hover, pick a center of gravity, try an effect.',
+    prompt: `This is a solids scene: glassy 3D objects as web components, one script tag, no dependencies.\n\n\`\`\`html\n<script type="module" src="${SCRIPT}"></script>\n{{markup}}\n\`\`\`\n\nThe contract for adding an object is ${SKILL}. Read it, then add a new object to this scene that fits the family.`,
   });
-  const [, ...rest] = intro.split('\n');
-  const layers = `<ul class="layers">
-<li><b>Objects</b><span>${objects.map((o) => o.name).join(', ')}. Each one is a fragment shader on a quad.</span></li>
-<li><b>Animations</b><span>${animations.map((a) => a.name).join(', ')}. Pure functions of time, composable.</span></li>
-<li><b>Effects</b><span>${effects.map((e) => e.name).join(', ')}. Post passes on an object or a whole scene.</span></li>
-<li><b>Interactions</b><span>${interactions.map((i) => i.name).join(', ')}. Scene rules that react to the pointer, to scrolling, and to each other.</span></li></ul>`;
-  const main = `${rest.join('\n').replace('</p>\n<h2>Sizing', `</p>${layers}\n<h2>Sizing`)}`;
+
+  // The landing under the hero: one band per `## ` heading of intro.md, live parts appended after the prose.
+  // Live minis share one <sd-scene> per row (browsers keep about 16 WebGL contexts per page).
+  const links = (dir, list) => `<p class="names">${list.map((x) => `<a href="${dir}/${x.name}.html">${esc(x.name)}</a>`).join('')}</p>`;
+  const layer = (title, line, dir, list, mini) => `<li class="layer"><div class="mini">${mini}</div><h3>${title}</h3><p>${line}</p>${links(dir, list)}</li>`;
+  const layers = `<sd-scene class="row" dpr="1.5" interaction="gravity" gravity-strength="0.9"><ul class="layers">
+${layer('Objects', 'The shape. A fragment shader on a quad.', 'objects', objects, `<sd-orb size="96px" gravity="none" color="${colorOf(0)}"></sd-orb>`)}
+${layer('Animations', 'Pure functions of time, composable.', 'animations', animations, `<sd-ring size="96px" gravity="none" animation="spin" color="${colorOf(1)}"></sd-ring>`)}
+${layer('Effects', 'Post passes on an object or a whole scene.', 'effects', effects, `<sd-crystal size="88px" gravity="none" effect="glow" color="${colorOf(2)}"></sd-crystal>`)}
+${layer('Interactions', 'Scene rules that react to the pointer and to each other.', 'interactions', interactions, `<sd-orb size="60px" gravity="center" color="${colorOf(3)}"></sd-orb><sd-star size="34px" animation="spin" color="${colorOf(4)}" style="left:46px"></sd-star>`)}
+</ul></sd-scene>`;
+  const catalogue = `<sd-scene class="row" dpr="1.5" interaction="hover-lift"><ul class="catalogue">${objects.map((o, i) => `<li><a href="objects/${o.name}.html"><${o.tag} size="96px" animation="idle" color="${colorOf(i)}"></${o.tag}><span>${esc(o.name)}</span></a></li>`).join('')}</ul></sd-scene>
+<p class="chips"><span>Effects</span>${effects.map((e) => `<a href="effects/${e.name}.html">${esc(e.name)}</a>`).join('')}</p>
+<p class="chips"><span>Interactions</span>${interactions.map((i) => `<a href="interactions/${i.name}.html">${esc(i.name)}</a>`).join('')}</p>`;
+  const numbers = `<dl class="numbers"><div><dt>The whole library, gzipped</dt><dd>${(gzipSync(readFileSync('dist/solids.js')).length / 1024).toFixed(1)} KB</dd></div><div><dt>Objects on the hero, one canvas</dt><dd>${ids.length}</dd></div></dl>`;
+  const live = { 'Four layers': layers, Catalogue: catalogue, Performance: numbers };
+  const main = `<div class="landing">${readFileSync('site/src/intro.md', 'utf8').split(/^(?=## )/m).map((s) => {
+    const h = s.match(/^## (.*)/)[1];
+    return `<section class="band" id="${h.toLowerCase().replace(/\s+/g, '-')}">${md(s)}${live[h] ?? ''}</section>`;
+  }).join('\n')}</div>`;
   page('index.html', { title: 'solids', description: 'Lightweight 3D objects for the web. Zero dependencies.', main, hero: heroHtml });
   page('accessibility.html', { title: 'Accessibility', description: 'How solids objects behave for assistive tech, reduced motion, and low-end devices.', main: md(readFileSync('site/src/accessibility.md', 'utf8')) });
 }
@@ -224,6 +241,40 @@ copyFileSync('site/src/styles.css', `${OUT}/styles.css`);
 copyFileSync('site/src/site.js', `${OUT}/site.js`);
 copyFileSync('dist/solids.js', `${OUT}/solids.js`);
 copyFileSync('dist/solids.js.map', `${OUT}/solids.js.map`);
+copyFileSync('docs/SKILL.md', `${OUT}/skill.md`);
+// llms.txt (llmstxt.org shape): title, a one-paragraph summary, then one link line per page.
+const entries = (dir, list) => list.map((x) => `- [${x.name}](${BASE}${dir}/${x.name}.html): ${x.description}`).join('\n');
+writeFileSync(`${OUT}/llms.txt`, `# solids
+
+> Lightweight 3D objects for the web: glassy shapes as web components such as <sd-orb>, each drawn by a fragment shader. Load ${SCRIPT} as a module, then use the tags in HTML; objects can animate, take post effects, and interact inside an <sd-scene>. To add an object or an effect, read skill.md: it is the whole contract, written for coding agents, and npm run check validates the result.
+
+## Contract
+
+- [skill.md](${SKILL}): how to add an object or an effect to solids.
+
+## Objects
+
+${entries('objects', objects)}
+
+## Animations
+
+${entries('animations', animations)}
+
+## Effects
+
+${entries('effects', effects)}
+
+## Interactions
+
+${entries('interactions', interactions)}
+
+## Pages
+
+- [Introduction](${BASE}index.html): install, the four layers, the catalogue.
+- [Scene and gravity](${BASE}scene.html): objects in one scene and the center of gravity.
+- [Accessibility](${BASE}accessibility.html): reduced motion, focus, contrast, the context limit.
+- [GitHub](${REPO}): source, README and the contribution flow.
+`);
 writeFileSync(`${OUT}/.nojekyll`, '');
 const count = readdirSync(OUT, { recursive: true }).filter((f) => f.endsWith('.html')).length;
 console.log(`site: ${count} pages in ${OUT}`);

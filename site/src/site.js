@@ -123,7 +123,8 @@ if (location.search.includes('__check')) {
     const demo = $('#demo');
     fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent,
       objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top,
-      markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr }) });
+      markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr,
+      contexts: $$('sd-scene').length + $$('*').filter((e) => e.shadowRoot?.querySelector('sd-scene')).length, sceneObjects: $$('sd-scene').map((s) => s.objects?.size) }) });
   };
   const tick = () => (++n < 6 ? requestAnimationFrame(tick) : report());
   requestAnimationFrame(tick);

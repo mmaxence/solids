@@ -1,10 +1,26 @@
 # solids
 
-Lightweight 3D objects for the web. Zero dependencies, about 11 KB gzipped for the whole library.
+Lightweight 3D objects for the web. Zero dependencies, about 16 KB gzipped for the whole library.
 
-Each object is a web component drawn by a fragment shader. Drop one into any HTML page, give it an animation, an effect, and let it interact with its neighbours inside a scene.
+## Built for agents
 
-Site and live demos: https://mmaxence.github.io/solids/
+solids is made to be extended by a coding agent. Every object follows one short contract (a manifest, a fragment shader with a `map()` function, and a README), so an agent that reads it can add a shape that fits the family, and the site gives it a page with the shared controls.
+
+1. Clone the repo and give your agent [docs/SKILL.md](docs/SKILL.md), the contract. The site serves the same file at https://mmaxence.github.io/solids/skill.md.
+2. Describe the shape you want in a sentence or two.
+3. Run `npm run check`. When it prints `ok`, the object compiles, draws, and fits the size budget.
+
+```text
+Read https://mmaxence.github.io/solids/skill.md, then add an object to solids:
+a pebble, a flattened stone with a soft edge, with one parameter for how flat it is.
+Run npm run check until it prints ok.
+```
+
+Agents that browse can start from https://mmaxence.github.io/solids/llms.txt, a plain index of every page. Every page on the site has a Copy prompt button that hands over its markup and options. See [CONTRIBUTING.md](CONTRIBUTING.md) for the PR flow.
+
+## Install
+
+Each object is a web component drawn by a fragment shader. Add one script tag, then use the tags anywhere in your markup. Site and live demos: https://mmaxence.github.io/solids/
 
 ```html
 <script type="module" src="https://mmaxence.github.io/solids/solids.js"></script>
@@ -26,10 +42,6 @@ Site and live demos: https://mmaxence.github.io/solids/
 | Interactions | pointer-follow, hover-lift, gravity, repel, magnet, collide, scroll | `interaction="gravity"` on a scene |
 
 Objects outside a scene work on their own. Inside a scene they share one canvas and can react to each other: mark one `gravity="center"` and the rest orbit it.
-
-## Add your own object
-
-An object is one folder: a manifest, a fragment shader with a `map()` function, and a short README. The contract is written for coding agents in [docs/SKILL.md](docs/SKILL.md). Hand it to your agent, describe the shape, and `npm run check` tells you whether it is valid. See [CONTRIBUTING.md](CONTRIBUTING.md) for the PR flow.
 
 ## Develop
 
