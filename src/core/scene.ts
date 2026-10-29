@@ -1,11 +1,11 @@
 import { createGL, initState, program, setUniforms, drawQuad, clearCache, type Program } from './gl';
 import { createFBO, resizeFBO, type FBO } from './fbo';
-import { interactions, effects, effectAttrs, effectParam, type Pointer } from './registry';
+import { interactions, effects, effectAttrs, effectParam, interactionAttrs, interactionParam, type Pointer } from './registry';
 import { SdObject, reducedMotion } from './object';
 import copyFrag from './copy.glsl';
 
 export class SdScene extends HTMLElement {
-  static get observedAttributes() { return ['interaction', 'effect', 'theme', 'paused', 'gravity-strength', ...effectAttrs()]; }
+  static get observedAttributes() { return ['interaction', 'effect', 'theme', 'paused', ...effectAttrs(), ...interactionAttrs()]; }
   canvas!: HTMLCanvasElement;
   gl: WebGL2RenderingContext | null = null;
   objects = new Set<SdObject>();
@@ -13,6 +13,7 @@ export class SdScene extends HTMLElement {
   interactionNames: string[] = [];
   effectNames: string[] = [];
   effectParams: Record<string, Record<string, number>> = {};
+  interactionParams: Record<string, Record<string, number>> = {};
   theme: 'auto' | 'dark' | 'light' = 'auto';
   dpr = 1; width = 0; height = 0;
   private raf = 0; private last = 0; private t0 = 0;
@@ -63,7 +64,7 @@ export class SdScene extends HTMLElement {
     else if (name === 'effect') this.effectNames = val.split(/\s+/).filter(Boolean);
     else if (name === 'theme') this.theme = (val as typeof this.theme) || 'auto';
     else if (name === 'paused') { this.paused = v !== null; this.paused ? this.stop() : this.start(); }
-    else effectParam(name, v, this.effectParams);
+    else if (!effectParam(name, v, this.effectParams)) interactionParam(name, v, this.interactionParams);
   }
 
   attach(o: SdObject) {

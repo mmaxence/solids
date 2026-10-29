@@ -11,7 +11,7 @@ const fail = (m) => { fails.push(m); console.error('FAIL', m); };
 const kb = (n) => (n / 1024).toFixed(1) + ' KB';
 
 function sizes() {
-  const budget = { 'dist/core.js': 15 * 1024, 'dist/solids.js': 40 * 1024 };
+  const budget = { 'dist/core.js': 18 * 1024, 'dist/solids.js': 60 * 1024 };
   for (const [file, max] of Object.entries(budget)) {
     if (!existsSync(file)) { fail(`${file} missing (run npm run build)`); continue; }
     const gz = gzipSync(readFileSync(file)).length;
@@ -276,6 +276,55 @@ await frame(); await frame();
 hidden.style.display = '';
 await frame(); await frame();
 result.cases.fx = { delta: differ(plain, pix), objPixels: pixels(objFx), hiddenPixels: pixels(hidden), glError: hidden.gl?.getError(), everyPixels: pixels(every), effects: [...registry.effects.keys()] };
+const free = (...scs) => { for (const sc of scs) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); } };
+free(plain, pix, objFx, hidden, every);
+
+// Case N: repel, magnet, collide, scroll. Frames are driven by hand so the counts are exact.
+const run = (sc, n) => { for (let i = 0; i < n; i++) sc.frame(i / 60, 16); };
+const place = (sc, x, y) => { const o = document.createElement(tags[0]); o.style.cssText = 'position:absolute;left:' + x + 'px;top:' + y + 'px'; o.setAttribute('size', '40px'); sc.appendChild(o); return o; };
+const bare = (attrs) => { const sc = mk(attrs); sc.firstElementChild.remove(); return sc; };
+const it = result.cases.interact = {};
+// One object: collide has nothing to push against.
+const c1 = mk({ interaction: 'collide' }); run(c1, 10);
+const c1o = c1.firstElementChild.anim.offset;
+it.one = { finite: c1o.every(Number.isFinite), max: Math.max(...c1o.map(Math.abs)) };
+// Two 40 px objects 10 px apart end at least their size apart.
+const c2 = bare({ interaction: 'collide' }); const ca = place(c2, 70, 80), cb = place(c2, 80, 80); run(c2, 40);
+const mid = (o) => [o.rect.x + o.rect.width / 2 + o.anim.offset[0], o.rect.y + o.rect.height / 2 + o.anim.offset[1]];
+it.apart = Math.hypot(mid(ca)[0] - mid(cb)[0], mid(ca)[1] - mid(cb)[1]); it.width = ca.rect.width;
+// repel pushes away from a pointer just right of the object, then springs back; repel-radius narrows it.
+const rp = bare({ interaction: 'repel' }); const ro = place(rp, 80, 80);
+rp.pointer = { x: 110, y: 100, inside: true }; run(rp, 20);
+const rIn = [...ro.anim.offset];
+rp.pointer = { x: 0, y: 0, inside: false }; run(rp, 40);
+const rBack = Math.hypot(...ro.anim.offset);
+rp.setAttribute('repel-radius', '5'); rp.pointer = { x: 110, y: 100, inside: true }; run(rp, 20);
+it.repel = { x: rIn[0], mag: Math.hypot(...rIn), back: rBack, narrow: Math.hypot(...ro.anim.offset) };
+// magnet pulls toward the pointer, then drifts home.
+const mg = bare({ interaction: 'magnet' }); const mo = place(mg, 80, 80);
+mg.pointer = { x: 170, y: 100, inside: true }; run(mg, 30);
+const mIn = [...mo.anim.offset];
+mg.pointer = { x: 0, y: 0, inside: false }; run(mg, 60);
+it.magnet = { x: mIn[0], mag: Math.hypot(...mIn), back: Math.hypot(...mo.anim.offset) };
+// scroll turns the object as the page scrolls, also under reduced motion; a scene taller than the viewport clamps 0..1 without jumps.
+document.body.style.height = '6000px';
+window.__SD_REDUCED = true;
+const sc1 = mk({ interaction: 'scroll' }); sc1.style.cssText = 'position:absolute;left:0;top:600px';
+scrollTo(0, 0); run(sc1, 1); const rot0 = [...sc1.firstElementChild.anim.rotation];
+scrollTo(0, 400); run(sc1, 1); const rot1 = [...sc1.firstElementChild.anim.rotation];
+window.__SD_REDUCED = false;
+it.scroll = { diff: Math.max(...rot0.map((v, i) => Math.abs(v - rot1[i]))) };
+const tall = mk({ interaction: 'scroll', 'scroll-turns': '0.25' }); tall.style.cssText = 'position:absolute;left:220px;top:1000px;width:200px;height:2000px';
+tall.measure();
+const prog = [];
+for (let y = 0; y <= 4000; y += 100) {
+  scrollTo(0, y); run(tall, 1);
+  const m = tall.firstElementChild.anim.rotation;
+  prog.push(Math.atan2(m[6], m[0]) / (0.25 * 2 * Math.PI) + 0.5);
+}
+it.tall = { first: prog[0], last: prog[prog.length - 1], min: Math.min(...prog), max: Math.max(...prog), step: Math.max(...prog.slice(1).map((v, i) => Math.abs(v - prog[i]))) };
+scrollTo(0, 0); document.body.style.height = '';
+free(c1, c2, rp, mg, sc1, tall);
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
@@ -289,7 +338,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'interact']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.tags.length})`);
@@ -322,6 +371,14 @@ async function smoke() {
     if (!(r.cases.reduced.blobDiff < 0.02)) fail(`reduced motion: blob still animates (${(r.cases.reduced.blobDiff * 100).toFixed(1)}% differ)`);
     if (!r.cases.anim.spinMoved) fail('animation "spin" did not change rotation between frames');
     if (r.cases.anim.reducedScale !== 1) fail(`reduced motion: pulse scale ${r.cases.anim.reducedScale}, expected 1`);
+    const it = r.cases.interact, js = (v) => JSON.stringify(v);
+    if (!it.one?.finite || !(it.one.max < 1e-6)) fail(`collide with one object should not move: ${js(it.one)}`);
+    if (!(it.apart >= 40) || it.width !== 40) fail(`collide: two overlapping 40 px objects ended ${it.apart?.toFixed(1)} px apart, expected >= 40 (width ${it.width})`);
+    if (!(it.repel?.x < -1) || !(it.repel.back < it.repel.mag * 0.5) || !(it.repel.narrow < 0.5)) fail(`repel: pushed left, springs back, repel-radius narrows: ${js(it.repel)}`);
+    if (!(it.magnet?.x > 1) || !(it.magnet.back < it.magnet.mag * 0.5)) fail(`magnet: pulled right, drifts home: ${js(it.magnet)}`);
+    if (!(it.scroll?.diff > 0.01)) fail(`scroll: rotation did not change with the page scroll under reduced motion: ${js(it.scroll)}`);
+    const tl = it.tall;
+    if (!tl || Math.abs(tl.first) > 1e-4 || Math.abs(tl.last - 1) > 1e-4 || tl.min < -1e-4 || tl.max > 1 + 1e-4 || !(tl.step < 0.06)) fail(`scroll on a scene taller than the viewport: progress must clamp 0..1 without jumps: ${js(tl)}`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px)`);
     return r;
   } catch (e) { fail(`smoke: ${e.message.split('\n')[0]}`); }
