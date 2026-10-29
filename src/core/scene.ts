@@ -1,4 +1,4 @@
-import { createGL, initState, program, setUniforms, drawQuad, clearCache, type Program } from './gl';
+import { createGL, initState, program, setUniforms, drawQuad, clearCache, type Program, type ColorSpace } from './gl';
 import { createFBO, resizeFBO, type FBO } from './fbo';
 import { interactions, effects, effectAttrs, effectParam, type Pointer } from './registry';
 import { SdObject, reducedMotion } from './object';
@@ -8,6 +8,7 @@ export class SdScene extends HTMLElement {
   static get observedAttributes() { return ['interaction', 'effect', 'theme', 'paused', 'gravity-strength', ...effectAttrs()]; }
   canvas!: HTMLCanvasElement;
   gl: WebGL2RenderingContext | null = null;
+  colorSpace: ColorSpace = 'srgb';   // the drawing buffer's space; object colors are parsed into it
   objects = new Set<SdObject>();
   pointer: Pointer = { x: 0, y: 0, inside: false };
   interactionNames: string[] = [];
@@ -31,7 +32,8 @@ export class SdScene extends HTMLElement {
 
   connectedCallback() {
     if (!this.gl) {
-      this.gl = createGL(this.canvas);
+      const g = createGL(this.canvas);
+      this.gl = g?.gl ?? null; this.colorSpace = g?.colorSpace ?? 'srgb';
       if (!this.gl) { this.dataset.fallback = ''; for (const o of this.objects) o.dataset.fallback = ''; }
       this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.stop(); });
       this.canvas.addEventListener('webglcontextrestored', () => {
@@ -68,7 +70,7 @@ export class SdScene extends HTMLElement {
 
   attach(o: SdObject) {
     if (this.objects.has(o)) return;
-    this.objects.add(o); o.scene = this;
+    this.objects.add(o); o.scene = this; o.recolor();
     // Keep DOM order: "first center wins" and draw-order ties follow the markup.
     this.objects = new Set([...this.objects].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)));
     if (this.isConnected && !this.gl) o.dataset.fallback = '';

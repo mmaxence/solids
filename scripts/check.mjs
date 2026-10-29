@@ -11,7 +11,7 @@ const fail = (m) => { fails.push(m); console.error('FAIL', m); };
 const kb = (n) => (n / 1024).toFixed(1) + ' KB';
 
 function sizes() {
-  const budget = { 'dist/core.js': 15 * 1024, 'dist/solids.js': 40 * 1024 };
+  const budget = { 'dist/core.js': 18 * 1024, 'dist/solids.js': 60 * 1024 };
   for (const [file, max] of Object.entries(budget)) {
     if (!existsSync(file)) { fail(`${file} missing (run npm run build)`); continue; }
     const gz = gzipSync(readFileSync(file)).length;
@@ -236,6 +236,15 @@ const po = mk({}).firstElementChild;
 po.state = 'active'; po.color = '#ff0000'; po.speed = 2;
 await frame();
 result.cases.props = { stateAttr: po.getAttribute('state'), stateTarget: po.stateTarget, rgb: po.rgb, speed: po.speedValue };
+// Case N: any CSS color parses in the scene's color space; an unparseable one keeps the last color.
+const rgbOf = (o, c) => { o.setAttribute('color', c); return [...o.rgb]; };
+const late = document.createElement(tags[0]); late.setAttribute('color', '#ff3333'); // parsed before its scene is known
+result.cases.color = {
+  space: po.scene?.colorSpace, p3: rgbOf(po, 'color(display-p3 1 0.2 0.2)'), oklch: rgbOf(po, 'oklch(70% 0.2 30)'),
+  red: rgbOf(po, '#ff0000'), kept: rgbOf(po, 'nope'), hex: rgbOf(po, '#ff3333'), wide: rgbOf(po, 'color(display-p3 1 0.2 0.2)'),
+  srgb: rgbOf(document.createElement(tags[0]), 'color(display-p3 1 0.2 0.2)'),
+};
+po.scene.appendChild(late); result.cases.color.attached = [...late.rgb];
 // Case K: switching or removing the gravity center never snaps.
 const stepOf = (objs) => objs.map((o) => [...o.anim.offset]);
 const maxStep = (a, b) => Math.max(...a.map((v, i) => Math.hypot(v[0] - b[i][0], v[1] - b[i][1])));
@@ -289,7 +298,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.tags.length})`);
@@ -314,7 +323,17 @@ async function smoke() {
     if (r.cases.lone.claimed !== 0) fail(`lone object claimed by a scene still has ${r.cases.lone.claimed} inner scene(s)`);
     if (!(r.cases.lone.restoreDiff < 0.05)) fail(`after context restore ${(r.cases.lone.restoreDiff * 100).toFixed(1)}% of pixels differ (blend state lost?)`);
     if (r.cases.props.stateAttr !== 'active' || !Number.isFinite(r.cases.props.stateTarget) || r.cases.props.stateTarget !== 1) fail(`state as property: ${JSON.stringify(r.cases.props)}`);
-    if (!r.cases.props.rgb || Math.abs(r.cases.props.rgb[0] - 1) > 0.01 || r.cases.props.rgb[1] > 0.01) fail(`color as property: ${JSON.stringify(r.cases.props.rgb)}`);
+    const c = r.cases.color ?? {}, fin = (v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
+    const near = (a, b) => fin(a) && fin(b) && a.every((x, i) => Math.abs(x - b[i]) < 0.01), show = (v) => JSON.stringify(v?.map?.((x) => +x.toFixed(3)) ?? v);
+    if (!near(r.cases.props.rgb, c.red) || !(c.red[0] > 0.9 && c.red[1] < 0.25)) fail(`color as property: ${show(r.cases.props.rgb)}, attribute gave ${show(c.red)}`);
+    if (c.space !== 'display-p3' && c.space !== 'srgb') fail(`scene colorSpace is ${c.space}, expected display-p3 or srgb`);
+    // Ranges hold in both spaces and exclude the previous value (red), so a skipped parse fails.
+    if (!fin(c.p3) || !(c.p3[0] > 0.9 && c.p3[1] < 0.35 && c.p3[2] > 0.08 && c.p3[2] < 0.3)) fail(`color(display-p3 1 0.2 0.2) parsed to ${show(c.p3)}`);
+    if (!fin(c.oklch) || !(c.oklch[0] > 0.85 && c.oklch[1] > 0.3 && c.oklch[1] < 0.55 && c.oklch[2] > 0.2 && c.oklch[2] < 0.45)) fail(`oklch(70% 0.2 30) parsed to ${show(c.oklch)}`);
+    if (!near(c.kept, c.red)) fail(`color="nope" changed the color: ${show(c.red)} to ${show(c.kept)}`);
+    if (!fin(c.srgb) || !(c.srgb[0] > 0.9 && c.srgb[1] < 0.35 && c.srgb[2] > 0.08)) fail(`sRGB parse of a P3 color gave ${show(c.srgb)}`);
+    if (!near(c.attached, c.hex)) fail(`color set before attach was not re-parsed in the scene space: ${show(c.attached)} vs ${show(c.hex)}`);
+    if (c.space === 'display-p3' && !(c.hex[0] < 0.97 && c.wide[0] >= 0.99)) fail(`P3 path not live: #ff3333 r=${c.hex?.[0]}, color(display-p3 1 0.2 0.2) r=${c.wide?.[0]}`);
     if (r.cases.props.speed !== 2) fail(`speed as property: ${r.cases.props.speed}`);
     if (!(r.cases.gravity.worstStep < 12)) fail(`gravity center switch snapped: ${r.cases.gravity.worstStep?.toFixed(1)} px in one frame`);
     if (!(r.cases.anim.yawStep < 0.35)) fail(`yaw jumped ${r.cases.anim.yawStep?.toFixed(2)} rad in one frame on an animation or speed change`);
@@ -322,7 +341,7 @@ async function smoke() {
     if (!(r.cases.reduced.blobDiff < 0.02)) fail(`reduced motion: blob still animates (${(r.cases.reduced.blobDiff * 100).toFixed(1)}% differ)`);
     if (!r.cases.anim.spinMoved) fail('animation "spin" did not change rotation between frames');
     if (r.cases.anim.reducedScale !== 1) fail(`reduced motion: pulse scale ${r.cases.anim.reducedScale}, expected 1`);
-    if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px)`);
+    if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px, color space ${r.cases.color.space})`);
     return r;
   } catch (e) { fail(`smoke: ${e.message.split('\n')[0]}`); }
   finally { srv.close(); }

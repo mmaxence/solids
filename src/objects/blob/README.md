@@ -7,6 +7,6 @@ A soft sphere whose surface wobbles like liquid. It animates on its own through 
 
 ```html
 <sd-scene>
-  <sd-blob color="#9bd1ff" wobble="0.7"></sd-blob>
+  <sd-blob color="color(display-p3 0.55 0.85 1)" wobble="0.7"></sd-blob>
 </sd-scene>
 ```

@@ -21,8 +21,16 @@ const interactions = [...registry.interactions.values()].map((i) => i.meta);
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const kebab = (s) => s.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
 const shell = readFileSync('site/src/shell.html', 'utf8');
-const COLORS = ['#9bd1ff', '#c9b3ff', '#ff9bd1', '#9bffe0', '#ffd29b', '#9bffb0'];
+// The palette, single source: Display P3 picks outside sRGB. Browsers without P3 clip them to sRGB.
+const COLORS = ['color(display-p3 0.55 0.85 1)', 'color(display-p3 0.78 0.66 1)', 'color(display-p3 1 0.55 0.8)', 'color(display-p3 0.5 1 0.85)', 'color(display-p3 1 0.8 0.5)', 'color(display-p3 0.55 1 0.6)'];
 const colorOf = (i) => COLORS[i % COLORS.length];
+/** `<input type="color">` only holds sRGB hex, so its swatch is the P3 pick clipped to sRGB. */
+const swatch = (p3) => {
+  const [r, g, b] = p3.match(/[\d.]+/g).slice(-3).map(Number).map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return '#' + [[1.2249, -0.2249, 0], [-0.0421, 1.0421, 0], [-0.0196, -0.0786, 1.0983]]
+    .map(([x, y, z]) => Math.min(1, Math.max(0, x * r + y * g + z * b)))
+    .map((v) => Math.round((v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055) * 255).toString(16).padStart(2, '0')).join('');
+};
 
 /** Minimal markdown: headings, paragraphs, lists, fenced code, inline code, links, bold. */
 function md(src) {
@@ -87,7 +95,7 @@ const coreControls = (target = 'object') => [
 const optionsTable = (rows) => `<table><thead><tr><th>Attribute</th><th>Type</th><th>Default</th><th>Range</th><th>Description</th></tr></thead><tbody>${rows.map((r) => `<tr><td><code>${esc(r[0])}</code></td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td><td>${esc(r[4])}</td></tr>`).join('')}</tbody></table>`;
 const optionsMd = (rows) => `| Attribute | Type | Default | Range | Description |\n|---|---|---|---|---|\n${rows.map((r) => `| ${r.join(' | ')} |`).join('\n')}`;
 const CORE_ROWS = [
-  ['color', 'color', '#9bd1ff', 'any CSS hex or rgb()', 'Accent color of the object.'],
+  ['color', 'color', '#9bd1ff', 'any CSS color, including color(display-p3 r g b)', 'Accent color of the object.'],
   ['size', 'length', '160px', 'any CSS length', 'Width and height of the object box.'],
   ['animation', 'list', 'none', animations.map((a) => a.name).join(', '), 'Space separated animations, composed in order.'],
   ['speed', 'number', '1', '0.1 to 3', 'Multiplies animation time.'],
@@ -101,11 +109,11 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
 {
   const intro = md(readFileSync('site/src/intro.md', 'utf8'));
   const heroScene = `<div class="hero"><div class="stage scatter"><sd-scene interaction="gravity hover-lift" effect="glow" gravity-strength="0.5">
-  <sd-orb gravity="center" animation="breathe" color="#9bd1ff" style="left:calc(50% - 90px);top:calc(50% - 90px)" size="180px"></sd-orb>
-  <sd-ring animation="spin" color="#c9b3ff" size="90px" style="left:12%;top:18%"></sd-ring>
-  <sd-crystal animation="idle" color="#ff9bd1" size="80px" style="left:74%;top:60%"></sd-crystal>
-  <sd-cube animation="idle" color="#9bffb0" size="64px" style="left:20%;top:66%"></sd-cube>
-  <sd-coil animation="spin" color="#9bffe0" size="70px" style="left:72%;top:12%"></sd-coil>
+  <sd-orb gravity="center" animation="breathe" color="${colorOf(0)}" style="left:calc(50% - 90px);top:calc(50% - 90px)" size="180px"></sd-orb>
+  <sd-ring animation="spin" color="${colorOf(1)}" size="90px" style="left:12%;top:18%"></sd-ring>
+  <sd-crystal animation="idle" color="${colorOf(2)}" size="80px" style="left:74%;top:60%"></sd-crystal>
+  <sd-cube animation="idle" color="${colorOf(5)}" size="64px" style="left:20%;top:66%"></sd-cube>
+  <sd-coil animation="spin" color="${colorOf(3)}" size="70px" style="left:72%;top:12%"></sd-coil>
 </sd-scene></div></div>`;
   const [h1, ...rest] = intro.split('\n');
   const layers = `<ul class="layers">
@@ -122,7 +130,7 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
 objects.forEach((o, i) => {
   const rows = [...o.uniforms.map((u) => [kebab(u.name), u.type, String(u.default), u.min !== undefined ? `${u.min} to ${u.max}` : '', u.label]), ...CORE_ROWS];
   const controls = [...o.uniforms.map((u) => rangeControl(u, 'object')), ...coreControls('object')];
-  controls.find((c) => c.attr === 'color').value = colorOf(i);
+  controls.find((c) => c.attr === 'color').value = swatch(colorOf(i));
   const prompt = `${o.readme}\n\n## Attributes\n\n${optionsMd(rows)}\n\n## Current markup\n\n\`\`\`html\n{{markup}}\n\`\`\`\n\nLoad the library with <script type="module" src="${SCRIPT}"></script>. To add a new object to the library, read ${SKILL}.`;
   const main = `<h1>${esc(o.name)}</h1><p class="lede">${esc(o.description)}</p>
 ${preview({ sceneAttrs: 'interaction="pointer-follow hover-lift"', inner: `<${o.tag} size="220px" color="${colorOf(i)}"></${o.tag}>`, controls, prompt })}
@@ -149,14 +157,14 @@ effects.forEach((e) => {
     { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: e.name, target: 'scene' },
   ];
   const prompt = `Effect "${e.name}": ${e.description}\n\nSet it on a scene (applies to everything) or on one object. Parameters are attributes prefixed with the effect name.\n\n${optionsMd(rows)}\n\n\`\`\`html\n{{markup}}\n\`\`\``;
-  page(`effects/${e.name}.html`, { title: e.name, description: e.description, main: `<h1>${esc(e.name)}</h1><p class="lede">${esc(e.description)}</p>${preview({ sceneAttrs: `effect="${e.name}"`, inner: `<sd-orb size="220px" color="#9bd1ff" animation="idle"></sd-orb>`, controls, prompt })}<h2>Options</h2>${optionsTable(rows)}<p>Put <code>effect="${e.name}"</code> on a scene to process the whole canvas, or on a single object to process only that object. Chain several with spaces; they run in the order written.</p>${license}` });
+  page(`effects/${e.name}.html`, { title: e.name, description: e.description, main: `<h1>${esc(e.name)}</h1><p class="lede">${esc(e.description)}</p>${preview({ sceneAttrs: `effect="${e.name}"`, inner: `<sd-orb size="220px" color="${colorOf(0)}" animation="idle"></sd-orb>`, controls, prompt })}<h2>Options</h2>${optionsTable(rows)}<p>Put <code>effect="${e.name}"</code> on a scene to process the whole canvas, or on a single object to process only that object. Chain several with spaces; they run in the order written.</p>${license}` });
 });
 
 // --- Interaction pages and the Scene page ---
-const sceneInner = `<sd-orb id="orb" gravity="center" animation="breathe" color="#9bd1ff" size="150px" style="left:calc(50% - 75px);top:calc(50% - 75px)"></sd-orb>
-<sd-ring id="ring" animation="spin" color="#c9b3ff" size="90px" style="left:14%;top:16%"></sd-ring>
-<sd-crystal id="crystal" animation="idle" color="#ff9bd1" size="80px" style="left:76%;top:58%"></sd-crystal>
-<sd-cube id="cube" animation="idle" color="#9bffb0" size="64px" style="left:22%;top:68%"></sd-cube>`;
+const sceneInner = `<sd-orb id="orb" gravity="center" animation="breathe" color="${colorOf(0)}" size="150px" style="left:calc(50% - 75px);top:calc(50% - 75px)"></sd-orb>
+<sd-ring id="ring" animation="spin" color="${colorOf(1)}" size="90px" style="left:14%;top:16%"></sd-ring>
+<sd-crystal id="crystal" animation="idle" color="${colorOf(2)}" size="80px" style="left:76%;top:58%"></sd-crystal>
+<sd-cube id="cube" animation="idle" color="${colorOf(5)}" size="64px" style="left:22%;top:68%"></sd-cube>`;
 const sceneControls = (active) => [
   { kind: 'select', attr: 'center', label: 'Center of gravity', options: ['orb', 'ring', 'crystal', 'cube'], value: 'orb', target: 'scene' },
   { kind: 'range', attr: 'gravity-strength', label: 'Gravity strength', min: 0, max: 1, step: 0.01, value: 0.6, default: 0.6, target: 'scene' },

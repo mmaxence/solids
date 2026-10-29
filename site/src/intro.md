@@ -26,6 +26,14 @@ Four layers compose on any object. The object is the shape. An animation moves i
 
 An object is an inline block, 160 px square by default. Set `size` or the `--sd-size` custom property to change it, and place objects with normal CSS. A scene owns one canvas that covers its own box, so give the scene a size and the objects can move anywhere inside it.
 
+## Color
+
+`color` takes any CSS color: hex, `rgb()`, `oklch()`, or `color(display-p3 r g b)`. Where the browser supports it, the canvas draws in Display P3, so a P3 color outside sRGB shows at full strength on a wide-gamut screen. Other browsers and screens show the closest sRGB color, and a hex color looks the same everywhere.
+
+```html
+<sd-orb color="color(display-p3 1 0.55 0.8)"></sd-orb>
+```
+
 ## Fallback
 
 Without WebGL2 the elements keep their box and draw nothing, and get a `data-fallback` attribute you can style.

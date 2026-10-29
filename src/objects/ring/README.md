@@ -8,6 +8,6 @@ A glassy torus tilted toward the viewer. It reads well spinning on its own, and 
 
 ```html
 <sd-scene>
-  <sd-ring color="#c9b3ff" animation="spin" speed="0.6"></sd-ring>
+  <sd-ring color="color(display-p3 0.78 0.66 1)" animation="spin" speed="0.6"></sd-ring>
 </sd-scene>
 ```

@@ -24,7 +24,7 @@ npm run check   # validates the manifest, compiles the shader headlessly, draws 
 npm run site    # regenerates the site pages
 ```
 
-`check` must print `ok`. It fails on an invalid manifest, a shader that does not compile, a uniform declared in the manifest but missing from the shader, an object that draws nothing, or a bundle over budget (40 KB gzipped for everything).
+`check` must print `ok`. It fails on an invalid manifest, a shader that does not compile, a uniform declared in the manifest but missing from the shader, an object that draws nothing, or a bundle over budget (60 KB gzipped for everything).
 
 ### manifest.json
 
@@ -79,7 +79,7 @@ What the prelude gives you:
 | `uScale` | object scale, already applied in `sdCoord` and `sdRay` |
 | `uState` | 0..1 eased state (off, idle, busy, active) plus animation modulation |
 | `uTheme` | 0 dark, 1 light |
-| `uColor` | the accent color, 0..1 |
+| `uColor` | the accent color, 0..1, in the canvas color space (see Color below) |
 | `sdCoord()` | aspect-correct quad coordinate |
 | `sdRay(ro, rd)` | camera ray for this pixel, rotated by `uRotation` |
 | `sdMarch(ro, rd, minD)` | hit distance or -1; `minD` is the closest approach |
@@ -88,6 +88,8 @@ What the prelude gives you:
 | `sdRender(rim, glow)` | march, shade, soft edge, halo on miss. Most objects just call this |
 
 Output is premultiplied RGBA. If you write your own `main`, multiply rgb by alpha before writing `fragColor`.
+
+**Color.** The canvas draws in Display P3 where the browser supports it and in sRGB elsewhere. The core parses the `color` attribute (any CSS color) into that space before it reaches `uColor`, so a shader treats `uColor` as plain 0..1 primaries and never converts. README snippets use the site palette, written as `color(display-p3 r g b)`, for example `color(display-p3 0.55 0.85 1)`.
 
 ### The look
 
@@ -109,7 +111,7 @@ One paragraph: what it is and when to use it.
 
 ```html
 <sd-scene>
-  <sd-pebble color="#9bd1ff" animation="idle"></sd-pebble>
+  <sd-pebble color="color(display-p3 0.55 0.85 1)" animation="idle"></sd-pebble>
 </sd-scene>
 ```
 ```
