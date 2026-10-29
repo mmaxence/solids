@@ -179,8 +179,9 @@ Objects gain one core attribute: `phase` (seconds, default 0), an offset on the 
 - **Spin axis:** each body gets a fixed seeded tilt (±35° about x and z) composed into
   `anim.rotation` in `step`, so `spin` turns about a different axis per shape. Seed-derived, not
   in the markup, like velocities.
-- **Spread:** screen spread is `0.95 × (D − 0.6) / D` of the half box, so a rim shape at camera
-  z ≤ 0.6 stays inside and nearer rim shapes may pass partly out of frame. Corners of the box stay
+- **Spread:** horizontally the cloud uses 0.95 of the half width (rim shapes may pass partly out at
+  the sides and the spin brings them back); vertically `0.95 × (D − 0.6) / D` of the half height, so a
+  rim shape at camera z ≤ 0.6 stays inside. Corners of the box stay
   emptier than the middle; a rotating ball cannot fill a rectangle and this is accepted.
 - **Markup reproduces the initial layout plus seed-derived motion.** Live positions are not written
   back. A pasted child marked `gravity="center"` is the center; with `gravity` and no mark, the
