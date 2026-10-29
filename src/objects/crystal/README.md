@@ -8,6 +8,6 @@ A faceted octahedral gem with flat facets and sharp highlights. Facets catch the
 
 ```html
 <sd-scene>
-  <sd-crystal color="#ff9bd1" animation="spin idle"></sd-crystal>
+  <sd-crystal color="color(display-p3 1 0.55 0.8)" animation="spin idle"></sd-crystal>
 </sd-scene>
 ```

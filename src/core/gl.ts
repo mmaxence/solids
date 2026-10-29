@@ -5,15 +5,19 @@ import effectPrelude from './effect.glsl';
 export type Program = { prog: WebGLProgram; loc: Map<string, WebGLUniformLocation>; };
 const cache = new WeakMap<WebGL2RenderingContext, Map<string, Program>>();
 
-export function createGL(canvas: HTMLCanvasElement): WebGL2RenderingContext | null {
+export type ColorSpace = 'display-p3' | 'srgb';
+
+/** colorSpace is what the drawing buffer actually took: 'srgb' where Display P3 is unsupported. */
+export function createGL(canvas: HTMLCanvasElement): { gl: WebGL2RenderingContext; colorSpace: ColorSpace } | null {
   const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false });
   if (!gl) return null;
   initState(gl);
-  return gl;
+  return { gl, colorSpace: gl.drawingBufferColorSpace === 'display-p3' ? 'display-p3' : 'srgb' };
 }
 
 /** GL state the renderer relies on; call again after a context restore, which resets everything. */
 export function initState(gl: WebGL2RenderingContext) {
+  if ('drawingBufferColorSpace' in gl) gl.drawingBufferColorSpace = 'display-p3'; // the guard keeps an expando off browsers without P3
   gl.bindVertexArray(gl.createVertexArray());
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);

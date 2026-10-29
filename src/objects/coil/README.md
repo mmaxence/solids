@@ -8,6 +8,6 @@ A helix of glassy tube, like a spring standing on end. Spinning it makes the tur
 
 ```html
 <sd-scene>
-  <sd-coil color="#9bffe0" animation="spin" speed="0.5"></sd-coil>
+  <sd-coil color="color(display-p3 0.5 1 0.85)" animation="spin" speed="0.5"></sd-coil>
 </sd-scene>
 ```

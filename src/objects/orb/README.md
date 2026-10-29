@@ -7,6 +7,6 @@ A glassy sphere with a fresnel rim and a soft halo. It is the simplest object in
 
 ```html
 <sd-scene>
-  <sd-orb color="#9bd1ff" glow="0.8" animation="breathe"></sd-orb>
+  <sd-orb color="color(display-p3 0.55 0.85 1)" glow="0.8" animation="breathe"></sd-orb>
 </sd-scene>
 ```

@@ -20,6 +20,7 @@ export class SdObject extends HTMLElement {
   rect: DOMRect | null = null;           // layout rect relative to the scene, px
   uniforms: Record<string, number | number[]> = {};
   rgb: [number, number, number] = [0.61, 0.82, 1];
+  colorSrc = '#9bd1ff';                   // last accepted `color`, re-parsed once the scene's color space is known
   stateValue = 0.25; stateTarget = 0.25;
   speedValue = 1;
   animNames: string[] = [];
@@ -66,7 +67,7 @@ export class SdObject extends HTMLElement {
       case 'effect': this.effectNames = val.split(/\s+/).filter(Boolean); return;
       case 'speed': { const n = Number(val); this.speedValue = val === '' || isNaN(n) ? 1 : n; return; }
       case 'state': this.stateTarget = STATES[val] ?? 0.25; return;
-      case 'color': { const c = parseColor(val); if (c) this.rgb = c; return; }
+      case 'color': this.recolor(val); return;
       case 'size': this.style.setProperty('--sd-size', val); return;
       case 'gravity': case 'gravity-gap': return; // read by the gravity interaction
     }
@@ -76,6 +77,12 @@ export class SdObject extends HTMLElement {
       const c = coerce(v === null || v === '' ? u.default : v, u.type);
       if (c !== null) this.uniforms[u.name] = c;
     }
+  }
+
+  /** Parse `s` in the scene's color space (sRGB until attached). An unparseable string keeps the current color. */
+  recolor(s = this.colorSrc) {
+    const c = s ? parseColor(s, this.scene?.colorSpace) : null;
+    if (c) { this.rgb = c; this.colorSrc = s; }
   }
 
   /** Per-frame: ease state, advance the animation phase, run animations, cross-fade after an `animation` change. */
