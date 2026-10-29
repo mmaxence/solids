@@ -28,7 +28,7 @@ export class SdScene extends HTMLElement {
   private visible = true; private paused = false;
   private ro: ResizeObserver | null = null;
   private io: IntersectionObserver | null = null;
-  private fbos: { scene: FBO; a: FBO; b: FBO; pool: Map<string, [FBO, FBO]>; used: Set<string> } | null = null;
+  private fbos: { scene: FBO; a: FBO; b: FBO; pool: Map<string, [FBO, FBO, number]>; used: Set<string> } | null = null;
   private clock = 0;   // shader time; stops advancing under reduced motion
 
   constructor() {
@@ -186,8 +186,9 @@ export class SdScene extends HTMLElement {
     }
     this.bind(gl, null, 0, 0, W, H, true);
     this.blit(gl, src);
-    // Drop per-object buffers for sizes that were not drawn this frame, so the pool never outgrows the scene.
-    for (const [key, p] of f.pool) if (!f.used.has(key)) { deleteFBO(gl, p[0]); deleteFBO(gl, p[1]); f.pool.delete(key); }
+    // Drop per-object buffers for sizes unused for 60 frames: quads change size as objects scale, so a size that
+    // skipped a few frames usually comes back, and reallocating it every time would stall the GPU.
+    for (const [key, p] of f.pool) { if (f.used.has(key)) p[2] = 0; else if (++p[2] > 60) { deleteFBO(gl, p[0]); deleteFBO(gl, p[1]); f.pool.delete(key); } }
     f.used.clear();
   }
 
@@ -238,11 +239,11 @@ export class SdScene extends HTMLElement {
     const chain = o.effectNames.filter((n) => effects.has(n));
     // With its own effects the object renders into a quad-sized buffer first.
     // Per-object buffers are pooled by size so a crowd of differently sized objects does not reallocate every frame.
-    let pair: [FBO, FBO] | undefined;
+    let pair: [FBO, FBO, number] | undefined;
     if (chain.length) {
       const key = w + 'x' + h;
       pair = f.pool.get(key);
-      if (!pair) f.pool.set(key, (pair = [createFBO(gl, w, h), createFBO(gl, w, h)]));
+      if (!pair) f.pool.set(key, (pair = [createFBO(gl, w, h), createFBO(gl, w, h), 0]));
       f.used.add(key);
       this.bind(gl, pair[0], 0, 0, w, h, true);
     }

@@ -74,7 +74,7 @@ wide cloud. The camera's `camera` attribute lists tokens, default `spin drag poi
   page and a horizontal one rotates.
 - `pointer`: with the pointer inside, the view tilts toward it by up to 12° yaw and 8° pitch (eased,
   150 ms), and back when it leaves. Additive to the base yaw and pitch.
-- An empty or `none` value: a fixed camera.
+- `none` (or an empty value): a fixed camera. The site writes `none` so Copy code keeps it.
 
 **Per frame** (a `step(dt)` hook `SdScene` calls after the objects update and before interactions
 run): advance the camera and the bodies, resolve collisions, then for every child: `anim.offset` =

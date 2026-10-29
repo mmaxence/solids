@@ -78,7 +78,8 @@ if (specEl) {
       for (const t of targets(c)) {
         if (c.kind === 'check') { // rebuild in control order so interactions keep their documented order
           const cur = spec.controls.filter((x) => x.kind === 'check' && x.attr === c.attr && x.input?.checked).map((x) => x.on);
-          cur.length || c.attr === 'camera' ? t.setAttribute(c.attr, cur.join(' ')) : t.removeAttribute(c.attr); // an empty camera is a fixed view, not the default
+          if (c.attr === 'camera') t.setAttribute(c.attr, cur.join(' ') || 'none'); // a fixed view, kept by Copy code (an empty value would be dropped)
+          else cur.length ? t.setAttribute(c.attr, cur.join(' ')) : t.removeAttribute(c.attr);
         } else if (v === '' || v === String(c.default ?? '\u0000')) t.removeAttribute(c.attr);
         else t.setAttribute(c.attr, v);
       }
@@ -205,6 +206,7 @@ if (location.search.includes('__check')) {
     const toggle = (name, on) => { const t = $$('#controls label.check').find((l) => l.textContent.trim() === name)?.querySelector('input'); if (t && t.checked !== on) { t.checked = on; t.dispatchEvent(new Event('input')); } };
     let interactionAttr;
     if ($('.dock')) { toggle('collide', true); toggle('gravity', false); toggle('gravity', true); interactionAttr = $('#demo').getAttribute('interaction'); }
+    if ($('sd-universe#demo')) { toggle('Spin', false); toggle('Drag', false); toggle('Pointer', false); }
     const demo = $('#demo');
     fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene, sd-universe').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent,
       objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top,

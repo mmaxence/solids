@@ -15,6 +15,7 @@ const OWN = ['count', 'seed', 'gravity', 'collide', 'camera', 'speed', 'drift', 
 const REGEN = ['count', 'seed', 'gravity', 'shapes', 'palette'];
 const REF = 640;                 // px box in which world radius 1 is the half side: a body's world radius is size / REF
 const DEG = Math.PI / 180;
+const ZERO: V3 = [0, 0, 0];
 const knownTags = () => new Set([...objects.values()].map((d) => d.manifest.tag));
 const len = (p: V3) => Math.hypot(p[0], p[1], p[2]);
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -42,7 +43,7 @@ export class SdUniverse extends SdScene {
   bodies: Body[] = [];
   private ready = false;
   private time = 0;                       // sim clock for the wobble (frozen under reduced motion)
-  private drag: { x: number; y: number; t: number } | null = null;
+  private drag: { id: number; x: number; y: number; t: number } | null = null;
   private vel = [0, 0];                   // drag inertia, rad per ms
   private spinGain = 1;                   // eases out while dragging and back in after
   private tilt = [0, 0];                  // pointer tilt, eased
@@ -51,11 +52,12 @@ export class SdUniverse extends SdScene {
     super();
     // Every child sits on the box center; the camera places it. Edge shapes spill past the box; clip the layout too (no page overflow).
     this.shadowRoot!.append(Object.assign(document.createElement('style'), { textContent:
-      ':host{overflow:hidden;min-height:320px;touch-action:pan-y;user-select:none;-webkit-user-select:none}::slotted(*){position:absolute;left:50%;top:50%;translate:-50% -50%}:host(:not([camera])),:host([camera~=drag]){cursor:grab}:host(.sd-dragging){cursor:grabbing}' }));
+      ':host{overflow:hidden;min-height:320px;touch-action:pan-y pinch-zoom;user-select:none;-webkit-user-select:none}::slotted(*){position:absolute;left:50%;top:50%;translate:-50% -50%}:host(:not([camera])),:host([camera~=drag]){cursor:grab}:host(.sd-dragging){cursor:grabbing}' }));
     this.addEventListener('pointerdown', this.onDown);
     this.addEventListener('pointermove', this.onMove);
     this.addEventListener('pointerup', this.onUp);
     this.addEventListener('pointercancel', this.onUp);
+    this.addEventListener('lostpointercapture', this.onUp);
   }
 
   connectedCallback() {
@@ -146,22 +148,26 @@ export class SdUniverse extends SdScene {
   }
 
   private onDown = (e: PointerEvent) => {
-    if (!this.cam().has('drag') || !e.isPrimary) return;
-    this.drag = { x: e.clientX, y: e.clientY, t: e.timeStamp }; this.vel = [0, 0];
+    if (!this.cam().has('drag') || !e.isPrimary || e.button !== 0 || this.drag) return;
+    this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp }; this.vel = [0, 0];
     this.classList.add('sd-dragging');
     try { this.setPointerCapture(e.pointerId); } catch {}
   };
   private onMove = (e: PointerEvent) => {
-    if (!this.drag) return;
-    const dt = Math.max(1, e.timeStamp - this.drag.t), dy = (e.clientX - this.drag.x) * 0.006, dp = (e.clientY - this.drag.y) * 0.006;
+    const d = this.drag;
+    if (!d || e.pointerId !== d.id) return;
+    if (e.buttons === 0) return this.onUp(e); // the release went elsewhere (a context menu, a window switch)
+    const dt = Math.max(8, e.timeStamp - d.t), dy = (e.clientX - d.x) * 0.006, dp = (e.clientY - d.y) * 0.006;
     this.yaw += dy; this.pitch = clamp(this.pitch + dp, -60 * DEG, 60 * DEG);
     this.vel = [dy / dt, dp / dt];
-    this.drag = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+    this.drag = { id: d.id, x: e.clientX, y: e.clientY, t: e.timeStamp };
   };
-  private onUp = () => {
-    if (!this.drag) return;
+  private onUp = (e: PointerEvent) => {
+    const d = this.drag;
+    if (!d || (e.pointerId !== d.id && e.type !== 'lostpointercapture')) return;
     this.drag = null; this.classList.remove('sd-dragging');
-    if (reducedMotion()) this.vel = [0, 0];
+    // A fling needs a moving release: a pointer held still for 80 ms lets go of its last velocity.
+    if (reducedMotion() || e.timeStamp - d.t > 80) this.vel = [0, 0];
   };
 
   /** Per frame: move the camera and the bodies, resolve collisions, then place every child on screen. */
@@ -181,7 +187,7 @@ export class SdUniverse extends SdScene {
       const k = Math.exp(-dt / 600); this.vel[0] *= k; this.vel[1] *= k;
     }
     const on = cam.has('pointer') && this.pointer.inside;
-    this.tilt[0] = ease(this.tilt[0], on ? -((this.pointer.x / W) * 2 - 1) * 12 * DEG : 0, dt, 150);
+    this.tilt[0] = ease(this.tilt[0], on ? ((this.pointer.x / W) * 2 - 1) * 12 * DEG : 0, dt, 150); // front shapes move toward the pointer
     this.tilt[1] = ease(this.tilt[1], on ? ((this.pointer.y / H) * 2 - 1) * 8 * DEG : 0, dt, 150);
     const yaw = this.yaw + this.tilt[0], pitch = this.pitch + this.tilt[1];
     const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
@@ -211,7 +217,7 @@ export class SdUniverse extends SdScene {
     for (const b of bodies) {
       const o = b.el.anim, w = b.wob;
       const q: V3 = [b.p[0], b.p[1], b.p[2]];
-      if (drift > 0) for (let k = 0; k < 3; k++) q[k] += Math.sin(2 * Math.PI * w[k * 3] * this.time + w[k * 3 + 1]) * w[k * 3 + 2] * drift;
+      if (drift > 0 && !b.pinned && !b.orbit) for (let k = 0; k < 3; k++) q[k] += Math.sin(2 * Math.PI * w[k * 3] * this.time + w[k * 3 + 1]) * w[k * 3 + 2] * drift;
       const x1 = q[0] * cy + q[2] * sy, z1 = -q[0] * sy + q[2] * cy;
       const y2 = q[1] * cp - z1 * sp, z2 = q[1] * sp + z1 * cp;
       const s = clamp(D / (D - z2), 0.3, 3);
@@ -240,8 +246,10 @@ export class SdUniverse extends SdScene {
         const nrm: V3 = l < 1e-6 ? [1, 0, 0] : [d[0] / l, d[1] / l, d[2] / l]; l = l || 0;
         const wi = mi === Infinity ? 0 : 1 / mi, wj = mj === Infinity ? 0 : 1 / mj, sum = wi + wj;
         for (let k = 0; k < 3; k++) { a.p[k] -= nrm[k] * (min - l) * (wi / sum); b.p[k] += nrm[k] * (min - l) * (wj / sum); }
-        // Normal velocity exchange, only when approaching.
-        const rel = (b.v[0] - a.v[0]) * nrm[0] + (b.v[1] - a.v[1]) * nrm[1] + (b.v[2] - a.v[2]) * nrm[2];
+        // Normal velocity exchange, only when approaching. An immovable body counts as still: its seeded drift is never applied,
+        // and a moving wall would pump energy into every bounce.
+        const av = wi ? a.v : ZERO, bv = wj ? b.v : ZERO;
+        const rel = (bv[0] - av[0]) * nrm[0] + (bv[1] - av[1]) * nrm[1] + (bv[2] - av[2]) * nrm[2];
         if (rel >= 0) continue;
         const jmp = (-2 * rel) / sum;
         for (let k = 0; k < 3; k++) { a.v[k] -= nrm[k] * jmp * wi; b.v[k] += nrm[k] * jmp * wj; }
