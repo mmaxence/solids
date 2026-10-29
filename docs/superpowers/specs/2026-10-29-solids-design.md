@@ -77,20 +77,28 @@ solids/
 
 ### Rendering
 
-- Each object = a vertex shader + fragment shader + a `manifest.json` describing uniforms
-  (name, type, default, range, label). Geometry is generated procedurally by the base class
-  from a manifest `geometry` field: `sphere`, `torus`, `box`, `plane`, `icosahedron`, with
-  a `detail` level. Objects are raymarched or mesh-shaded at the author's choice; the
-  contract only fixes the uniform names the core provides.
-- Core-provided uniforms: `uTime`, `uResolution`, `uModel`, `uView`, `uProjection`,
-  `uPointer` (scene-local, -1..1), `uState` (0..1 eased object state), `uTheme`
-  (0 dark, 1 light).
-- Scene renders every object into one FBO, then runs the effect chain (each effect a
-  fullscreen frag pass, ping-pong), then blits to the canvas. Effects can be set on the
-  scene (apply to all) or on an object (rendered in its own FBO then composited; v1 may
-  implement object-level effects as a scene-level chain filtered by object id if the
-  per-object path proves too heavy; mark it `ponytail:` if so).
+- **Every object is an SDF raymarched in a fragment shader on a camera-facing quad.** No
+  mesh geometry in v1 (the `geometry` field is dropped; coil, blob and crystal are SDFs).
+  One shared quad vertex shader lives in core, so an object folder has only `frag.glsl`.
+- Space is **2D screen space in CSS pixels**: the scene's canvas covers the scene's own
+  box (absolutely positioned, DPR capped at 2). Each object's quad is its layout rect
+  enlarged by a `bleed` factor from its manifest (default 1.5) so glow and beams can spill
+  past the box; objects are clipped at the scene's edge, which the author sizes. Rects
+  are re-read on ResizeObserver and scroll, not every frame.
+- Core-provided uniforms: `uTime`, `uResolution` (quad px), `uPointer` (quad-local,
+  -1..1), `uRotation` (mat3, from animations and interactions), `uScale`, `uState`
+  (0..1 eased), `uTheme` (0 dark, 1 light), `uColor` (vec3), plus manifest uniforms.
+- Draw order: objects sorted by their interaction-provided z (gravity gives orbiting
+  objects a small z for depth cue), painter's algorithm with premultiplied alpha. No depth
+  buffer.
+- **Effects:** an object with its own `effect` list renders into its own quad-sized FBO,
+  runs its chain there, and is composited; objects without effects draw straight into the
+  scene FBO. The scene's chain runs last over the whole scene FBO at half resolution, then
+  blits. Effects are fullscreen frag passes reading `uScene`, ping-pong.
 - Transparent canvas by default so objects sit on the host page's background.
+- Implicit scene: an `<sd-*>` with no `<sd-scene>` ancestor runs as a one-object scene
+  inside its own shadow root (own canvas, no DOM wrapper inserted, so the author's layout
+  is untouched). Scene-level interactions are no-ops there.
 
 ### Elements and attributes
 
@@ -106,9 +114,8 @@ solids/
 
 - `<sd-scene>`: `interaction` (space-separated list), `effect` (space-separated list),
   `theme` (`auto|dark|light`), `paused`. Children are positioned by CSS: each `<sd-*>`
-  is an inline-block box; the scene reads each child's layout rect every frame (cheap,
-  cached) and renders the object centered in it. Interactions may offset the rendered
-  position without touching layout.
+  is an inline-block box; the scene renders each object centered in its layout rect.
+  Interactions may offset the rendered position (in CSS px) without touching layout.
 - `<sd-*>` (every object): `animation`, `speed`, `effect`, `state` (`idle|active|
   busy|off`, eased), `color`, `size` (CSS size shorthand; default 160px), plus the
   object's own manifest uniforms as attributes (kebab-case). All attributes are also
@@ -123,8 +130,10 @@ solids/
 
 ### Animations
 
-Pure functions `(t, params, object) → { rotation, position, scale, uniforms }` applied
-before the object's model matrix is built. Composable: `animation="spin breathe"`. Easing
+Pure functions `(t, params, object) → { rotation, offset, scale, uniforms }` applied
+before the object's uniforms are set. Each animation and interaction module exports a
+`meta` object (name, description, params with defaults and ranges); the site generator
+imports the built bundle and reads `meta` to produce selects, option tables and pages. Composable: `animation="spin breathe"`. Easing
 between animation changes over ~400 ms, same for `state`.
 
 ### Effects
@@ -132,7 +141,8 @@ between animation changes over ~400 ms, same for `state`.
 Each effect is a folder with `manifest.json` (params) and `frag.glsl` reading `uScene`
 (previous pass) and writing color. v1 set: `glow` (bloom-ish: threshold + blur + add),
 `beam` (directional streak, voice-ring like), `rgb-split`, `pixelate`, `dither`
-(ordered Bayer, retro), `scanlines`. Chain order is attribute order.
+(ordered Bayer, retro), `scanlines`. Six effects, scanlines included. Chain order is
+attribute order.
 
 ### Agent contract (SKILL.md)
 
@@ -146,9 +156,12 @@ src/objects/<name>/
   README.md       one paragraph: what it is, what each param does, one html snippet
 ```
 
-`npm run check` validates manifests, compiles every shader headlessly (via a tiny
-Node+headless-Chrome script, or `glslangValidator` if present; pick the one that needs
-no new dependency first), and fails on unknown uniforms. `npm run site` regenerates a
+`npm run check` validates manifests, compiles every shader headlessly, and fails on
+unknown uniforms. Shader compile uses `chrome --headless=new --dump-dom` on a generated
+page that compiles each program and writes results into the DOM (no dependency; locally,
+if Chrome is not found, the compile step is skipped with a warning). CI runs `check`
+before deploy. `check` also takes a screenshot of the Scene demo page and fails if the
+canvas is blank or the console has errors. `npm run site` regenerates a
 page per object. Nothing else is required: no registration file to edit (the build
 globs the folder). The same contract applies to effects. SKILL.md is written for an
 agent: the contract, the core uniforms, the look rules (dark glassy, no flat gray, one
@@ -175,7 +188,13 @@ Hosting: GitHub Pages from `/site` output on `main` via Actions (`actions/deploy
 ### Tooling
 
 - TypeScript, esbuild (the one dev dependency besides typescript), no test framework:
-  `scripts/check.mjs` is the test (manifest schema, shader compile, bundle size budget).
+  `scripts/check.mjs` is the test (manifest schema, shader compile, bundle size budget,
+  demo smoke screenshot). GLSL and JSON are inlined into the bundle with esbuild loaders.
+- Size budget, measured by `check`: core (renderer, scene, base object, registries,
+  animations, interactions) under 15 KB gzipped; the full `dist/solids.js` with all six
+  objects and six effects under 40 KB gzipped. One bundle, no lazy loading.
+- Performance bar: 60 fps on an Apple-silicon laptop with six objects, gravity and glow
+  on; raymarch capped at 64 steps; scene effects at half resolution.
 - `npm run dev`: esbuild serve + site regen on change.
 - License: MIT.
 
@@ -197,10 +216,15 @@ Hosting: GitHub Pages from `/site` output on `main` via Actions (`actions/deploy
   by importing the base class.
 - v1 objects: `orb`, `ring`, `crystal`, `coil`, `blob`, `cube`. Six, no more.
 - Site is hand-written static HTML generated by one Node script; no framework.
+- All v1 objects are SDF raymarched on quads; no mesh pipeline. Screen-space 2D layout
+  with a z depth cue; no real camera.
+- Per-object effects via per-object FBO; scene chain runs last at half resolution.
+- Single bundle, two size budgets (core 15 KB, full 40 KB gzipped).
+- Shader compile check via headless Chrome `--dump-dom`; CI gates deploy on `check`.
+- Lone objects run as one-object scenes in their own shadow root.
 
 ## Left to the builder
 
-- Exact raymarch vs. mesh choice per object.
 - Spring constants, easing curves, default colors (tune by eye against voice-ring).
 - How effects compose when set on both scene and object (scene chain runs last).
 - Headless shader-compile approach for `npm run check`.
