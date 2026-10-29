@@ -134,6 +134,10 @@ It receives `uScene` (the previous pass, premultiplied), `uResolution`, `uTime`,
 
 Every effect also gets a `mix` param (0 to 2, default 1) without declaring it: the core blends your result with the incoming scene, `mix(scene, sdEffect(), mix)`, and clamps to valid premultiplied color (`a` in 0..1, `rgb` at most `a`). 0 is a plain copy, 1 is the effect as designed, 2 pushes it further. Return the look as designed and let `<effect>-mix` dial it. Keep to one pass; sample at most a few dozen taps.
 
+## The universe
+
+`<sd-universe>` is a scene that fills its box with seeded copies of every registered object, so a new object shows up there with no extra work: check that it still reads at 40 px and when blurred. Attributes: `count` (0 to 120), `seed`, `gravity` (present: the largest shape is the center, the nearest third orbit it), `depth` (0 to 1, depth of field strength), `focus` (-1 back to 1 front), `shapes` and `palette` (space separated). The children are plain light-DOM objects with inline positions in percent and a `data-z` depth; each gets the `defocus` effect at `depth * |z - focus| * 14` px and far ones are dimmed. Changing `count`, `seed`, `shapes`, `palette` or `gravity` regenerates them; `depth` and `focus` only refocus.
+
 ## Checklist before a PR
 
 - `npm run check` prints `ok`.

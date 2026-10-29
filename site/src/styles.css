@@ -204,3 +204,8 @@ td:first-child code { white-space: nowrap; }
   .catalogue { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .chips span { width: 100%; }
 }
+
+/* Universe page: a tall stage, and the live markup scrolls instead of growing the page */
+.stage.universe { height: 70vh; min-height: 420px; }
+.stage.universe sd-universe { width: 100%; }
+.codebar pre { max-height: 16em; }

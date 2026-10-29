@@ -28,6 +28,7 @@ export class SdObject extends HTMLElement {
   effectParams: Record<string, Record<string, number>> = {};
   anim = { rotation: new Float32Array(IDENTITY) as Mat3, offset: [0, 0] as [number, number], scale: 1, z: 0, state: 0 };
   pose: Pose | null = null;               // last composed animation pose
+  z = 0;                                  // base draw depth: anim.z starts here each frame (the universe sets it)
   broken = false;                         // shader failed to compile; skip drawing
   private phase = 0;                      // animation time, advanced by dt × speed
   private prevPose: Pose | null = null;   // pose at the moment `animation` changed, for the cross-fade
@@ -41,7 +42,7 @@ export class SdObject extends HTMLElement {
   }
 
   connectedCallback() {
-    const outer = this.closest('sd-scene') as SdScene | null;
+    const outer = this.closest('sd-scene, sd-universe') as SdScene | null;
     const inner = this.shadowRoot!.querySelector('sd-scene') as SdScene | null;
     if (outer) {
       if (inner) { inner.detach(this); inner.remove(); }
@@ -115,7 +116,7 @@ export class SdObject extends HTMLElement {
     this.anim.offset = [out.offset[0], out.offset[1]];
     this.anim.scale = out.scale;
     this.anim.state = out.state;
-    this.anim.z = 0;
+    this.anim.z = this.z;
   }
 }
 

@@ -1,0 +1,7 @@
+{
+  "name": "defocus",
+  "description": "A soft disc blur, like a lens out of focus. The universe sets it per shape from its depth.",
+  "params": [
+    { "name": "radius", "type": "float", "default": 6, "min": 0, "max": 24, "step": 0.5, "label": "Radius (px)" }
+  ]
+}

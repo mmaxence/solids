@@ -59,7 +59,7 @@ function md(src) {
 
 function nav(root, current) {
   const item = (href, label) => `<li><a href="${root}${href}"${href === current ? ' aria-current="page"' : ''}>${esc(label)}</a></li>`;
-  return `<h2>Getting started</h2><ul>${item('index.html', 'Introduction')}${item('accessibility.html', 'Accessibility')}${item('scene.html', 'Scene and gravity')}${item('performance.html', 'Performance')}</ul>
+  return `<h2>Getting started</h2><ul>${item('index.html', 'Introduction')}${item('accessibility.html', 'Accessibility')}${item('scene.html', 'Scene and gravity')}${item('universe.html', 'Universe')}${item('performance.html', 'Performance')}</ul>
 <h2>Objects</h2><ul>${objects.map((o) => item(`objects/${o.name}.html`, o.name)).join('')}</ul>
 <h2>Animations</h2><ul>${animations.map((a) => item(`animations/${a.name}.html`, a.name)).join('')}</ul>
 <h2>Effects</h2><ul>${effects.map((e) => item(`effects/${e.name}.html`, e.name)).join('')}</ul>
@@ -85,11 +85,11 @@ function hero({ sceneAttrs, inner, controls, title, pitch, prompt }) {
 }
 
 /** Preview panel: a scene, generated controls, live markup, copy buttons. */
-function preview({ sceneAttrs = '', inner, controls, prompt, stageClass = '' }) {
+function preview({ sceneAttrs = '', inner, controls, prompt, stageClass = '', tag = 'sd-scene' }) {
   const spec = JSON.stringify({ controls, prompt }).replace(/</g, '\\u003c');
   return `<div class="tabs" role="tablist"><button role="tab" aria-selected="true" data-panel="preview">Preview</button><button role="tab" aria-selected="false" data-panel="install">Install</button></div>
 <section id="preview" class="panel">
-  <div class="stage ${stageClass}"><sd-scene id="demo"${stageClass.includes('scatter') ? ' data-keep-style style="position:relative;height:100%;min-height:340px"' : ''} ${sceneAttrs}>${inner}</sd-scene></div>
+  <div class="stage ${stageClass}"><${tag} id="demo"${stageClass.includes('scatter') ? ' data-keep-style style="position:relative;height:100%;min-height:340px"' : ''} ${sceneAttrs}>${inner}</${tag}></div>
   <form id="controls" class="controls" onsubmit="return false"></form>
   <div class="codebar"><pre><code id="live"></code></pre><div class="actions"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button><button type="button" class="btn" id="copy-code">Copy code</button></div></div>
 </section>
@@ -171,7 +171,8 @@ ${layer('Interactions', 'Scene rules that react to the pointer and to each other
 <p class="chips"><span>Effects</span>${effects.map((e) => `<a href="effects/${e.name}.html">${esc(e.name)}</a>`).join('')}</p>
 <p class="chips"><span>Interactions</span>${interactions.map((i) => `<a href="interactions/${i.name}.html">${esc(i.name)}</a>`).join('')}</p>`;
   const numbers = `<dl class="numbers"><div><dt>The whole library, gzipped</dt><dd>${(gzipSync(readFileSync('dist/solids.js')).length / 1024).toFixed(1)} KB</dd></div><div><dt>Objects on the hero, one canvas</dt><dd>${ids.length}</dd></div></dl>`;
-  const live = { 'Four layers': layers, Catalogue: catalogue, Performance: numbers };
+  const universe = `<sd-universe class="band-universe" count="36" seed="5" depth="0.55" dpr="1.5" style="position:relative;height:60vh;min-height:420px"></sd-universe>`;
+  const live = { 'Four layers': layers, Universe: universe, Catalogue: catalogue, Performance: numbers };
   const main = `<div class="landing">${readFileSync('site/src/intro.md', 'utf8').split(/^(?=## )/m).map((s) => {
     const h = s.match(/^## (.*)/)[1];
     return `<section class="band" id="${h.toLowerCase().replace(/\s+/g, '-')}">${md(s)}${live[h] ?? ''}</section>`;
@@ -260,6 +261,33 @@ ${effects.map((e) => row(`data-effect="${e.name}"`, `<a href="effects/${e.name}.
 </tbody></table>`;
   const main = `${md(head).replace('<p>', '<p class="lede">')}\n${md(sizesMd)}${sizesTable}\n${md(meterMd)}${meter}\n${md(benchMd)}${bench}`;
   page('performance.html', { title: 'Performance', description: 'What solids costs: bundle sizes, a live frame meter, and a benchmark that runs in your browser.', main });
+}
+
+// --- Universe page ---
+{
+  const controls = [
+    { kind: 'range', attr: 'count', label: 'Count', min: 1, max: 120, step: 1, value: 36, default: 24, target: 'scene' },
+    { kind: 'range', attr: 'seed', label: 'Seed', min: 1, max: 99, step: 1, value: 1, default: 1, target: 'scene' },
+    { kind: 'range', attr: 'depth', label: 'Depth', min: 0, max: 1, step: 0.05, value: 0.5, default: 0.5, target: 'scene' },
+    { kind: 'range', attr: 'focus', label: 'Focus', min: -1, max: 1, step: 0.05, value: 0, default: 0, target: 'scene' },
+    { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
+    { kind: 'check', attr: 'gravity', on: 'on', label: 'Gravity', value: false, target: 'scene' },
+  ];
+  const rows = [
+    ['count', 'number', '24', '0 to 120', 'How many shapes. Changing it regenerates the children.'],
+    ['seed', 'number', '1', 'any integer', 'The same seed always gives the same universe.'],
+    ['gravity', 'boolean', 'absent', 'present or absent', 'The largest shape moves to the middle as the center and the nearest third orbit it.'],
+    ['depth', 'number', '0.5', '0 to 1', 'Strength of the depth of field. 0 keeps every shape sharp.'],
+    ['focus', 'number', '0', '-1 to 1', 'The focal plane, from the back (-1) to the front (1).'],
+    ['shapes', 'list', 'every object', 'object tags', 'Space separated tags to draw from, for example sd-orb sd-ring. Unknown tags are skipped.'],
+    ['palette', 'list', 'six P3 colors', 'any CSS colors', 'Space separated colors to pick from.'],
+  ];
+  const prompt = `A solids universe is a scene that fills its box with seeded shapes at different depths. Its children are plain objects with inline positions, a data-z depth from -1 (back) to 1 (front), and a defocus blur that grows with the distance from the focus plane. Change count, seed, shapes or palette to regenerate; change depth or focus to refocus the same shapes.\n\n${optionsMd(rows)}\n\n\`\`\`html\n{{markup}}\n\`\`\``;
+  page('universe.html', { title: 'Universe', description: 'A scene that fills its box with seeded shapes at different depths, with a depth of field and optional gravity.', main: `<h1>Universe</h1><p class="lede">One element fills its box with shapes at different depths. Pick a seed, set the focal plane, and let the far shapes blur.</p>${preview({ tag: 'sd-universe', sceneAttrs: 'count="36" dpr="1.5"', inner: '', controls, prompt, stageClass: 'scatter universe' })}
+<h2>How a universe works</h2><p><code>&lt;sd-universe&gt;</code> is a scene. On first connect it creates its children from a seeded random sequence: a shape, a position in percent of the box, a size, a color, a slow animation, and a depth <code>data-z</code> between -1 and 1. They are ordinary objects in the light DOM, so Copy code gives you markup you can paste and edit; a universe that already has children keeps them.</p>
+<p>Each shape gets the <code>defocus</code> effect with a radius of depth times its distance from the focus plane, times 14 px. Shapes behind the focus plane are dimmed and drawn first. Changing <code>depth</code> or <code>focus</code> refocuses the same shapes without moving them. Positions are percentages, so a resized box keeps its layout.</p>
+<h2>Options</h2>${optionsTable(rows)}
+${license}` });
 }
 
 // --- static files ---

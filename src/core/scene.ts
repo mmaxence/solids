@@ -1,5 +1,5 @@
 import { createGL, initState, program, setUniforms, drawQuad, clearCache, type Program, type ColorSpace } from './gl';
-import { createFBO, resizeFBO, type FBO } from './fbo';
+import { createFBO, resizeFBO, deleteFBO, type FBO } from './fbo';
 import { interactions, effects, effectAttrs, effectParam, interactionAttrs, interactionParam, type Pointer } from './registry';
 import { SdObject, reducedMotion } from './object';
 import copyFrag from './copy.glsl';
@@ -28,7 +28,7 @@ export class SdScene extends HTMLElement {
   private visible = true; private paused = false;
   private ro: ResizeObserver | null = null;
   private io: IntersectionObserver | null = null;
-  private fbos: { scene: FBO; a: FBO; b: FBO; oa: FBO; ob: FBO } | null = null;
+  private fbos: { scene: FBO; a: FBO; b: FBO; pool: Map<string, [FBO, FBO]> } | null = null;
   private clock = 0;   // shader time; stops advancing under reduced motion
 
   constructor() {
@@ -165,7 +165,7 @@ export class SdScene extends HTMLElement {
     t = this.clock;
     for (const o of this.objects) o.update(dt);
     for (const n of this.interactionNames) interactions.get(n)?.frame(this, dt, this.pointer);
-    const f = this.fbos ??= { scene: createFBO(gl, W, H), a: createFBO(gl, W, H), b: createFBO(gl, W, H), oa: createFBO(gl, 1, 1), ob: createFBO(gl, 1, 1) };
+    const f = this.fbos ??= { scene: createFBO(gl, W, H), a: createFBO(gl, W, H), b: createFBO(gl, W, H), pool: new Map() };
     resizeFBO(gl, f.scene, W, H); resizeFBO(gl, f.a, W, H); resizeFBO(gl, f.b, W, H);
     const theme = this.themeValue;
 
@@ -227,7 +227,14 @@ export class SdScene extends HTMLElement {
     catch (e) { o.broken = true; console.error(`[solids] <${o.manifest.tag}> shader failed:\n${(e as Error).message}`); return; }
     const chain = o.effectNames.filter((n) => effects.has(n));
     // With its own effects the object renders into a quad-sized buffer first.
-    if (chain.length) { resizeFBO(gl, f.oa, w, h); resizeFBO(gl, f.ob, w, h); this.bind(gl, f.oa, 0, 0, w, h, true); }
+    // Per-object buffers are pooled by size so a crowd of differently sized objects does not reallocate every frame.
+    let pair: [FBO, FBO] | undefined;
+    if (chain.length) {
+      const key = w + 'x' + h;
+      pair = f.pool.get(key);
+      if (!pair) { if (f.pool.size >= 32) { for (const p of f.pool.values()) { deleteFBO(gl, p[0]); deleteFBO(gl, p[1]); } f.pool.clear(); } f.pool.set(key, (pair = [createFBO(gl, w, h), createFBO(gl, w, h)])); }
+      this.bind(gl, pair[0], 0, 0, w, h, true);
+    }
     else this.bind(gl, f.scene, x, y, w, h, false);
     gl.useProgram(p.prog);
     const px = this.pointer.inside ? [((this.pointer.x - cx) / qw) * 2, -((this.pointer.y - cy) / qh) * 2] : [0, 0];
@@ -238,9 +245,9 @@ export class SdScene extends HTMLElement {
     });
     drawQuad(gl);
     if (!chain.length) return;
-    let src = f.oa;
+    let src = pair![0];
     for (const name of chain) {
-      const dst = src === f.oa ? f.ob : f.oa;
+      const dst = src === pair![0] ? pair![1] : pair![0];
       this.bind(gl, dst, 0, 0, w, h, true);
       this.pass(gl, name, src, o.effectParams[name], [w, h], t, theme);
       src = dst;
