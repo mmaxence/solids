@@ -5,7 +5,7 @@ import { SdObject, reducedMotion } from './object';
 import copyFrag from './copy.glsl';
 
 export class SdScene extends HTMLElement {
-  static get observedAttributes() { return ['interaction', 'effect', 'theme', 'paused', ...effectAttrs(), ...interactionAttrs()]; }
+  static get observedAttributes() { return ['interaction', 'effect', 'theme', 'paused', 'dpr', ...effectAttrs(), ...interactionAttrs()]; }
   canvas!: HTMLCanvasElement;
   gl: WebGL2RenderingContext | null = null;
   colorSpace: ColorSpace = 'srgb';   // the drawing buffer's space; object colors are parsed into it
@@ -16,7 +16,7 @@ export class SdScene extends HTMLElement {
   effectParams: Record<string, Record<string, number>> = {};
   interactionParams: Record<string, Record<string, number>> = {};
   theme: 'auto' | 'dark' | 'light' = 'auto';
-  dpr = 1; width = 0; height = 0;
+  dpr = 1; maxDpr = 2; width = 0; height = 0;
   private raf = 0; private last = 0; private t0 = 0;
   private visible = true; private paused = false;
   private ro: ResizeObserver | null = null;
@@ -65,6 +65,7 @@ export class SdScene extends HTMLElement {
     if (name === 'interaction') { this.interactionNames = val.split(/\s+/).filter(Boolean); this.interactionNames.forEach((n) => interactions.get(n)?.setup?.(this)); }
     else if (name === 'effect') this.effectNames = val.split(/\s+/).filter(Boolean);
     else if (name === 'theme') this.theme = (val as typeof this.theme) || 'auto';
+    else if (name === 'dpr') { const n = Number(val); this.maxDpr = val && !isNaN(n) && n > 0 ? n : 2; this.measure(); }
     else if (name === 'paused') { this.paused = v !== null; this.paused ? this.stop() : this.start(); }
     else if (!effectParam(name, v, this.effectParams)) interactionParam(name, v, this.interactionParams);
   }
@@ -95,7 +96,7 @@ export class SdScene extends HTMLElement {
 
   measure() {
     const host = this.getBoundingClientRect();
-    this.dpr = Math.min(devicePixelRatio || 1, 2);
+    this.dpr = Math.min(devicePixelRatio || 1, this.maxDpr);
     this.width = host.width; this.height = host.height;
     const w = Math.round(host.width * this.dpr), h = Math.round(host.height * this.dpr);
     if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; }

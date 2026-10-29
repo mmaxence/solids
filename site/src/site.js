@@ -43,7 +43,7 @@ if (specEl) {
   const form = $('#controls');
   const live = $('#live');
   const targets = (c) => (c.target === 'scene' ? [scene] : c.target === 'all' ? $$('sd-scene > *', scene) : [$('#demo > [data-subject]') || $('#demo > *')]);
-  const refresh = () => { live.textContent = serialize(scene); };
+  const refresh = () => { if (live) live.textContent = serialize(scene); };
   for (const c of spec.controls) {
     const label = document.createElement('label');
     const head = document.createElement('span');
@@ -112,11 +112,13 @@ if (location.search.includes('__check')) {
     $('.theme')?.click();
     const sel = $$('#controls label').find((l) => l.querySelector('span')?.textContent === 'Object')?.querySelector('select');
     if (sel) { sel.value = 'sd-cube'; sel.dispatchEvent(new Event('input')); }
-    const center = $$('#controls label').find((l) => l.querySelector('span')?.textContent === 'Center of gravity')?.querySelector('select');
+    const center = $$('#controls label').find((l) => l.querySelector('span')?.textContent.startsWith('Center'))?.querySelector('select');
     if (center) { center.value = 'ring'; center.dispatchEvent(new Event('input')); }
     const strength = $$('#controls label').find((l) => l.querySelector('span')?.firstChild?.textContent === 'Gravity strength')?.querySelector('input');
     if (strength) { strength.value = '0'; strength.dispatchEvent(new Event('input')); }
-    fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent }) });
+    const h1 = $('h1')?.getBoundingClientRect(), dock = $('.dock')?.getBoundingClientRect();
+    fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent,
+      objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top }) });
   };
   const tick = () => (++n < 6 ? requestAnimationFrame(tick) : report());
   requestAnimationFrame(tick);

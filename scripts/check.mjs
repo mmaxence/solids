@@ -99,10 +99,10 @@ function serve(root) {
   return new Promise((ok) => srv.listen(0, '127.0.0.1', () => ok({ srv, port: srv.address().port, result })));
 }
 /** Open a URL in headless Chrome; the page must POST its JSON result to /__result. */
-export function runPage(url, chrome, result, timeoutMs = 30000) {
+export function runPage(url, chrome, result, timeoutMs = 30000, size = '1400,900') {
   const profile = (process.env.TMPDIR || '/tmp') + '/solids-chrome-' + process.pid;
   const args = ['--headless=new', '--disable-gpu', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-first-run',
-    '--disable-crash-reporter', '--no-sandbox', `--user-data-dir=${profile}`, '--window-size=1400,900', url];
+    '--disable-crash-reporter', '--no-sandbox', `--user-data-dir=${profile}`, `--window-size=${size}`, url];
   const child = spawn(chrome, args, { stdio: 'ignore' });
   let timer;
   const timeout = new Promise((_, rej) => (timer = setTimeout(() => rej(new Error(`page did not report within ${timeoutMs} ms`)), timeoutMs)));
@@ -417,10 +417,16 @@ async function site() {
   }
   const chrome = chromePath();
   if (!chrome) return;
-  for (const f of ['scene.html', 'index.html', 'objects/orb.html', 'effects/glow.html']) {
+  for (const [f, size] of [['scene.html'], ['index.html'], ['index.html', '500,800'], ['objects/orb.html'], ['effects/glow.html']]) {
     const { srv, port, result } = await serve('site/dist');
     try {
-      const r = await runPage(`http://127.0.0.1:${port}/${f}?__check`, chrome, result);
+      const r = await runPage(`http://127.0.0.1:${port}/${f}?__check`, chrome, result, 30000, size);
+      if (f === 'index.html') {
+        if (!(r.objects >= 12)) fail(`site/index (${size ?? 'desktop'}): hero has ${r.objects} objects, expected 12`);
+        if (!r.hasCenter) fail(`site/index (${size ?? 'desktop'}): dock has no Center control`);
+        if (r.scrollWidth !== r.innerWidth) fail(`site/index (${size ?? 'desktop'}): horizontal overflow ${r.scrollWidth} > ${r.innerWidth}`);
+        if (!(r.h1Bottom < r.dockTop)) fail(`site/index (${size ?? 'desktop'}): title bottom ${r.h1Bottom} is not above the dock top ${r.dockTop}`);
+      }
       if (r.errors.length) fail(`site/${f}: console errors: ${r.errors.join(' | ').slice(0, 600)}`);
       if (!(r.scenes >= 1)) fail(`site/${f}: no scene mounted`);
       if (r.theme !== 'light') fail(`site/${f}: one click on Theme gave "${r.theme}", expected light`);

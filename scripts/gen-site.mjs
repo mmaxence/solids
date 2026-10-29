@@ -60,11 +60,22 @@ function nav(root, current) {
 <h2>Interactions</h2><ul>${interactions.map((i) => item(`interactions/${i.name}.html`, i.name)).join('')}</ul>`;
 }
 
-function page(path, { title, description, main }) {
+function page(path, { title, description, main, hero = '' }) {
   const root = path.includes('/') ? '../' : './';
-  const html = shell.replace(/{{root}}/g, root).replace('{{title}}', () => esc(title)).replace('{{description}}', () => esc(description)).replace('{{nav}}', () => nav(root, path)).replace('{{main}}', () => main);
+  const html = shell.replace(/{{root}}/g, root).replace('{{title}}', () => esc(title)).replace('{{description}}', () => esc(description)).replace('{{nav}}', () => nav(root, path)).replace('{{main}}', () => main).replace('{{hero}}', () => hero);
   mkdirSync(`${OUT}/${path}`.replace(/\/[^/]+$/, ''), { recursive: true });
   writeFileSync(`${OUT}/${path}`, html);
+}
+
+/** Full-viewport hero: the scene fills the first screen; title top-left, control dock at the bottom. */
+function hero({ sceneAttrs, inner, controls, title, pitch }) {
+  const spec = JSON.stringify({ controls, prompt: '' }).replace(/</g, '\\u003c');
+  return `<section class="hero-full">
+  <div class="stage scatter hero-stage"><sd-scene id="demo" ${sceneAttrs}>${inner}</sd-scene></div>
+  <div class="hero-title"><h1>${esc(title)}</h1><p>${esc(pitch)}</p></div>
+  <form id="controls" class="controls dock" onsubmit="return false"><button type="button" class="btn" id="copy-code">Copy code</button></form>
+  <script type="application/json" id="spec">${spec}</script>
+</section>`;
 }
 
 /** Preview panel: a scene, generated controls, live markup, copy buttons. */
@@ -108,21 +119,45 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
 // --- Introduction ---
 {
   const intro = md(readFileSync('site/src/intro.md', 'utf8'));
-  const heroScene = `<div class="hero"><div class="stage scatter"><sd-scene interaction="gravity hover-lift" effect="glow" gravity-strength="0.5">
-  <sd-orb gravity="center" animation="breathe" color="${colorOf(0)}" style="left:calc(50% - 90px);top:calc(50% - 90px)" size="180px"></sd-orb>
-  <sd-ring animation="spin" color="${colorOf(1)}" size="90px" style="left:12%;top:18%"></sd-ring>
-  <sd-crystal animation="idle" color="${colorOf(2)}" size="80px" style="left:74%;top:60%"></sd-crystal>
-  <sd-cube animation="idle" color="${colorOf(5)}" size="64px" style="left:20%;top:66%"></sd-cube>
-  <sd-coil animation="spin" color="${colorOf(3)}" size="70px" style="left:72%;top:12%"></sd-coil>
-</sd-scene></div></div>`;
-  const [h1, ...rest] = intro.split('\n');
+  // Hand-placed hero. Orbiters sit on a ring of about 27vmin around the center; the others float at the edges.
+  const sz = (px) => `clamp(${Math.round(px * 0.6)}px, ${(px / 6.5).toFixed(1)}vmin, ${Math.round(px * 1.3)}px)`;
+  const orbit = (tag, id, size, dx, dy, color, anim) => `<${tag} id="${id}" size="${sz(size)}" color="${color}" animation="${anim}" style="left:calc(50% + ${dx}vmin - ${sz(size)} / 2);top:calc(50% + ${dy}vmin - ${sz(size)} / 2)"></${tag}>`;
+  const edge = (tag, id, size, left, top, color, anim) => `<${tag} id="${id}" gravity="none" size="${sz(size)}" color="${color}" animation="${anim}" style="left:${left}%;top:${top}%"></${tag}>`;
+  const heroInner = [
+    `<sd-orb id="orb" gravity="center" size="${sz(200)}" color="${colorOf(0)}" animation="breathe" glow="0.8" style="left:calc(50% - ${sz(200)} / 2);top:calc(50% - ${sz(200)} / 2)"></sd-orb>`,
+    orbit('sd-ring', 'ring', 90, 30, -8, colorOf(1), 'spin'),
+    orbit('sd-crystal', 'crystal', 80, -28, 12, colorOf(2), 'idle'),
+    orbit('sd-knot', 'knot', 84, 21, 22, colorOf(3), 'spin'),
+    orbit('sd-capsule', 'capsule', 70, -23, -18, colorOf(4), 'idle'),
+    orbit('sd-star', 'star', 72, 6, -30, colorOf(5), 'spin'),
+    edge('sd-cube', 'cube', 64, 9, 60, colorOf(5), 'idle'),
+    edge('sd-coil', 'coil', 80, 84, 12, colorOf(3), 'spin'),
+    edge('sd-blob', 'blob', 76, 86, 56, colorOf(4), 'float'),
+    edge('sd-prism', 'prism', 70, 5, 40, colorOf(1), 'idle'),
+    edge('sd-shell', 'shell', 72, 70, 68, colorOf(2), 'float'),
+    edge('sd-disc', 'disc', 60, 60, 4, colorOf(0), 'spin'),
+  ].join('\n');
+  const ids = ['orb', 'ring', 'crystal', 'knot', 'capsule', 'star', 'cube', 'coil', 'blob', 'prism', 'shell', 'disc'];
+  const heroControls = [
+    { kind: 'select', attr: 'center', label: 'Center', options: ids, value: 'orb', target: 'scene' },
+    { kind: 'select', attr: 'effect', label: 'Effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
+    { kind: 'range', attr: 'gravity-strength', label: 'Gravity', min: 0, max: 1, step: 0.01, value: 0.35, default: 0.6, target: 'scene' },
+    ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: ['gravity', 'pointer-follow', 'hover-lift'].includes(i.name), target: 'scene' })),
+  ];
+  const heroHtml = hero({
+    sceneAttrs: 'interaction="gravity pointer-follow hover-lift" gravity-strength="0.35" dpr="1.5"',
+    inner: heroInner, controls: heroControls,
+    title: 'Lightweight 3D objects for the web',
+    pitch: 'Glassy shapes you drop into HTML. One script tag, no dependencies, about 16 KB. Hover, pick a center of gravity, try an effect.',
+  });
+  const [, ...rest] = intro.split('\n');
   const layers = `<ul class="layers">
 <li><b>Objects</b><span>${objects.map((o) => o.name).join(', ')}. Each one is a fragment shader on a quad.</span></li>
 <li><b>Animations</b><span>${animations.map((a) => a.name).join(', ')}. Pure functions of time, composable.</span></li>
 <li><b>Effects</b><span>${effects.map((e) => e.name).join(', ')}. Post passes on an object or a whole scene.</span></li>
-<li><b>Interactions</b><span>${interactions.map((i) => i.name).join(', ')}. Scene rules that react to the pointer and to each other.</span></li></ul>`;
-  const main = `${h1}${heroScene}${rest.join('\n').replace('</p>\n<h2>Sizing', `</p>${layers}\n<h2>Sizing`)}`;
-  page('index.html', { title: 'solids', description: 'Lightweight 3D objects for the web. Zero dependencies.', main });
+<li><b>Interactions</b><span>${interactions.map((i) => i.name).join(', ')}. Scene rules that react to the pointer, to scrolling, and to each other.</span></li></ul>`;
+  const main = `<h1 class="intro-h1">solids</h1>${rest.join('\n').replace('</p>\n<h2>Sizing', `</p>${layers}\n<h2>Sizing`)}`;
+  page('index.html', { title: 'solids', description: 'Lightweight 3D objects for the web. Zero dependencies.', main, hero: heroHtml });
   page('accessibility.html', { title: 'Accessibility', description: 'How solids objects behave for assistive tech, reduced motion, and low-end devices.', main: md(readFileSync('site/src/accessibility.md', 'utf8')) });
 }
 
