@@ -83,6 +83,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .btn { background: var(--fg); color: var(--bg); border: 0; border-radius: 999px; padding: 7px 14px; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
 .btn.quiet { background: none; color: var(--fg); border: 1px solid var(--line); }
 .btn:hover { opacity: 0.9; }
+.btn:disabled { opacity: 0.5; cursor: default; }
 
 table { border-collapse: collapse; width: 100%; font-size: 14px; }
 th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -95,6 +96,18 @@ td:first-child code { white-space: nowrap; }
 .layers li { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
 .layers b { display: block; font-weight: 600; margin-bottom: 4px; }
 .layers span { color: var(--muted); font-size: 14px; }
+/* Performance page: live meter under the stage, benchmark table with a bar per row */
+.meter { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px 22px; margin: 0; padding: 16px 20px; border-top: 1px solid var(--line); }
+.meter div { display: grid; gap: 2px; min-width: 0; }
+.meter dt { font-size: 12px; color: var(--muted); }
+.meter dd { margin: 0; font-size: 17px; font-variant-numeric: tabular-nums; }
+.bench-run { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 20px 0 12px; }
+.bench-run span { color: var(--muted); font-size: 14px; }
+.bench td:nth-child(2), .bench td:nth-child(4) { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bench td.bar { width: 40%; vertical-align: middle; }
+.bench td.bar span { display: block; width: 0; height: 6px; border-radius: 3px; background: var(--accent); transition: width 0.3s; }
+/* Out of the flow, just above the dock's right edge, so it never changes how the dock wraps. */
+.dock .readout { position: absolute; right: 16px; bottom: calc(100% + 8px); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
 .foot { display: flex; justify-content: space-between; gap: 16px; padding: 18px 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 .foot a { color: var(--fg); }
 
@@ -138,4 +151,5 @@ td:first-child code { white-space: nowrap; }
   .dock label.check, .dock label:has(input[type="range"]) { display: none; }
   .dock .btn { margin-left: 0; }
   .hero-full #disc { display: none; }
+  .dock .readout { display: none; }
 }

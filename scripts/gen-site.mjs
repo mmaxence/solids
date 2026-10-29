@@ -10,7 +10,9 @@ const SKILL = 'https://github.com/mmaxence/solids/blob/main/docs/SKILL.md';
 globalThis.window = globalThis;
 globalThis.HTMLElement = class {};
 globalThis.customElements = { get: () => undefined, define: () => {} };
-if (!existsSync('dist/solids.js')) { console.error('run npm run build first'); process.exit(1); }
+if (!existsSync('dist/solids.js') || !existsSync('dist/sizes.json')) { console.error('run npm run build first'); process.exit(1); }
+const sizes = JSON.parse(readFileSync('dist/sizes.json', 'utf8'));   // gzipped bytes: { core, full }
+const kb = (n) => (n / 1024).toFixed(1) + ' KB';
 const { registry } = await import(pathToFileURL('dist/solids.js').href + '?' + Date.now());
 const objects = [...registry.objects.values()].map((o) => ({ ...o.manifest, readme: readFileSync(`src/objects/${o.manifest.name}/README.md`, 'utf8') }));
 const effects = [...registry.effects.values()].map((e) => e.manifest);
@@ -53,7 +55,7 @@ function md(src) {
 
 function nav(root, current) {
   const item = (href, label) => `<li><a href="${root}${href}"${href === current ? ' aria-current="page"' : ''}>${esc(label)}</a></li>`;
-  return `<h2>Getting started</h2><ul>${item('index.html', 'Introduction')}${item('accessibility.html', 'Accessibility')}${item('scene.html', 'Scene and gravity')}</ul>
+  return `<h2>Getting started</h2><ul>${item('index.html', 'Introduction')}${item('accessibility.html', 'Accessibility')}${item('scene.html', 'Scene and gravity')}${item('performance.html', 'Performance')}</ul>
 <h2>Objects</h2><ul>${objects.map((o) => item(`objects/${o.name}.html`, o.name)).join('')}</ul>
 <h2>Animations</h2><ul>${animations.map((a) => item(`animations/${a.name}.html`, a.name)).join('')}</ul>
 <h2>Effects</h2><ul>${effects.map((e) => item(`effects/${e.name}.html`, e.name)).join('')}</ul>
@@ -73,7 +75,7 @@ function hero({ sceneAttrs, inner, controls, title, pitch }) {
   return `<section class="hero-full">
   <div class="stage scatter hero-stage"><sd-scene id="demo" data-keep-style style="position:relative;height:100%;min-height:560px" ${sceneAttrs}>${inner}</sd-scene></div>
   <div class="hero-title"><h1>${esc(title)}</h1><p>${esc(pitch)}</p></div>
-  <form id="controls" class="controls dock" onsubmit="return false"><button type="button" class="btn" id="copy-code">Copy code</button></form>
+  <form id="controls" class="controls dock" onsubmit="return false"><span id="readout" class="readout" title="Frames per second and CPU ms per frame, measured live"></span><button type="button" class="btn" id="copy-code">Copy code</button></form>
   <script type="application/json" id="spec">${spec}</script>
 </section>`;
 }
@@ -148,7 +150,7 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
     sceneAttrs: 'interaction="gravity pointer-follow hover-lift" gravity-strength="0.35" dpr="1.5"',
     inner: heroInner, controls: heroControls,
     title: 'Lightweight 3D objects for the web',
-    pitch: 'Glassy shapes you drop into HTML. One script tag, no dependencies, about 16 KB. Hover, pick a center of gravity, try an effect.',
+    pitch: `Glassy shapes you drop into HTML. One script tag, no dependencies, about ${Math.round(sizes.full / 1024)} KB. Hover, pick a center of gravity, try an effect.`,
   });
   const [, ...rest] = intro.split('\n');
   const layers = `<ul class="layers">
@@ -218,6 +220,30 @@ interactions.forEach((i) => {
   const prompt = `Interaction "${i.name}": ${i.description}\n\nEnable it with interaction="${i.name}" on the scene. Several can be combined, space separated.\n\n${rows.length ? optionsMd(rows) + '\n\n' : ''}\`\`\`html\n{{markup}}\n\`\`\``;
   page(`interactions/${i.name}.html`, { title: i.name, description: i.description, main: `<h1>${esc(i.name)}</h1><p class="lede">${esc(i.description)}</p>${preview({ sceneAttrs: `interaction="${i.name}"${i.name === 'gravity' ? ' gravity-strength="0.6"' : ''}`, inner: sceneInner, controls: [...sceneControls([i.name]), ...(i.name === 'gravity' ? [] : i.params.map((p) => rangeControl(p, 'scene', `${i.name}-${kebab(p.name)}`)))], prompt, stageClass: 'scatter' })}<h2>Usage</h2><p>Set <code>interaction="${i.name}"</code> on the scene. Interactions are scene rules: they work on every object inside, whatever its type. Several run in the order written.</p>${rows.length ? `<h2>Options</h2>${optionsTable(rows)}` : ''}${license}` });
 });
+
+// --- Performance: sizes from the build, a live meter on the demo scene, a benchmark the visitor runs ---
+{
+  const [head, sizesMd, meterMd, benchMd] = readFileSync('site/src/performance.md', 'utf8').split(/^(?=## )/m);
+  const sizesTable = `<table class="sizes"><thead><tr><th>Bundle</th><th>Gzipped</th><th>Bytes</th></tr></thead><tbody>
+<tr><td>Core, the engine alone</td><td>${kb(sizes.core)}</td><td>${sizes.core.toLocaleString('en-US')}</td></tr>
+<tr><td>Full, <code>solids.js</code> with ${objects.length} objects and ${effects.length} effects</td><td>${kb(sizes.full)}</td><td>${sizes.full.toLocaleString('en-US')}</td></tr></tbody></table>`;
+  const spec = JSON.stringify({ controls: [{ kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' }], prompt: '' });
+  const stat = (k, label) => `<div><dt>${label}</dt><dd data-k="${k}"></dd></div>`;
+  const meter = `<section class="panel">
+  <div class="stage scatter"><sd-scene id="demo" data-keep-style style="position:relative;height:100%;min-height:340px" interaction="gravity hover-lift" gravity-strength="0.6">${sceneInner}</sd-scene></div>
+  <form id="controls" class="controls" onsubmit="return false"></form>
+  <dl class="meter" id="meter">${stat('cpu', 'Frame (CPU)')}${stat('gpu', 'Frame (GPU)')}${stat('fps', 'fps')}${stat('dpr', 'Pixel ratio')}${stat('space', 'Color space')}</dl>
+</section>
+<script type="application/json" id="spec">${spec}</script>`;
+  const row = (attr, label) => `<tr ${attr}><td>${label}</td><td></td><td class="bar"><span></span></td><td></td></tr>`;
+  const bench = `<div class="bench-run"><button type="button" class="btn" id="bench-run">Run benchmark</button><span id="bench-status" aria-live="polite"></span></div>
+<table class="bench" id="bench"><thead><tr><th>Subject</th><th>CPU ms</th><th>Relative</th><th>GPU ms</th></tr></thead><tbody>
+${objects.map((o) => row(`data-tag="${o.tag}"`, `<a href="objects/${o.name}.html">${o.name}</a>`)).join('\n')}
+${effects.map((e) => row(`data-effect="${e.name}"`, `<a href="effects/${e.name}.html">${e.name}</a> on an orb`)).join('\n')}
+</tbody></table>`;
+  const main = `${md(head).replace('<p>', '<p class="lede">')}\n${md(sizesMd)}${sizesTable}\n${md(meterMd)}${meter}\n${md(benchMd)}${bench}`;
+  page('performance.html', { title: 'Performance', description: 'What solids costs: bundle sizes, a live frame meter, and a benchmark that runs in your browser.', main });
+}
 
 // --- static files ---
 copyFileSync('site/src/styles.css', `${OUT}/styles.css`);

@@ -18,6 +18,12 @@ function sizes() {
     console.log(`${file}: ${kb(gz)} gzipped (budget ${kb(max)})`);
     if (gz > max) fail(`${file} over budget: ${kb(gz)} > ${kb(max)}`);
   }
+  // The build records both sizes for the site; they must be the real, current numbers.
+  if (!existsSync('dist/sizes.json')) return fail('dist/sizes.json missing (run npm run build)');
+  const s = JSON.parse(readFileSync('dist/sizes.json', 'utf8'));
+  const real = { core: gzipSync(readFileSync('dist/core.js')).length, full: gzipSync(readFileSync('dist/solids.js')).length };
+  if (![s.core, s.full].every((n) => Number.isInteger(n) && n > 0)) fail(`dist/sizes.json needs two positive integers, got ${JSON.stringify(s)}`);
+  else if (s.core !== real.core || s.full !== real.full) fail(`dist/sizes.json is stale: ${JSON.stringify(s)} vs ${JSON.stringify(real)}`);
 }
 
 
@@ -352,6 +358,12 @@ gs.style.left = '180px'; gr.measure();
 for (let i = 0; i < 12; i++) await frame();
 result.cases.gravity.resizedRadius = Math.hypot(gs.rect.x + gs.rect.width / 2 + gs.anim.offset[0] - (gc.rect.x + gc.rect.width / 2), gs.rect.y + gs.rect.height / 2 + gs.anim.offset[1] - (gc.rect.y + gc.rect.height / 2));
 free(co.scene, gr);
+// Case P: frame metrics. After ten frames frameTime and fps are positive; reading gpuTime opts in to the timer and never throws.
+const pf = mk({}); pf.style.cssText = 'position:fixed;left:0;top:0';
+const gpu0 = pf.gpuTime;
+for (let i = 0; i < 10; i++) await frame();
+result.cases.perf = { frameTime: pf.frameTime, fps: pf.fps, gpu0, gpu: pf.gpuTime, glError: pf.gl?.getError() };
+free(pf);
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
@@ -365,7 +377,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'perf']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.tags.length})`);
@@ -420,6 +432,9 @@ async function smoke() {
     if (!(it.scroll?.diff > 0.01)) fail(`scroll: rotation did not change with the page scroll under reduced motion: ${js(it.scroll)}`);
     const tl = it.tall;
     if (!tl || Math.abs(tl.first) > 1e-4 || Math.abs(tl.last - 1) > 1e-4 || tl.min < -1e-4 || tl.max > 1 + 1e-4 || !(tl.step < 0.06)) fail(`scroll on a scene taller than the viewport: progress must clamp 0..1 without jumps: ${js(tl)}`);
+    const pf = r.cases.perf, finitePos = (v) => Number.isFinite(v) && v > 0;
+    if (!finitePos(pf.frameTime) || !finitePos(pf.fps)) fail(`frame metrics after ten frames: ${JSON.stringify(pf)}`);
+    if (pf.gpu0 !== null || !(pf.gpu === null || (Number.isFinite(pf.gpu) && pf.gpu >= 0)) || pf.glError !== 0) fail(`gpuTime must be null or finite ms without GL errors: ${JSON.stringify(pf)}`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px, color space ${r.cases.color.space})`);
     return r;
   } catch (e) { fail(`smoke: ${e.message.split('\n')[0]}`); }
@@ -437,9 +452,17 @@ async function site() {
     if (m && !html.includes(`<sd-${m[1]}`)) fail(`site/${f}: does not mount <sd-${m[1]}>`);
     if (/\u2014/.test(html)) fail(`site/${f}: contains an em dash`);
   }
+  // Sizes reach the page from dist/sizes.json: the hero pitch and the Performance page.
+  if (existsSync('dist/sizes.json')) {
+    const s = JSON.parse(readFileSync('dist/sizes.json', 'utf8'));
+    if (!readFileSync('site/dist/index.html', 'utf8').includes(`about ${Math.round(s.full / 1024)} KB`)) fail(`site/index: hero pitch does not say about ${Math.round(s.full / 1024)} KB`);
+    const perf = existsSync('site/dist/performance.html') ? readFileSync('site/dist/performance.html', 'utf8') : '';
+    if (!perf.includes(kb(s.core)) || !perf.includes(kb(s.full))) fail(`site/performance: sizes table does not show ${kb(s.core)} and ${kb(s.full)}`);
+    if (!/nothing is uploaded/i.test(perf)) fail('site/performance: the page must say nothing is uploaded');
+  }
   const chrome = chromePath();
   if (!chrome) return;
-  for (const [f, size] of [['scene.html'], ['index.html'], ['index.html', '500,800'], ['objects/orb.html'], ['effects/glow.html']]) {
+  for (const [f, size] of [['scene.html'], ['index.html'], ['index.html', '500,800'], ['objects/orb.html'], ['effects/glow.html'], ['performance.html']]) {
     const { srv, port, result } = await serve('site/dist');
     try {
       const r = await runPage(`http://127.0.0.1:${port}/${f}?__check`, chrome, result, 30000, size);
@@ -452,6 +475,15 @@ async function site() {
         if (styled < 12 || !/<sd-scene[^>]*style="[^"]*height/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code markup does not reproduce the layout (${styled} positioned objects)`);
         if (!r.centerOptions || r.centerOptions.length !== 6 || r.centerOptions.includes('cube')) fail(`site/index (${size ?? 'desktop'}): Center options should be the orb and its five orbiters, got ${JSON.stringify(r.centerOptions)}`);
         if (r.interactionAttr && !/gravity.*collide/.test(r.interactionAttr)) fail(`site/index (${size ?? 'desktop'}): toggling reordered interactions to "${r.interactionAttr}"`);
+        if (size ? r.readout !== 'hidden' : !/\d+ fps/.test(r.readout ?? '')) fail(`site/index (${size ?? 'desktop'}): dock readout should be ${size ? 'hidden' : 'visible with fps'}, got ${JSON.stringify(r.readout)}`);
+      }
+      if (f === 'performance.html') {
+        const b = r.bench;
+        if (!(Number.isFinite(b?.cpu) && b.cpu > 0) || !(b.gpu === null || Number.isFinite(b.gpu))) fail(`site/performance: solidsBench('sd-orb', 5) gave ${JSON.stringify(b)}`);
+        if (!/\d/.test(r.benchRow ?? '') || (b?.gpu === null && !/unavailable/.test(r.benchRow ?? ''))) fail(`site/performance: a benchmark row reads ${JSON.stringify(r.benchRow)}`);
+        if (!/^\D+[\d.]+unavailable$/.test(r.noTimerRow ?? '')) fail(`site/performance: without the GPU timer a row should show CPU ms and "unavailable", got ${JSON.stringify(r.noTimerRow)}`);
+        if (r.scenesBeforeBench !== r.scenes) fail(`site/performance: the benchmark left ${r.scenes - r.scenesBeforeBench} scene(s) behind`);
+        if (!/fps/.test(r.meter ?? '') || !/(srgb|display-p3)/.test(r.meter ?? '')) fail(`site/performance: live meter reads ${JSON.stringify(r.meter)}`);
       }
       if (r.errors.length) fail(`site/${f}: console errors: ${r.errors.join(' | ').slice(0, 600)}`);
       if (!(r.scenes >= 1)) fail(`site/${f}: no scene mounted`);
