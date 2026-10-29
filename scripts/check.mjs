@@ -371,33 +371,103 @@ const gpu0 = pf.gpuTime;
 for (let i = 0; i < 10; i++) await frame();
 result.cases.perf = { frameTime: pf.frameTime, fps: pf.fps, gpu0, gpu: pf.gpuTime, glError: pf.gl?.getError() };
 free(pf);
-// Case U: universe. Seeded light-DOM children, depth and focus without regenerating, a gravity center, odd inputs, one context.
+// Case U: universe. Seeded 3D bodies, live depth and focus, camera spin, drag and pointer tilt, unique motion, collisions, 3D orbits, pasted markup, odd inputs.
 const uni = (attrs) => { const u = document.createElement('sd-universe'); u.setAttribute('theme', 'dark'); for (const [k, v] of Object.entries(attrs)) u.setAttribute(k, v); return document.body.appendChild(u); };
-const sig = (u) => [...u.children].map((c) => c.localName + ' ' + c.getAttribute('style') + ' ' + c.getAttribute('size')).join('|');
-const radii = (u) => [...u.children].map((c) => (c.effectNames.includes('defocus') ? Number(c.getAttribute('defocus-radius')) : 0));
-const ua = uni({ count: '12', seed: '3' }), ub = uni({ count: '12', seed: '3' }), uc = uni({ count: '12', seed: '4' });
+const sig = (u) => [...u.children].map((c) => c.localName + ' ' + c.dataset.pos + ' ' + c.getAttribute('size')).join('|');
+const radii = (u) => [...u.children].map((c) => (c.effectNames.includes('defocus') ? c.effectParams.defocus.radius : 0));
+const still = (u) => { for (const c of u.children) c.setAttribute('animation', ''); for (let i = 0; i < 6; i++) u.frame(i / 10, 100); };
+const offs = (u) => [...u.children].map((c) => [...c.anim.offset]);
+const sameOffs = (a, b) => a.every((o, i) => Math.abs(o[0] - b[i][0]) < 0.01 && Math.abs(o[1] - b[i][1]) < 0.01);
+const ptr = (el, type, x, y, extra = {}) => { const r = el.getBoundingClientRect(); el.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: r.left + x, clientY: r.top + y, pointerId: 1, isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, ...extra })); };
+const ua = uni({ count: '12', seed: '3', camera: '' }), ub = uni({ count: '12', seed: '3', camera: '' }), uc = uni({ count: '12', seed: '4', camera: '' });
 await frame();
-const uv = result.cases.universe = { count: ua.children.length, objects: ua.objects.size, same: sig(ua) === sig(ub), other: sig(ua) !== sig(uc) };
-const kids0 = [...ua.children], pos0 = sig(ua), d0 = radii(ua);
-ua.setAttribute('depth', '1'); const d1 = radii(ua);
-ua.setAttribute('focus', '0.6'); const d2 = radii(ua);
-ua.setAttribute('depth', '0'); uv.depthZero = radii(ua);
+const uv = result.cases.universe = { count: ua.children.length, objects: ua.objects.size, same: sig(ua) === sig(ub), other: sig(ua) !== sig(uc), hasPos: [...ua.children].every((c) => /^-?[0-9.]+ -?[0-9.]+ -?[0-9.]+$/.test(c.dataset.pos || '')) };
+const kids0 = [...ua.children], pos0 = sig(ua); ua.frame(0, 16); const d0 = radii(ua);
+ua.setAttribute('depth', '1'); ua.frame(0, 16); const d1 = radii(ua);
+ua.setAttribute('focus', '0.6'); ua.frame(0, 16); const d2 = radii(ua);
+ua.setAttribute('depth', '0'); ua.frame(0, 16); uv.depthZero = radii(ua);
 uv.kept = [...ua.children].every((c, i) => c === kids0[i]) && sig(ua) === pos0;
 uv.depthMoved = d1.some((v, i) => v !== d0[i]) && d2.some((v, i) => v !== d1[i]) && d0.some((v) => v > 0);
+{ const zs = [...ua.children].map((c) => Number(c.dataset.pos.split(' ')[2])); const near = ua.children[zs.indexOf(Math.max(...zs))], far = ua.children[zs.indexOf(Math.min(...zs))];
+  uv.scale = { near: near.anim.scale, far: far.anim.scale }; }
+// Unique motion: no two bodies share an offset or a rotation.
+for (let i = 0; i < 10; i++) ua.frame(i / 10, 100);
+{ const o = offs(ua), rot = [...ua.children].map((c) => [...c.anim.rotation]); let dupO = 0, dupR = 0;
+  for (let i = 0; i < o.length; i++) for (let j = i + 1; j < o.length; j++) { if (Math.hypot(o[i][0] - o[j][0], o[i][1] - o[j][1]) < 0.5) dupO++; if (rot[i].every((v, k) => Math.abs(v - rot[j][k]) < 0.01)) dupR++; }
+  uv.unique = { dupOffsets: dupO, dupRotations: dupR }; }
 free(ua, ub, uc);
-const ug = uni({ count: '12', seed: '3', gravity: '' }), u0 = uni({ count: '0' }), uk = uni({ count: '8', shapes: 'sd-orb sd-nope ring' }), un = uni({ shapes: 'sd-nope' });
-for (let i = 0; i < 8; i++) await frame();
-const roles = [...ug.children].map((c) => c.getAttribute('gravity'));
-uv.gravity = { centers: roles.filter((g) => g === 'center').length, orbit: roles.filter((g) => g === 'orbit').length, on: ug.interactionNames.includes('gravity'),
-  moved: [...ug.children].some((c) => c.getAttribute('gravity') === 'orbit' && Math.hypot(...c.anim.offset) > 0.01) };
+// Camera: spin turns yaw; a fixed camera with no drift holds still; drag and pointer tilt move the view only when their tokens are on.
+const us = uni({ count: '6', seed: '2', camera: 'spin' }), uf = uni({ count: '6', seed: '2', camera: '', drift: '0' });
+await frame(); still(us); still(uf);
+const yaw0 = us.yaw, p0 = uf.bodies.map((b) => [...b.p]), of0 = offs(uf);
+for (let i = 0; i < 5; i++) { us.frame(1 + i / 10, 100); uf.frame(1 + i / 10, 100); }
+uv.spin = { turned: Math.abs(us.yaw - yaw0) > 0.01, held: uf.yaw === 0 && uf.bodies.every((b, i) => b.p.every((v, k) => v === p0[i][k])) && sameOffs(offs(uf), of0) };
+free(us, uf);
+const ud = uni({ count: '6', seed: '2', camera: 'drag', drift: '0' }), un0 = uni({ count: '6', seed: '2', camera: '', drift: '0' }), up = uni({ count: '6', seed: '2', camera: 'pointer', drift: '0' });
+await frame(); still(ud); still(un0); still(up);
+for (const u of [ud, un0]) { ptr(u, 'pointerdown', 100, 100); ptr(u, 'pointermove', 140, 110); ptr(u, 'pointermove', 180, 120); ptr(u, 'pointerup', 180, 120); u.frame(2, 16); }
+uv.drag = { turned: Math.abs(ud.yaw) > 0.1, held: un0.yaw === 0 };
+const tilt0 = offs(up); ptr(up, 'pointermove', 580, 200); for (let i = 0; i < 8; i++) up.frame(2 + i / 10, 100);
+const tilt1 = offs(up); ptr(un0, 'pointermove', 580, 200); const n0 = offs(un0); for (let i = 0; i < 8; i++) un0.frame(2 + i / 10, 100);
+uv.tilt = { moved: !sameOffs(tilt0, tilt1), held: sameOffs(n0, offs(un0)) };
+free(ud, un0, up);
+// Collide: two overlapping pasted bodies separate to at least the sum of their radii (80 px / 640 each); without collide they stay put.
+const pasteU = (attrs, inner) => { const d = document.body.appendChild(document.createElement('div')); d.innerHTML = '<sd-universe theme="dark" ' + attrs + '>' + inner + '</sd-universe>'; return d.firstElementChild; };
+const two = '<sd-orb data-pos="0 0 0" size="80px"></sd-orb><sd-orb data-pos="0.05 0 0" size="80px"></sd-orb>';
+const cc = pasteU('collide camera="" drift="0"', two), cn = pasteU('camera="" drift="0"', two);
+await frame();
+const dist = (u) => Math.hypot(...u.bodies[0].p.map((v, i) => v - u.bodies[1].p[i]));
+for (let i = 0; i < 30; i++) { cc.frame(i / 10, 50); cn.frame(i / 10, 50); }
+uv.collide = { apart: dist(cc), together: dist(cn) };
+{ const ps = [cc.parentNode, cn.parentNode]; free(cc, cn); ps.forEach((d) => d.remove()); }
+// Gravity: one center at the origin, orbiters move on circles of constant radius.
+const ug = uni({ count: '12', seed: '3', gravity: '', camera: '', drift: '0' }), u0 = uni({ count: '0' }), uk = uni({ count: '8', shapes: 'sd-orb sd-nope ring' }), un = uni({ shapes: 'sd-nope' });
+await frame();
+{ const centers = [...ug.children].filter((c) => c.getAttribute('gravity') === 'center'); const orbit = ug.bodies.filter((b) => b.orbit);
+  const r0 = orbit.map((b) => Math.hypot(...b.p)), pos = orbit.map((b) => [...b.p]);
+  for (let i = 0; i < 30; i++) ug.frame(i / 10, 100);
+  uv.gravity = { centers: centers.length, centerAtOrigin: centers.length === 1 && Math.hypot(...ug.bodies.find((b) => b.el === centers[0]).p) < 1e-6, orbit: orbit.length,
+    moved: orbit.every((b, i) => Math.hypot(...b.p.map((v, k) => v - pos[i][k])) > 0.01), circular: orbit.every((b, i) => Math.abs(Math.hypot(...b.p) - r0[i]) < 1e-3), interaction: ug.interactionNames.includes('gravity') }; }
 uv.zero = u0.children.length; uv.known = [...uk.children].map((c) => c.localName); uv.none = un.children.length;
 free(ug, u0, uk, un);
-// Pasted markup (what Copy code gives) keeps its children and gets its depth applied.
-const paste = document.body.appendChild(document.createElement('div'));
-paste.innerHTML = '<sd-universe count="5" theme="dark"><sd-orb data-z="0.8" size="60px" style="position:absolute;left:50%;top:50%"></sd-orb></sd-universe>';
-const pu = paste.firstElementChild; await frame();
-uv.pasted = { children: pu.children.length, attached: pu.objects.size, radius: pu.firstElementChild.getAttribute('defocus-radius') };
-free(pu); paste.remove();
+// Reduced motion: spin, drift and orbits hold still.
+window.__SD_REDUCED = true;
+const ur = uni({ count: '8', seed: '5', gravity: '', camera: 'spin' });
+await frame(); const rmp = ur.bodies.map((b) => [...b.p]); for (let i = 0; i < 5; i++) ur.frame(i / 10, 100);
+uv.reduced = { yaw: ur.yaw, held: ur.bodies.every((b, i) => b.p.every((v, k) => v === rmp[i][k])) };
+window.__SD_REDUCED = false; free(ur);
+// Review fixes: collisions off the center and orbiters must not pump energy; a held release has no inertia; other pointers are ignored
+// during a drag; pinch zoom stays available; pinned bodies and orbiters do not wobble; the pointer tilt moves front shapes toward the pointer.
+const uke = uni({ count: '36', seed: '5', gravity: '', collide: '', camera: '', drift: '0.5' });
+await frame();
+const ke = (u) => u.bodies.filter((b) => !b.pinned && !b.orbit).reduce((t, b) => t + b.r * b.r * b.r * (b.v[0] ** 2 + b.v[1] ** 2 + b.v[2] ** 2), 0);
+const ke0 = ke(uke); for (let i = 0; i < 1200; i++) uke.step(100); uv.energy = { ratio: ke(uke) / ke0 }; // the sim alone: drawing 1200 frames would take minutes under software GL
+free(uke);
+const uh = uni({ count: '6', seed: '2', camera: 'drag', drift: '0' });
+await frame(); still(uh);
+ptr(uh, 'pointerdown', 100, 100); ptr(uh, 'pointermove', 160, 110); await new Promise((r) => setTimeout(r, 150)); ptr(uh, 'pointerup', 160, 110);
+const yawUp = uh.yaw; for (let i = 0; i < 5; i++) uh.frame(3 + i / 10, 100);
+uv.heldRelease = { drift: Math.abs(uh.yaw - yawUp) };
+ptr(uh, 'pointerdown', 100, 100); const yawDown = uh.yaw; ptr(uh, 'pointermove', 300, 100, { pointerId: 2, isPrimary: false }); uv.otherPointer = { moved: Math.abs(uh.yaw - yawDown) }; ptr(uh, 'pointerup', 100, 100);
+uv.touch = getComputedStyle(uh).touchAction;
+free(uh);
+const uw = uni({ count: '12', seed: '3', gravity: '', camera: '', drift: '0.5' }), uw0 = uni({ count: '12', seed: '3', gravity: '', camera: '', drift: '0' });
+await frame(); still(uw); still(uw0);
+{ let wob = 0; for (let i = 0; i < 20; i++) { uw.frame(1 + i / 10, 100); uw0.frame(1 + i / 10, 100);
+    uw.bodies.forEach((b, k) => { if (b.pinned || b.orbit) wob = Math.max(wob, Math.hypot(b.el.anim.offset[0] - uw0.bodies[k].el.anim.offset[0], b.el.anim.offset[1] - uw0.bodies[k].el.anim.offset[1])); }); }
+  uv.wobble = { center: Math.hypot(...uw.bodies.find((b) => b.pinned).el.anim.offset), pinnedVsStill: wob }; }
+free(uw, uw0);
+const ut = pasteU('camera="pointer" drift="0"', '<sd-orb data-pos="0 0 0.8" size="60px"></sd-orb>');
+await frame(); ut.frame(0, 16);
+ptr(ut, 'pointermove', 580, 200); for (let i = 0; i < 8; i++) ut.frame(1 + i / 10, 100); const right = [...ut.firstElementChild.anim.offset];
+ptr(ut, 'pointermove', 300, 390); for (let i = 0; i < 8; i++) ut.frame(2 + i / 10, 100); const down = [...ut.firstElementChild.anim.offset];
+uv.tiltDir = { right: right[0], down: down[1] };
+{ const d = ut.parentNode; free(ut); d.remove(); }
+// Pasted markup (what Copy code gives) keeps its child, attaches it and scales a near body up.
+const pu = pasteU('count="5" camera=""', '<sd-orb data-pos="0 0 0.8" size="60px"></sd-orb>');
+await frame(); pu.frame(0, 16);
+uv.pasted = { children: pu.children.length, attached: pu.objects.size, scale: pu.firstElementChild.anim.scale };
+{ const d = pu.parentNode; free(pu); d.remove(); }
 const ubig = uni({ count: '120', seed: '7' });
 await frame(); await frame();
 uv.big = { children: ubig.children.length, pixels: pixels(ubig), stray: [...ubig.children].filter((c) => c.scene !== ubig || c.shadowRoot.querySelector('sd-scene')).length };
@@ -419,14 +489,28 @@ for (let i = 0; i < 40; i++) { const o = pv.appendChild(document.createElement(t
 await frame(); await frame(); await frame();
 const poolFull = pv.fbos?.pool.size;
 for (const o of [...pv.children]) o.remove();
-await frame(); await frame();
-result.cases.pool = { full: poolFull, empty: pv.fbos?.pool.size };
+pv.frame(0, 16); pv.frame(0, 16); const poolKept = pv.fbos?.pool.size;
+for (let i = 0; i < 70; i++) pv.frame(i / 10, 16);
+result.cases.pool = { full: poolFull, kept: poolKept, empty: pv.fbos?.pool.size };
 free(hv, pv);
 const udef = document.body.appendChild(document.createElement('sd-universe')); udef.setAttribute('count', '8'); udef.setAttribute('theme', 'dark'); udef.style.cssText = 'height:auto;width:400px;display:block';
 await frame(); await frame();
 result.cases.universe.defaultHeight = udef.getBoundingClientRect().height;
 result.cases.universe.defaultPixels = pixels(udef);
 free(udef);
+// Case W: the quad follows the object's scale (a glow at scale 2 paints beyond 1.5x the rect) and the phase attribute offsets the animation clock.
+const qs = mk({}, { effect: 'glow', size: '60px' }); qs.style.cssText = 'width:200px;height:200px';
+const qo = qs.firstElementChild; const qu = qo.update.bind(qo); qo.update = (dt) => { qu(dt); qo.anim.scale = 2; };
+await frame(); await frame();
+{ const buf = read(qs), pr = qs.pixelRatio, bw = qs.gl.drawingBufferWidth, bh = qs.gl.drawingBufferHeight, r = qo.rect;
+  const cx = (r.x + r.width / 2) * pr, cy = bh - (r.y + r.height / 2) * pr, half = r.width * 0.75 * pr; let outside = 0;
+  for (let i = 0; i < buf.length; i += 4) { if (buf[i + 3] <= 8) continue; const x = (i / 4) % bw, y = Math.floor(i / 4 / bw); if (Math.abs(x - cx) > half || Math.abs(y - cy) > half) outside++; }
+  result.cases.quad = { outside }; }
+free(qs);
+const ph = mk({}, { animation: 'spin' }); const ph2 = ph.appendChild(document.createElement(tags[0])); ph2.setAttribute('animation', 'spin'); ph2.setAttribute('phase', '2');
+await frame(); await frame();
+result.cases.phase = { differ: [...ph.firstElementChild.anim.rotation].some((v, i) => Math.abs(v - ph2.anim.rotation[i]) > 0.1) };
+free(ph);
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
@@ -439,7 +523,7 @@ async function smoke() {
   writeFileSync('scripts/.check-page.html', CHECK_PAGE);
   const { srv, port, result } = await serve('.');
   try {
-    const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result);
+    const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 90000);
     for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
@@ -504,18 +588,33 @@ async function smoke() {
     if (pf.gpu0 !== null || !(pf.gpu === null || (Number.isFinite(pf.gpu) && pf.gpu >= 0)) || pf.glError !== 0) fail(`gpuTime must be null or finite ms without GL errors: ${JSON.stringify(pf)}`);
     const uv = r.cases.universe;
     if (uv.count !== 12 || uv.objects !== 12) fail(`universe count="12": ${uv.count} children, ${uv.objects} attached`);
-    if (!uv.same || !uv.other) fail(`universe seed: same seed same layout ${uv.same}, other seed differs ${uv.other}`);
+    if (!uv.same || !uv.other || !uv.hasPos) fail(`universe seed: same seed same layout ${uv.same}, other seed differs ${uv.other}, data-pos on every child ${uv.hasPos}`);
     if (!uv.kept) fail('universe: depth or focus change regenerated the children');
     if (!uv.depthMoved) fail('universe: depth and focus changes did not update the defocus radii');
     if (!uv.depthZero?.length || !uv.depthZero.every((v) => v === 0)) fail(`universe depth="0": defocus radii ${js(uv.depthZero)}`);
-    if (uv.gravity?.centers !== 1 || !(uv.gravity.orbit > 0) || !uv.gravity.on || !uv.gravity.moved) fail(`universe gravity: ${js(uv.gravity)}`);
-    if (uv.pasted?.children !== 1 || uv.pasted.attached !== 1 || uv.pasted.radius !== '5.6') fail(`pasted universe markup should keep its one child and refocus it: ${js(uv.pasted)}`);
+    if (!(uv.scale?.near > uv.scale?.far)) fail(`universe perspective: near scale ${uv.scale?.near} should exceed far scale ${uv.scale?.far}`);
+    if (uv.unique?.dupOffsets !== 0 || uv.unique?.dupRotations !== 0) fail(`universe motion in packs: ${js(uv.unique)}`);
+    if (!uv.spin?.turned || !uv.spin?.held) fail(`universe camera spin: ${js(uv.spin)}`);
+    if (!uv.drag?.turned || !uv.drag?.held) fail(`universe drag: ${js(uv.drag)}`);
+    if (!uv.tilt?.moved || !uv.tilt?.held) fail(`universe pointer tilt: ${js(uv.tilt)}`);
+    if (!(uv.collide?.apart >= 0.25 - 1e-3) || !(Math.abs(uv.collide?.together - 0.05) < 1e-6)) fail(`universe collide: ${js(uv.collide)} (expected apart >= 0.25, together 0.05)`);
+    if (uv.gravity?.centers !== 1 || !uv.gravity.centerAtOrigin || !(uv.gravity.orbit > 0) || !uv.gravity.moved || !uv.gravity.circular || uv.gravity.interaction) fail(`universe gravity: ${js(uv.gravity)}`);
+    if (uv.reduced?.yaw !== 0 || !uv.reduced?.held) fail(`universe under reduced motion still moves: ${js(uv.reduced)}`);
+    if (uv.pasted?.children !== 1 || uv.pasted.attached !== 1 || !(uv.pasted.scale > 1)) fail(`pasted universe markup should keep its one child and scale it up: ${js(uv.pasted)}`);
     if (uv.zero !== 0 || uv.none !== 0) fail(`universe count="0" or only unknown shapes: ${uv.zero} and ${uv.none} children, expected 0`);
     if (uv.known?.length !== 8 || !uv.known.every((t) => t === 'sd-orb' || t === 'sd-ring')) fail(`universe shapes="sd-orb sd-nope ring": ${js(uv.known)}`);
     if (uv.big?.children !== 120 || !(uv.big.pixels > 1000) || uv.big.stray !== 0) fail(`universe count="120": ${js(uv.big)}`);
     if (!(uv.defocus?.blur > 0.05) || !(uv.defocus.zero < 0.01)) fail(`defocus: radius 12 vs none ${pct(uv.defocus?.blur ?? 0)}, radius 0 vs none ${pct(uv.defocus?.zero ?? 1)}`);
     if (!(r.cases.look.bright > 20)) fail(`glass highlights flattened: only ${r.cases.look.bright} pixels keep rgb above alpha`);
-    if (!(r.cases.pool.full >= 40) || r.cases.pool.empty !== 0) fail(`effect buffer pool: ${r.cases.pool.full} pairs with 40 sizes in use (expected >= 40), ${r.cases.pool.empty} after removal (expected 0)`);
+    if (!(r.cases.pool.full >= 1 && r.cases.pool.full <= 12) || !(r.cases.pool.kept >= 1) || r.cases.pool.empty !== 0) fail(`effect buffer pool: ${r.cases.pool.full} pairs for 40 sizes in 8 px steps (expected 1 to 12), ${r.cases.pool.kept} two frames after removal (expected >= 1, a grace period), ${r.cases.pool.empty} after 70 frames (expected 0)`);
+    if (!(uv.energy?.ratio < 1.1)) fail(`universe gravity + collide pumps energy: free-body kinetic energy x${uv.energy?.ratio?.toFixed(2)} after 120 s (expected < 1.1)`);
+    if (!(uv.heldRelease?.drift < 1e-6)) fail(`universe drag: a release after holding still flung the view by ${uv.heldRelease?.drift} rad`);
+    if (!(uv.otherPointer?.moved < 1e-9)) fail(`universe drag: a second pointer moved the view by ${uv.otherPointer?.moved} rad`);
+    if (!/pinch-zoom/.test(uv.touch || '')) fail(`universe touch-action "${uv.touch}" blocks pinch zoom`);
+    if (!(uv.wobble?.center < 1e-6) || !(uv.wobble?.pinnedVsStill < 1e-6)) fail(`universe wobble on the center or the orbiters: ${js(uv.wobble)}`);
+    if (!(uv.tiltDir?.right > 0) || !(uv.tiltDir?.down > 0)) fail(`universe pointer tilt should move front shapes toward the pointer: ${js(uv.tiltDir)}`);
+    if (!(r.cases.quad?.outside > 50)) fail(`quad does not follow scale: ${r.cases.quad?.outside} px painted beyond 1.5x the rect at scale 2 (expected > 50)`);
+    if (!r.cases.phase?.differ) fail('phase="2" should offset the spin against a sibling without one');
     if (!(uv.defaultHeight >= 300) || !(uv.defaultPixels > 1000)) fail(`universe with no author height: ${uv.defaultHeight}px tall, ${uv.defaultPixels} px drawn`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px, color space ${r.cases.color.space})`);
     return r;
@@ -548,6 +647,7 @@ async function site() {
   const index = text('index.html');
   const h2s = [...index.slice(index.indexOf('<main')).matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
   const ORDER = ['Built for agents', 'Install', 'Four layers', 'Universe', 'Catalogue', 'Performance', 'Details'];
+  if (!/<sd-universe class="band-universe"[^>]*\bgravity\b[^>]*\bcollide\b/.test(index)) fail('site/index: the universe band should run with gravity and collide');
   if (h2s.join('|') !== ORDER.join('|')) fail(`site/index: sections ${JSON.stringify(h2s)}, expected ${JSON.stringify(ORDER)}`);
   const dock = index.match(/class="controls dock"[\s\S]*?<\/form>/)?.[0] ?? '';
   const heroPrompt = JSON.parse(index.match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}').prompt ?? '';
@@ -595,7 +695,8 @@ async function site() {
       if (f.startsWith('effects/') && r.subject !== 'sd-cube') fail(`site/${f}: Object select left subject "${r.subject}"`);
       if (f === 'scene.html' && !/<sd-ring[^>]*gravity="center"/.test(r.live)) fail(`site/${f}: center select did not mark the ring: ${r.live?.slice(0, 160)}`);
       if (f === 'scene.html' && /<sd-scene[^>]*gravity="/.test(r.live)) fail(`site/${f}: junk gravity attribute on the scene`);
-      if (f === 'universe.html' && (!(r.objects >= 30) || !/<sd-universe[^>]*count="36"/.test(r.live) || !/data-z="/.test(r.live))) fail(`site/${f}: universe markup: ${r.objects} children, ${r.live?.slice(0, 160)}`);
+      if (f === 'universe.html' && !/<sd-universe[^>]*camera="none"/.test(r.live)) fail(`site/${f}: with Spin, Drag and Pointer off, Copy code should carry camera="none": ${r.live?.slice(0, 120)}`);
+      if (f === 'universe.html' && (!(r.objects >= 30) || !/<sd-universe[^>]*count="36"/.test(r.live) || !/data-pos="/.test(r.live) || /data-z="/.test(r.live))) fail(`site/${f}: universe markup: ${r.objects} children, ${r.live?.slice(0, 160)}`);
       if (f === 'scene.html' && !/gravity-strength="0"/.test(r.live)) fail(`site/${f}: strength slider at 0 did not stick: ${r.live?.slice(0, 160)}`);
     } catch (e) { fail(`site/${f}: ${e.message}`); }
     finally { srv.close(); }

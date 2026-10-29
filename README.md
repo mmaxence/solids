@@ -1,6 +1,6 @@
 # solids
 
-Lightweight 3D objects for the web. Zero dependencies, under 20 KB gzipped for the whole library.
+Lightweight 3D objects for the web. Zero dependencies, about 20 KB gzipped for the whole library.
 
 ## Built for agents
 
@@ -43,7 +43,7 @@ Each object is a web component drawn by a fragment shader. Add one script tag, t
 
 Objects outside a scene work on their own. Inside a scene they share one canvas and can react to each other: mark one `gravity="center"` and the rest orbit it.
 
-`<sd-universe count="36" seed="1" depth="0.5">` fills its box with seeded shapes at different depths, blurred away from its `focus` plane; add `gravity` and they orbit the largest one.
+`<sd-universe count="36" seed="1" gravity collide>` fills its box with a seeded cloud of shapes in 3D: a camera that spins, drags and tilts toward the pointer, a depth of field around its `focus` plane, orbits around the largest shape and elastic bounces.
 
 ## Develop
 
