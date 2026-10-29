@@ -101,6 +101,78 @@ if (specEl) {
 }
 function flash(btn, text) { const t = btn.textContent; btn.textContent = text; setTimeout(() => (btn.textContent = t), 1200); }
 
+// Live numbers from the demo scene: the hero dock readout, and the meter on the Performance page.
+const demo = $('#demo'), readout = $('#readout'), meter = $('#meter');
+if (demo && (readout || meter)) {
+  const show = () => {
+    const fps = Math.round(demo.fps);
+    if (readout) readout.textContent = `${fps} fps · ${demo.frameTime.toFixed(2)} ms`;
+    if (!meter) return;
+    const gpu = demo.gpuTime;   // reading it turns the GPU timer on for this scene
+    const pr = +demo.pixelRatio.toFixed(2), dpr = +(devicePixelRatio || 1).toFixed(2);
+    const v = {
+      cpu: `${demo.frameTime.toFixed(2)} ms`,
+      gpu: gpu != null ? `${gpu.toFixed(2)} ms` : demo.gl?.getExtension('EXT_disjoint_timer_query_webgl2') ? 'measuring' : 'unavailable',
+      fps: String(fps), dpr: pr < dpr ? `${pr} (screen ${dpr})` : String(pr), space: demo.colorSpace,
+    };
+    for (const [k, t] of Object.entries(v)) meter.querySelector(`[data-k="${k}"]`).textContent = t;
+  };
+  show(); setInterval(show, 500);
+}
+
+// Benchmark: one subject in a hidden scene, frames driven by hand, context freed at the end.
+const raf = () => new Promise((r) => requestAnimationFrame(r));
+/** `subject` is an object tag or { effect }. Resolves { cpu, gpu }: median ms per frame, waited until drawn; GPU ms or null. */
+async function solidsBench(subject, frames = 60) {
+  await customElements.whenDefined('sd-scene');
+  frames = Math.max(1, frames | 0);
+  const sc = document.createElement('sd-scene');
+  sc.setAttribute('paused', '');   // no rAF loop of its own
+  sc.setAttribute('theme', document.documentElement.dataset.theme || 'dark');
+  if (subject.effect) sc.setAttribute('effect', subject.effect);
+  // On screen for GL but invisible: visibility:hidden or display:none would not draw.
+  sc.style.cssText = 'position:fixed;left:0;top:0;width:240px;height:240px;display:grid;place-items:center;opacity:0;pointer-events:none';
+  sc.appendChild(document.createElement(subject.effect ? 'sd-orb' : subject)).setAttribute('size', '200px');
+  document.body.append(sc);
+  const gl = sc.gl;
+  try {
+    if (!gl) throw new Error('WebGL2 is unavailable in this browser.');
+    const px = new Uint8Array(4);
+    // A one-pixel read waits for the frame to finish, so the time includes the GPU work.
+    const one = (i) => { const t = performance.now(); sc.frame(i / 60, 16); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); return performance.now() - t; };
+    for (let i = 0; i < 3; i++) one(i);   // shader compile and warm-up
+    const timer = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+    if (timer) sc.gpuTime;   // opt in
+    const times = Array.from({ length: frames }, (_, i) => one(i)).sort((a, b) => a - b);
+    // Timer results arrive only after the event loop turns; a few more frames collect them.
+    if (timer) for (let i = 0; i < 10; i++) { await raf(); one(frames + i); }
+    return { cpu: times[frames >> 1], gpu: timer ? sc.gpuTime : null };
+  } finally {
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    sc.remove();
+  }
+}
+window.solidsBench = solidsBench;
+
+/** Benchmark one table row and redraw the bars relative to the slowest row so far. */
+async function benchRow(tr, frames) {
+  const r = await solidsBench(tr.dataset.tag || { effect: tr.dataset.effect }, frames);
+  tr.cells[1].textContent = r.cpu.toFixed(2);
+  tr.cells[3].textContent = r.gpu == null ? 'unavailable' : r.gpu.toFixed(2);
+  tr.dataset.cpu = r.cpu;
+  const done = $$('tr[data-cpu]', tr.parentElement), max = Math.max(...done.map((x) => +x.dataset.cpu));
+  for (const x of done) x.cells[2].firstElementChild.style.width = `${(+x.dataset.cpu / max) * 100}%`;
+}
+$('#bench-run')?.addEventListener('click', async (e) => {
+  const btn = e.currentTarget, status = $('#bench-status'), rows = $$('#bench tbody tr');
+  btn.disabled = true; demo?.setAttribute('paused', '');
+  try {
+    for (const [i, tr] of rows.entries()) { status.textContent = `Running ${i + 1} of ${rows.length}`; await benchRow(tr); }
+    status.textContent = 'Done. Measured here, kept here.';
+  } catch (err) { status.textContent = String(err.message || err); }
+  finally { btn.disabled = false; demo?.removeAttribute('paused'); }
+});
+
 // Headless check hook: report console errors after a few frames.
 if (location.search.includes('__check')) {
   const errors = [];
@@ -108,7 +180,19 @@ if (location.search.includes('__check')) {
   console.error = (...a) => { errors.push(a.map(String).join(' ')); ce(...a); };
   addEventListener('error', (e) => errors.push(String(e.message)));
   let n = 0;
-  const report = () => {
+  const report = async () => {
+    const scenesBeforeBench = $$('sd-scene').length;
+    let bench, benchRowText, noTimerRow;
+    if ($('#bench')) {
+      try {
+        bench = await solidsBench('sd-orb', 5); const [tr, tr2] = $$('#bench tbody tr'); await benchRow(tr, 5); benchRowText = tr.textContent;
+        // A browser without the GPU timer: the row still fills, the GPU cell says unavailable.
+        const ge = WebGL2RenderingContext.prototype.getExtension;
+        WebGL2RenderingContext.prototype.getExtension = function (n) { return n === 'EXT_disjoint_timer_query_webgl2' ? null : ge.call(this, n); };
+        try { await benchRow(tr2, 5); noTimerRow = tr2.textContent; } finally { WebGL2RenderingContext.prototype.getExtension = ge; }
+      }
+      catch (e) { errors.push('bench: ' + (e?.message || e)); }
+    }
     $('.theme')?.click();
     const sel = $$('#controls label').find((l) => l.querySelector('span')?.textContent === 'Object')?.querySelector('select');
     if (sel) { sel.value = 'sd-cube'; sel.dispatchEvent(new Event('input')); }
@@ -124,7 +208,8 @@ if (location.search.includes('__check')) {
     fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent,
       objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top,
       markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr,
-      contexts: $$('sd-scene').length + $$('*').filter((e) => e.shadowRoot?.querySelector('sd-scene')).length, sceneObjects: $$('sd-scene').map((s) => s.objects?.size) }) });
+contexts: $$('sd-scene').length + $$('*').filter((e) => e.shadowRoot?.querySelector('sd-scene')).length, sceneObjects: $$('sd-scene').map((s) => s.objects?.size),
+      readout: readout && (getComputedStyle(readout).display === 'none' ? 'hidden' : readout.textContent), meter: meter?.textContent, bench, benchRow: benchRowText, noTimerRow, scenesBeforeBench }) });
   };
   const tick = () => (++n < 6 ? requestAnimationFrame(tick) : report());
   requestAnimationFrame(tick);

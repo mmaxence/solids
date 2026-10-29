@@ -17,6 +17,13 @@ export class SdScene extends HTMLElement {
   interactionParams: Record<string, Record<string, number>> = {};
   theme: 'auto' | 'dark' | 'light' = 'auto';
   pixelRatio = 1; maxDpr = 2; width = 0; height = 0;
+  /** ms spent in `frame()` (EMA, alpha 0.1): the CPU side of one frame. */
+  frameTime = 0;
+  /** Frames per second from the rAF loop (EMA). */
+  fps = 0;
+  private gpuMs: number | null = null;
+  private gpuOn = false;
+  private query: WebGLQuery | null = null;   // one timer query in flight at a time
   private raf = 0; private last = 0; private t0 = 0;
   private visible = true; private paused = false;
   private ro: ResizeObserver | null = null;
@@ -38,7 +45,7 @@ export class SdScene extends HTMLElement {
       if (!this.gl) { this.dataset.fallback = ''; for (const o of this.objects) o.dataset.fallback = ''; }
       this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.stop(); });
       this.canvas.addEventListener('webglcontextrestored', () => {
-        clearCache(this.gl!); this.fbos = null; initState(this.gl!);
+        clearCache(this.gl!); this.fbos = null; this.query = null; initState(this.gl!);
         for (const o of this.objects) o.broken = false;
         this.start();
       });
@@ -116,6 +123,7 @@ export class SdScene extends HTMLElement {
   private tick = (now: number) => {
     this.raf = 0;
     if (!this.t0) this.t0 = now;
+    if (this.last) this.fps = ema(this.fps, 1000 / Math.max(now - this.last, 1));
     const dt = this.last ? Math.min(now - this.last, 100) : 16;
     this.last = now;
     this.frame((now - this.t0) / 1000, dt);
@@ -127,6 +135,32 @@ export class SdScene extends HTMLElement {
     const gl = this.gl;
     const W = this.canvas.width, H = this.canvas.height;
     if (!gl || W === 0 || H === 0) return;
+    const start = performance.now();
+    const timer = this.gpuOn ? this.gpuBegin(gl) : null;
+    try { this.render(gl, W, H, t, dt); }
+    finally {
+      if (timer) gl.endQuery(timer.TIME_ELAPSED_EXT);
+      this.frameTime = ema(this.frameTime, performance.now() - start);
+    }
+  }
+
+  /** GPU ms per frame (EMA) from EXT_disjoint_timer_query_webgl2, or null where the browser lacks it. Reading it opts the scene in. */
+  get gpuTime(): number | null { this.gpuOn = true; return this.gpuMs; }
+
+  /** Collect the finished query, if any, then start the next one. Null when unsupported or the last one is still pending. */
+  private gpuBegin(gl: WebGL2RenderingContext) {
+    const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+    if (!ext) return null;
+    if (this.query) {
+      if (!gl.getQueryParameter(this.query, gl.QUERY_RESULT_AVAILABLE)) return null;
+      const ns = gl.getQueryParameter(this.query, gl.QUERY_RESULT);
+      if (!gl.getParameter(ext.GPU_DISJOINT_EXT) && Number.isFinite(ns)) this.gpuMs = ema(this.gpuMs ?? 0, ns / 1e6);
+    }
+    gl.beginQuery(ext.TIME_ELAPSED_EXT, (this.query ??= gl.createQuery()));
+    return ext;
+  }
+
+  private render(gl: WebGL2RenderingContext, W: number, H: number, t: number, dt: number) {
     if (!reducedMotion()) this.clock = t;
     t = this.clock;
     for (const o of this.objects) o.update(dt);
@@ -215,3 +249,6 @@ export class SdScene extends HTMLElement {
     this.blit(gl, src);
   }
 }
+
+/** Exponential moving average, alpha 0.1; the first sample seeds it. */
+const ema = (prev: number, x: number) => (prev ? prev + (x - prev) * 0.1 : x);
