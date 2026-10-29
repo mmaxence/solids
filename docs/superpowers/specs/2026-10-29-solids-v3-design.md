@@ -50,8 +50,24 @@ Date: 2026-10-29. Status: approved in conversation by Max (four asks: effect int
 - Check: `frameTime` is a finite positive number after ten frames; the Performance page mounts
   and the benchmark function runs on one object without console errors (not the full run).
 
-## Stream G: agent first
+## Stream G: agent first, and the landing under the hero
 
+- The landing below the hero is reorganized into a fixed sequence of full-width sections, each
+  with one heading and one job, in this order (Max: "the landing should be better organized
+  under the hero view"):
+  1. **Built for agents** (see below).
+  2. **Install**: the script tag and the three-line example. Nothing else.
+  3. **Four layers**: one row of four cards (Objects, Animations, Effects, Interactions), each
+     with a live mini scene showing that layer at work (a still orb, a spinning ring, a glowing
+     crystal, two objects orbiting) and the list of names as links to their pages.
+  4. **Universe** band: a full-width `<sd-universe count="36">` with one line of copy and a link
+     to the Universe page (lands with Stream U; until then the band is omitted).
+  5. **Catalogue**: a grid of the twelve objects, each card a live object at 96 px with its name,
+     linking to its page. Then one row of effect chips and one row of interaction chips, linking.
+  6. **Performance**: three numbers (bundle size, objects on the hero, frame time measured live)
+     and a link to the Performance page (lands with Stream P; until then the two static numbers).
+  7. **Details**: Sizing and placement, Color, Fallback, Accessibility link, as short paragraphs.
+  The intro markdown is split into these sections by `gen-site.mjs`; the sidebar stays as is.
 - Landing, first section after the hero: "Built for agents". Three short steps: give your agent
   `skill.md`, describe the shape, run `npm run check`. One concrete prompt example in a code block
   and a Copy prompt button in the hero dock (the prompt: the scene markup plus the SKILL link and
