@@ -436,27 +436,25 @@ const dist = (u) => Math.hypot(...u.bodies[0].p.map((v, i) => v - u.bodies[1].p[
 for (let i = 0; i < 30; i++) { cc.frame(i / 10, 50); cn.frame(i / 10, 50); }
 uv.collide = { apart: dist(cc), together: dist(cn) };
 { const ps = [cc.parentNode, cn.parentNode]; free(cc, cn); ps.forEach((d) => d.remove()); }
-// Gravity: one center at the origin, orbiters move on circles of constant radius.
-const ug = uni({ count: '12', seed: '3', gravity: '', camera: '', drift: '0' }), u0 = uni({ count: '0' }), uk = uni({ count: '8', shapes: 'sd-orb sd-nope ring' }), un = uni({ shapes: 'sd-nope' });
+// Gravity: a v4 attribute, now ignored. Same universe with or without it, no center child, no orbit or pinned fields on bodies.
+const ug = uni({ count: '12', seed: '3', gravity: '', camera: '', drift: '0' }), ug0 = uni({ count: '12', seed: '3', camera: '', drift: '0' }), u0 = uni({ count: '0' }), uk = uni({ count: '8', shapes: 'sd-orb sd-nope ring' }), un = uni({ shapes: 'sd-nope' });
 await frame();
-{ const centers = [...ug.children].filter((c) => c.getAttribute('gravity') === 'center'); const orbit = ug.bodies.filter((b) => b.orbit);
-  const r0 = orbit.map((b) => Math.hypot(...b.p)), pos = orbit.map((b) => [...b.p]);
-  for (let i = 0; i < 30; i++) ug.frame(i / 10, 100);
-  uv.gravity = { centers: centers.length, centerAtOrigin: centers.length === 1 && Math.hypot(...ug.bodies.find((b) => b.el === centers[0]).p) < 1e-6, orbit: orbit.length,
-    moved: orbit.every((b, i) => Math.hypot(...b.p.map((v, k) => v - pos[i][k])) > 0.01), circular: orbit.every((b, i) => Math.abs(Math.hypot(...b.p) - r0[i]) < 1e-3), interaction: ug.interactionNames.includes('gravity') }; }
+{ for (let i = 0; i < 3; i++) { ug.frame(i / 10, 100); ug0.frame(i / 10, 100); }
+  uv.gravity = { same: sig(ug) === sig(ug0) && sameOffs(offs(ug), offs(ug0)), centers: [...ug.children].filter((c) => c.getAttribute('gravity') === 'center').length,
+    fields: ug.bodies.filter((b) => 'orbit' in b || 'pinned' in b).length, interaction: ug.interactionNames.includes('gravity') }; }
 uv.zero = u0.children.length; uv.known = [...uk.children].map((c) => c.localName); uv.none = un.children.length;
-free(ug, u0, uk, un);
-// Reduced motion: spin, drift and orbits hold still.
+free(ug, ug0, u0, uk, un);
+// Reduced motion: spin and drift hold still.
 window.__SD_REDUCED = true;
-const ur = uni({ count: '8', seed: '5', gravity: '', camera: 'spin' });
+const ur = uni({ count: '8', seed: '5', camera: 'spin' });
 await frame(); const rmp = ur.bodies.map((b) => [...b.p]); for (let i = 0; i < 5; i++) ur.frame(i / 10, 100);
 uv.reduced = { yaw: ur.yaw, held: ur.bodies.every((b, i) => b.p.every((v, k) => v === rmp[i][k])) };
 window.__SD_REDUCED = false; free(ur);
-// Review fixes: collisions off the center and orbiters must not pump energy; a held release has no inertia; other pointers are ignored
-// during a drag; pinch zoom stays available; pinned bodies and orbiters do not wobble; the pointer tilt moves front shapes toward the pointer.
-const uke = uni({ count: '36', seed: '5', gravity: '', collide: '', camera: '', drift: '0.5' });
+// Review fixes: collisions must not pump energy; a held release has no inertia; other pointers are ignored
+// during a drag; pinch zoom stays available; drift makes every body wobble; the pointer tilt moves front shapes toward the pointer.
+const uke = uni({ count: '36', seed: '5', collide: '', camera: '', drift: '0.5' });
 await frame();
-const ke = (u) => u.bodies.filter((b) => !b.pinned && !b.orbit).reduce((t, b) => t + b.r * b.r * b.r * (b.v[0] ** 2 + b.v[1] ** 2 + b.v[2] ** 2), 0);
+const ke = (u) => u.bodies.reduce((t, b) => t + b.r * b.r * b.r * (b.v[0] ** 2 + b.v[1] ** 2 + b.v[2] ** 2), 0);
 const ke0 = ke(uke); for (let i = 0; i < 1200; i++) uke.step(100); uv.energy = { ratio: ke(uke) / ke0 }; // the sim alone: drawing 1200 frames would take minutes under software GL
 free(uke);
 const uh = uni({ count: '6', seed: '2', camera: 'drag', drift: '0' });
@@ -467,11 +465,11 @@ uv.heldRelease = { drift: Math.abs(uh.yaw - yawUp) };
 ptr(uh, 'pointerdown', 100, 100); const yawDown = uh.yaw; ptr(uh, 'pointermove', 300, 100, { pointerId: 2, isPrimary: false }); uv.otherPointer = { moved: Math.abs(uh.yaw - yawDown) }; ptr(uh, 'pointerup', 100, 100);
 uv.touch = getComputedStyle(uh).touchAction;
 free(uh);
-const uw = uni({ count: '12', seed: '3', gravity: '', camera: '', drift: '0.5' }), uw0 = uni({ count: '12', seed: '3', gravity: '', camera: '', drift: '0' });
+const uw = uni({ count: '12', seed: '3', camera: '', drift: '0.5' }), uw0 = uni({ count: '12', seed: '3', camera: '', drift: '0' });
 await frame(); still(uw); still(uw0);
-{ let wob = 0; for (let i = 0; i < 20; i++) { uw.frame(1 + i / 10, 100); uw0.frame(1 + i / 10, 100);
-    uw.bodies.forEach((b, k) => { if (b.pinned || b.orbit) wob = Math.max(wob, Math.hypot(b.el.anim.offset[0] - uw0.bodies[k].el.anim.offset[0], b.el.anim.offset[1] - uw0.bodies[k].el.anim.offset[1])); }); }
-  uv.wobble = { center: Math.hypot(...uw.bodies.find((b) => b.pinned).el.anim.offset), pinnedVsStill: wob }; }
+{ let wob = Infinity; for (let i = 0; i < 20; i++) { uw.frame(1 + i / 10, 100); uw0.frame(1 + i / 10, 100); }
+  uw.bodies.forEach((b, k) => { wob = Math.min(wob, Math.hypot(b.el.anim.offset[0] - uw0.bodies[k].el.anim.offset[0], b.el.anim.offset[1] - uw0.bodies[k].el.anim.offset[1])); });
+  uv.wobble = { least: wob }; }
 free(uw, uw0);
 const ut = pasteU('camera="pointer" drift="0"', '<sd-orb data-pos="0 0 0.8" size="60px"></sd-orb>');
 await frame(); ut.frame(0, 16);
@@ -618,7 +616,7 @@ async function smoke() {
     if (!uv.drag?.turned || !uv.drag?.held) fail(`universe drag: ${js(uv.drag)}`);
     if (!uv.tilt?.moved || !uv.tilt?.held) fail(`universe pointer tilt: ${js(uv.tilt)}`);
     if (!(uv.collide?.apart >= 0.25 - 1e-3) || !(Math.abs(uv.collide?.together - 0.05) < 1e-6)) fail(`universe collide: ${js(uv.collide)} (expected apart >= 0.25, together 0.05)`);
-    if (uv.gravity?.centers !== 1 || !uv.gravity.centerAtOrigin || !(uv.gravity.orbit > 0) || !uv.gravity.moved || !uv.gravity.circular || uv.gravity.interaction) fail(`universe gravity: ${js(uv.gravity)}`);
+    if (!uv.gravity?.same || uv.gravity.centers !== 0 || uv.gravity.fields !== 0 || uv.gravity.interaction) fail(`universe gravity attribute should be ignored: ${js(uv.gravity)}`);
     if (uv.reduced?.yaw !== 0 || !uv.reduced?.held) fail(`universe under reduced motion still moves: ${js(uv.reduced)}`);
     if (uv.pasted?.children !== 1 || uv.pasted.attached !== 1 || !(uv.pasted.scale > 1)) fail(`pasted universe markup should keep its one child and scale it up: ${js(uv.pasted)}`);
     if (uv.zero !== 0 || uv.none !== 0) fail(`universe count="0" or only unknown shapes: ${uv.zero} and ${uv.none} children, expected 0`);
@@ -627,11 +625,11 @@ async function smoke() {
     if (!(uv.defocus?.blur > 0.05) || !(uv.defocus.zero < 0.01)) fail(`defocus: radius 12 vs none ${pct(uv.defocus?.blur ?? 0)}, radius 0 vs none ${pct(uv.defocus?.zero ?? 1)}`);
     if (!(r.cases.look.bright > 20)) fail(`glass highlights flattened: only ${r.cases.look.bright} pixels keep rgb above alpha`);
     if (!(r.cases.pool.full >= 1 && r.cases.pool.full <= 12) || !(r.cases.pool.kept >= 1) || r.cases.pool.empty !== 0) fail(`effect buffer pool: ${r.cases.pool.full} pairs for 40 sizes in 8 px steps (expected 1 to 12), ${r.cases.pool.kept} two frames after removal (expected >= 1, a grace period), ${r.cases.pool.empty} after 70 frames (expected 0)`);
-    if (!(uv.energy?.ratio < 1.1)) fail(`universe gravity + collide pumps energy: free-body kinetic energy x${uv.energy?.ratio?.toFixed(2)} after 120 s (expected < 1.1)`);
+    if (!(uv.energy?.ratio < 1.1)) fail(`universe collide pumps energy: free-body kinetic energy x${uv.energy?.ratio?.toFixed(2)} after 120 s (expected < 1.1)`);
     if (!(uv.heldRelease?.drift < 1e-6)) fail(`universe drag: a release after holding still flung the view by ${uv.heldRelease?.drift} rad`);
     if (!(uv.otherPointer?.moved < 1e-9)) fail(`universe drag: a second pointer moved the view by ${uv.otherPointer?.moved} rad`);
     if (!/pinch-zoom/.test(uv.touch || '')) fail(`universe touch-action "${uv.touch}" blocks pinch zoom`);
-    if (!(uv.wobble?.center < 1e-6) || !(uv.wobble?.pinnedVsStill < 1e-6)) fail(`universe wobble on the center or the orbiters: ${js(uv.wobble)}`);
+    if (!(uv.wobble?.least > 0.5)) fail(`universe drift should make every body wobble: least moved ${uv.wobble?.least?.toFixed(2)} px vs drift 0`);
     if (!(uv.tiltDir?.right > 0) || !(uv.tiltDir?.down > 0)) fail(`universe pointer tilt should move front shapes toward the pointer: ${js(uv.tiltDir)}`);
     if (!(r.cases.quad?.outside > 50)) fail(`quad does not follow scale: ${r.cases.quad?.outside} px painted beyond 1.5x the rect at scale 2 (expected > 50)`);
     if (!r.cases.phase?.differ) fail('phase="2" should offset the spin against a sibling without one');
@@ -667,7 +665,7 @@ async function site() {
   const index = text('index.html');
   const h2s = [...index.slice(index.indexOf('<main')).matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
   const ORDER = ['Built for agents', 'Install', 'Four layers', 'Universe', 'Catalogue', 'Performance', 'Details'];
-  if (!/<sd-universe class="band-universe"[^>]*\bgravity\b[^>]*\bcollide\b/.test(index)) fail('site/index: the universe band should run with gravity and collide');
+  { const band = index.match(/<sd-universe class="band-universe"[^>]*>/)?.[0] ?? ''; if (!/\bcollide\b/.test(band) || /\bgravity\b/.test(band)) fail(`site/index: the universe band should run with collide and no gravity: ${band}`); }
   if (h2s.join('|') !== ORDER.join('|')) fail(`site/index: sections ${JSON.stringify(h2s)}, expected ${JSON.stringify(ORDER)}`);
   const dock = index.match(/class="controls dock"[\s\S]*?<\/form>/)?.[0] ?? '';
   const heroPrompt = JSON.parse(index.match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}').prompt ?? '';

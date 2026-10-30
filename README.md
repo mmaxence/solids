@@ -41,9 +41,9 @@ Each object is a web component drawn by a fragment shader. Add one script tag, t
 | Effects | glow, beam, rgb-split, pixelate, dither, scanlines, halftone, outline, grain, vignette, chroma, ripple, defocus | `effect="glow"` on an object or a scene |
 | Interactions | pointer-follow, hover-lift, gravity, repel, magnet, collide, scroll | `interaction="gravity"` on a scene |
 
-Objects outside a scene work on their own. Inside a scene they share one canvas and can react to each other: mark one `gravity="center"` and the rest orbit it.
+Objects outside a scene work on their own. Inside a scene they share one canvas and can react to each other: mark one `gravity="center"` and the rest orbit it on rings, farther rings turning slower.
 
-`<sd-universe count="36" seed="1" gravity collide>` fills its box with a seeded cloud of shapes in 3D: a camera that spins, drags and tilts toward the pointer, a depth of field around its `focus` plane, orbits around the largest shape and elastic bounces.
+`<sd-universe count="36" seed="1" collide>` fills its box with a seeded cloud of shapes in 3D: a camera that spins, drags and tilts toward the pointer, a depth of field around its `focus` plane, and elastic bounces.
 
 ## Develop
 

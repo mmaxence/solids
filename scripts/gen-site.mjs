@@ -171,7 +171,7 @@ ${layer('Interactions', 'Scene rules that react to the pointer and to each other
 <p class="chips"><span>Effects</span>${effects.map((e) => `<a href="effects/${e.name}.html">${esc(e.name)}</a>`).join('')}</p>
 <p class="chips"><span>Interactions</span>${interactions.map((i) => `<a href="interactions/${i.name}.html">${esc(i.name)}</a>`).join('')}</p>`;
   const numbers = `<dl class="numbers"><div><dt>The whole library, gzipped</dt><dd>${(gzipSync(readFileSync('dist/solids.js')).length / 1024).toFixed(1)} KB</dd></div><div><dt>Objects on the hero, one canvas</dt><dd>${ids.length}</dd></div><div><dt>One hero frame, measured now</dt><dd id="live-frame">measuring</dd></div></dl>`;
-  const universe = `<sd-universe class="band-universe" count="36" seed="5" gravity collide depth="0.55" dpr="1.5" style="position:relative;height:70vh;min-height:480px"></sd-universe>`;
+  const universe = `<sd-universe class="band-universe" count="36" seed="5" collide depth="0.55" dpr="1.5" style="position:relative;height:70vh;min-height:480px"></sd-universe>`;
   const live = { 'Four layers': layers, Universe: universe, Catalogue: catalogue, Performance: numbers };
   const main = `<div class="landing">${readFileSync('site/src/intro.md', 'utf8').split(/^(?=## )/m).map((s) => {
     const h = s.match(/^## (.*)/)[1];
@@ -268,7 +268,6 @@ ${effects.map((e) => row(`data-effect="${e.name}"`, `<a href="effects/${e.name}.
   const controls = [
     { kind: 'range', attr: 'count', label: 'Count', min: 1, max: 120, step: 1, value: 36, default: 24, target: 'scene' },
     { kind: 'range', attr: 'seed', label: 'Seed', min: 1, max: 99, step: 1, value: 1, default: 1, target: 'scene' },
-    { kind: 'check', attr: 'gravity', on: 'on', label: 'Gravity', value: false, target: 'scene' },
     { kind: 'check', attr: 'collide', on: 'on', label: 'Collide', value: false, target: 'scene' },
     { kind: 'check', attr: 'camera', on: 'spin', label: 'Spin', value: true, target: 'scene' },
     { kind: 'check', attr: 'camera', on: 'drag', label: 'Drag', value: true, target: 'scene' },
@@ -283,10 +282,9 @@ ${effects.map((e) => row(`data-effect="${e.name}"`, `<a href="effects/${e.name}.
   const rows = [
     ['count', 'number', '24', '0 to 120', 'How many shapes. Changing it regenerates the children.'],
     ['seed', 'number', '1', 'any integer', 'The same seed always gives the same universe: positions, sizes, colors and motion.'],
-    ['gravity', 'boolean', 'absent', 'present or absent', 'The largest shape is pinned at the center and the closest third orbit it, each on its own plane, faster when closer. Regenerates.'],
-    ['collide', 'boolean', 'absent', 'present or absent', 'Shapes bounce off each other and keep their speed. The center and the orbiters are not pushed.'],
+    ['collide', 'boolean', 'absent', 'present or absent', 'Shapes bounce off each other and keep their speed.'],
     ['camera', 'list', 'spin drag pointer', 'spin, drag, pointer', 'How the view moves: spin turns on its own, drag or swipe rotates it with inertia, pointer tilts it toward the cursor. none for a fixed view.'],
-    ['speed', 'number', '1', '0 to 4', 'How fast the spin and the orbits turn. 1 is one turn every 90 seconds.'],
+    ['speed', 'number', '1', '0 to 4', 'How fast the camera spins. 1 is one turn every 90 seconds.'],
     ['drift', 'number', '0.5', '0 to 1', 'How much the free shapes float about. 0 holds them in place.'],
     ['perspective', 'number', '0.5', '0.05 to 1', 'How strongly near shapes grow and far ones shrink. Higher brings the camera closer.'],
     ['depth', 'number', '0.5', '0 to 1', 'Strength of the depth of field. 0 keeps every shape sharp.'],
@@ -294,10 +292,10 @@ ${effects.map((e) => row(`data-effect="${e.name}"`, `<a href="effects/${e.name}.
     ['shapes', 'list', 'every object', 'object tags', 'Space separated tags to draw from, for example sd-orb sd-ring. Unknown tags are skipped.'],
     ['palette', 'list', 'six P3 colors', 'any CSS colors', 'Space separated colors to pick from.'],
   ];
-  const prompt = `A solids universe is a scene that fills its box with seeded shapes in a 3D ball, seen through a perspective camera. Its children are plain objects with a data-pos (x y z in a unit ball), a size, a color, an animation with its own speed and phase. Each shape drifts on its own; the camera spins, drags and tilts toward the pointer; far shapes blur and dim with the depth of field. Change count, seed, shapes, palette or gravity to regenerate; everything else applies live.\n\n${optionsMd(rows)}\n\n\`\`\`html\n{{markup}}\n\`\`\``;
-  page('universe.html', { title: 'Universe', description: 'A scene that fills its box with seeded shapes in 3D, with a camera you can spin and drag, a depth of field, gravity and collisions.', main: `<h1>Universe</h1><p class="lede">One element fills its box with a cloud of shapes in three dimensions. Spin it, drag it, set the focal plane, turn on gravity or collisions.</p>${preview({ tag: 'sd-universe', sceneAttrs: 'count="36" dpr="1.5"', inner: '', controls, prompt, stageClass: 'scatter universe' })}
+  const prompt = `A solids universe is a scene that fills its box with seeded shapes in a 3D ball, seen through a perspective camera. Its children are plain objects with a data-pos (x y z in a unit ball), a size, a color, an animation with its own speed and phase. Each shape drifts on its own; the camera spins, drags and tilts toward the pointer; far shapes blur and dim with the depth of field. Change count, seed, shapes or palette to regenerate; everything else applies live.\n\n${optionsMd(rows)}\n\n\`\`\`html\n{{markup}}\n\`\`\``;
+  page('universe.html', { title: 'Universe', description: 'A scene that fills its box with seeded shapes in 3D, with a camera you can spin and drag, a depth of field and optional collisions.', main: `<h1>Universe</h1><p class="lede">One element fills its box with a cloud of shapes in three dimensions. Spin it, drag it, set the focal plane, turn on collisions.</p>${preview({ tag: 'sd-universe', sceneAttrs: 'count="36" dpr="1.5"', inner: '', controls, prompt, stageClass: 'scatter universe' })}
 <h2>How a universe works</h2><p><code>&lt;sd-universe&gt;</code> is a scene. On first connect it creates its children from a seeded random sequence: a shape, a spot in a unit ball chosen to keep its distance from the others, a size, a color, and an animation with its own speed and phase. They are ordinary objects in the light DOM with a <code>data-pos</code>, so Copy code gives you markup you can paste and edit; a universe that already has children keeps them.</p>
-<p>Every frame the universe moves its shapes and places them through a camera. Free shapes drift and wobble on their own paths and turn back at the edge of the ball; with <code>gravity</code> the largest shape is pinned at the center and the closest third circle it on their own planes, faster when closer; with <code>collide</code> shapes bounce off each other. The camera sits at a distance set by <code>perspective</code> and turns with the tokens in <code>camera</code>: <code>spin</code> on its own, <code>drag</code> with the pointer or a swipe (with inertia), <code>pointer</code> as a tilt toward the cursor.</p>
+<p>Every frame the universe moves its shapes and places them through a camera. Shapes drift and wobble on their own paths and turn back at the edge of the ball; with <code>collide</code> they bounce off each other. The camera sits at a distance set by <code>perspective</code> and turns with the tokens in <code>camera</code>: <code>spin</code> on its own, <code>drag</code> with the pointer or a swipe (with inertia), <code>pointer</code> as a tilt toward the cursor.</p>
 <p>Depth comes from the camera: near shapes draw larger and on top, far ones smaller and behind. Each shape gets the <code>defocus</code> effect with a radius of <code>depth</code> times its distance from the <code>focus</code> plane, times 14 px, and shapes behind the plane are dimmed. Under reduced motion nothing moves on its own; drag and the pointer tilt still work.</p>
 <h2>Options</h2>${optionsTable(rows)}
 ${license}` });
@@ -339,7 +337,7 @@ ${entries('interactions', interactions)}
 
 - [Introduction](${BASE}index.html): install, the four layers, the catalogue.
 - [Scene and gravity](${BASE}scene.html): objects in one scene and the center of gravity.
-- [Universe](${BASE}universe.html): a scene that fills its box with seeded shapes in 3D, with a camera that spins and drags, a depth of field, gravity and collisions.
+- [Universe](${BASE}universe.html): a scene that fills its box with seeded shapes in 3D, with a camera that spins and drags, a depth of field and optional collisions.
 - [Performance](${BASE}performance.html): bundle sizes, a live frame meter, and a benchmark that runs in the browser.
 - [Accessibility](${BASE}accessibility.html): reduced motion, focus, contrast, the context limit.
 - [GitHub](${REPO}): source, README and the contribution flow.

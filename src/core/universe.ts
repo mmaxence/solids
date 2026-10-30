@@ -4,22 +4,19 @@ import { objects, num } from './registry';
 import { clamp, ease, rotXYZ, mul3, type Mat3 } from './math';
 
 type V3 = [number, number, number];
-type Orbit = { c: V3; r: number; w: number; u: V3; v: V3; a: number };
 /** One shape in the universe: position and velocity in world units (a unit ball), radius from its px size. */
-export type Body = { el: SdObject; p: V3; v: V3; r: number; tilt: Mat3; wob: number[]; orbit: Orbit | null; pinned: boolean };
+export type Body = { el: SdObject; p: V3; v: V3; r: number; tilt: Mat3; wob: number[] };
 
 // The site's six Display P3 picks; browsers without P3 clip them to sRGB.
 const PALETTE = ['color(display-p3 0.55 0.85 1)', 'color(display-p3 0.78 0.66 1)', 'color(display-p3 1 0.55 0.8)', 'color(display-p3 0.5 1 0.85)', 'color(display-p3 1 0.8 0.5)', 'color(display-p3 0.55 1 0.6)'];
 const ANIMS = ['idle', 'float', 'spin'];
-const OWN = ['count', 'seed', 'gravity', 'collide', 'camera', 'speed', 'drift', 'perspective', 'depth', 'focus', 'shapes', 'palette'];
-const REGEN = ['count', 'seed', 'gravity', 'shapes', 'palette'];
+const OWN = ['count', 'seed', 'collide', 'camera', 'speed', 'drift', 'perspective', 'depth', 'focus', 'shapes', 'palette'];
+const REGEN = ['count', 'seed', 'shapes', 'palette'];
 const REF = 640;                 // px box in which world radius 1 is the half side: a body's world radius is size / REF
 const DEG = Math.PI / 180;
-const ZERO: V3 = [0, 0, 0];
 const knownTags = () => new Set([...objects.values()].map((d) => d.manifest.tag));
 const len = (p: V3) => Math.hypot(p[0], p[1], p[2]);
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const norm = (a: V3): V3 => { const l = len(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
 
 function mulberry32(a: number) {
@@ -90,7 +87,7 @@ export class SdUniverse extends SdScene {
     const rnd = mulberry32(num(this.getAttribute('seed'), 1));
     const pick = <T>(a: T[]) => a[Math.floor(rnd() * a.length)];
     const ball = (): V3 => { for (;;) { const p: V3 = [rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1]; if (len(p) <= 1) return p; } };
-    const specs: { tag: string; p: V3; r: number; size: number; color: string; anim: string; speed: number; phase: number; center: boolean }[] = [];
+    const specs: { tag: string; p: V3; r: number; size: number; color: string; anim: string; speed: number; phase: number }[] = [];
     for (let i = 0; i < n; i++) {
       const size = 8 * Math.round((40 + 100 * rnd()) / 8), r = size / REF;
       // Best candidate of eight: the one farthest from every placed body, surfaces apart, so the cloud spreads evenly.
@@ -100,11 +97,7 @@ export class SdUniverse extends SdScene {
         for (const s of specs) d = Math.min(d, len(sub(c, s.p)) - r - s.r);
         if (d > bestD) { bestD = d; best = c; }
       }
-      specs.push({ tag: pick(tags), p: best, r, size, color: pick(colors), anim: pick(ANIMS), speed: 0.6 + rnd() * 0.8, phase: rnd() * 20, center: false });
-    }
-    if (this.hasAttribute('gravity') && n) {
-      const center = specs.reduce((a, b) => (b.size > a.size ? b : a));
-      center.center = true; center.p = [0, 0, 0];
+      specs.push({ tag: pick(tags), p: best, r, size, color: pick(colors), anim: pick(ANIMS), speed: 0.6 + rnd() * 0.8, phase: rnd() * 20 });
     }
     const frag = document.createDocumentFragment();
     for (const s of specs) {
@@ -115,14 +108,13 @@ export class SdUniverse extends SdScene {
       el.setAttribute('animation', s.anim);
       el.setAttribute('speed', s.speed.toFixed(2));
       el.setAttribute('phase', s.phase.toFixed(1));
-      if (s.center) el.setAttribute('gravity', 'center');
       frag.append(el);
     }
     this.append(frag);
     this.adopt();
   }
 
-  /** Build the bodies from the current children: `data-pos` (or a seeded spot), size, seeded motion, roles. */
+  /** Build the bodies from the current children: `data-pos` (or a seeded spot), size, seeded motion. */
   adopt() {
     const rnd = mulberry32(num(this.getAttribute('seed'), 1) * 7919 + 17);
     const kids = this.kids();
@@ -132,19 +124,8 @@ export class SdUniverse extends SdScene {
       const p: V3 = parts.length === 3 && parts.every((v) => !isNaN(v)) ? [parts[0], parts[1], parts[2]] : norm([rnd() - 0.5, rnd() - 0.5, rnd() - 0.5]).map((v) => v * rnd()) as V3;
       const v = norm([rnd() - 0.5, rnd() - 0.5, rnd() - 0.5]).map((x) => x * (0.02 + rnd() * 0.04)) as V3;
       const wob: number[] = []; for (let k = 0; k < 3; k++) wob.push(0.05 + rnd() * 0.1, rnd() * 2 * Math.PI, 0.02 + rnd() * 0.03);
-      return { el, p, v, r: sizes[i] / REF, tilt: rotXYZ((rnd() - 0.5) * 70 * DEG, 0, (rnd() - 0.5) * 70 * DEG), wob, orbit: null, pinned: false };
+      return { el, p, v, r: sizes[i] / REF, tilt: rotXYZ((rnd() - 0.5) * 70 * DEG, 0, (rnd() - 0.5) * 70 * DEG), wob };
     });
-    if (!this.hasAttribute('gravity') || !this.bodies.length) return;
-    const center = this.bodies.find((b) => b.el.getAttribute('gravity') === 'center') ?? this.bodies.reduce((a, b) => (b.r > a.r ? b : a));
-    center.pinned = true;
-    const rest = this.bodies.filter((b) => b !== center).sort((a, b) => len(sub(a.p, center.p)) - len(sub(b.p, center.p)));
-    for (const b of rest.slice(0, Math.round(rest.length / 3))) {
-      // Its own plane through where it was placed; closer orbits turn faster (Kepler-like).
-      const u = norm(sub(b.p, center.p)), r = Math.max(len(sub(b.p, center.p)), center.r + b.r + 0.04);
-      const nrm = norm(cross(u, norm([rnd() - 0.5, rnd() - 0.5, rnd() - 0.5])));
-      b.orbit = { c: center.p, r, w: (rnd() < 0.5 ? -1 : 1) * 0.35 / Math.pow(r, 1.5), u, v: cross(nrm, u), a: 0 };
-      b.p = [center.p[0] + u[0] * r, center.p[1] + u[1] * r, center.p[2] + u[2] * r];
-    }
   }
 
   private onDown = (e: PointerEvent) => {
@@ -194,22 +175,15 @@ export class SdUniverse extends SdScene {
     // Sideways the cloud uses the whole half width (rim shapes may pass partly out, the spin brings them back); vertically it stays inside.
     const Ux = (W / 2) * 0.95, Uy = (H / 2) * 0.95 * (D - 0.6) / D;
     if (!still) this.time += dt / 1000;
-    // Bodies: orbits turn, the rest drift and turn back at the edge of the ball.
+    // Bodies drift and turn back at the edge of the ball.
     const bodies = this.bodies.filter((b) => b.el.scene === this);
-    for (const b of bodies) {
-      if (b.orbit) {
-        const o = b.orbit;
-        if (!still) o.a += (dt / 1000) * o.w * speed;
-        const ca = Math.cos(o.a), sa = Math.sin(o.a);
-        for (let k = 0; k < 3; k++) b.p[k] = o.c[k] + o.r * (ca * o.u[k] + sa * o.v[k]);
-      } else if (!b.pinned && drift > 0) {
-        for (let k = 0; k < 3; k++) b.p[k] += b.v[k] * (dt / 1000) * drift;
-        const l = len(b.p);
-        if (l > 1) {
-          const rad = (b.p[0] * b.v[0] + b.p[1] * b.v[1] + b.p[2] * b.v[2]) / l;
-          if (rad > 0) for (let k = 0; k < 3; k++) b.v[k] -= 2 * rad * b.p[k] / l;
-          for (let k = 0; k < 3; k++) b.p[k] /= l;
-        }
+    if (drift > 0) for (const b of bodies) {
+      for (let k = 0; k < 3; k++) b.p[k] += b.v[k] * (dt / 1000) * drift;
+      const l = len(b.p);
+      if (l > 1) {
+        const rad = (b.p[0] * b.v[0] + b.p[1] * b.v[1] + b.p[2] * b.v[2]) / l;
+        if (rad > 0) for (let k = 0; k < 3; k++) b.v[k] -= 2 * rad * b.p[k] / l;
+        for (let k = 0; k < 3; k++) b.p[k] /= l;
       }
     }
     if (this.hasAttribute('collide')) this.collide(bodies);
@@ -217,7 +191,7 @@ export class SdUniverse extends SdScene {
     for (const b of bodies) {
       const o = b.el.anim, w = b.wob;
       const q: V3 = [b.p[0], b.p[1], b.p[2]];
-      if (drift > 0 && !b.pinned && !b.orbit) for (let k = 0; k < 3; k++) q[k] += Math.sin(2 * Math.PI * w[k * 3] * this.time + w[k * 3 + 1]) * w[k * 3 + 2] * drift;
+      if (drift > 0) for (let k = 0; k < 3; k++) q[k] += Math.sin(2 * Math.PI * w[k * 3] * this.time + w[k * 3 + 1]) * w[k * 3 + 2] * drift;
       const x1 = q[0] * cy + q[2] * sy, z1 = -q[0] * sy + q[2] * cy;
       const y2 = q[1] * cp - z1 * sp, z2 = q[1] * sp + z1 * cp;
       const s = clamp(D / (D - z2), 0.3, 3);
@@ -233,22 +207,19 @@ export class SdUniverse extends SdScene {
     }
   }
 
-  /** Elastic sphere collisions: separate overlapping pairs and swap the normal velocity, four passes. Pinned bodies and orbiters do not move. */
+  /** Elastic sphere collisions: separate overlapping pairs and swap the normal velocity, four passes. Mass is the cubed radius. */
   private collide(bodies: Body[]) {
-    const mass = (b: Body) => (b.pinned || b.orbit ? Infinity : b.r * b.r * b.r);
     for (let pass = 0; pass < 4; pass++) {
       for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
-        const a = bodies[i], b = bodies[j], mi = mass(a), mj = mass(b);
-        if (mi === Infinity && mj === Infinity) continue;
+        const a = bodies[i], b = bodies[j];
         const d = sub(b.p, a.p); let l = len(d);
         const min = a.r + b.r;
         if (l >= min) continue;
         const nrm: V3 = l < 1e-6 ? [1, 0, 0] : [d[0] / l, d[1] / l, d[2] / l]; l = l || 0;
-        const wi = mi === Infinity ? 0 : 1 / mi, wj = mj === Infinity ? 0 : 1 / mj, sum = wi + wj;
+        const wi = 1 / (a.r * a.r * a.r), wj = 1 / (b.r * b.r * b.r), sum = wi + wj;
         for (let k = 0; k < 3; k++) { a.p[k] -= nrm[k] * (min - l) * (wi / sum); b.p[k] += nrm[k] * (min - l) * (wj / sum); }
-        // Normal velocity exchange, only when approaching. An immovable body counts as still: its seeded drift is never applied,
-        // and a moving wall would pump energy into every bounce.
-        const av = wi ? a.v : ZERO, bv = wj ? b.v : ZERO;
+        // Normal velocity exchange, only when approaching.
+        const av = a.v, bv = b.v;
         const rel = (bv[0] - av[0]) * nrm[0] + (bv[1] - av[1]) * nrm[1] + (bv[2] - av[2]) * nrm[2];
         if (rel >= 0) continue;
         const jmp = (-2 * rel) / sum;
