@@ -123,10 +123,13 @@ function serve(root) {
   });
   return new Promise((ok) => srv.listen(0, '127.0.0.1', () => ok({ srv, port: srv.address().port, result })));
 }
+// Headless Chrome profiles are removed at exit, best effort: Chrome may still be writing while it dies.
+const profiles = new Set();
+process.once('exit', () => { for (const p of profiles) { try { rmSync(p, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch {} } });
 /** Open a URL in headless Chrome; the page must POST its JSON result to /__result. */
 export function runPage(url, chrome, result, timeoutMs = 30000, size = '1400,900') {
   const profile = (process.env.TMPDIR || '/tmp') + '/solids-chrome-' + process.pid;
-  process.once('exit', () => rmSync(profile, { recursive: true, force: true }));
+  profiles.add(profile);
   const args = ['--headless=new', '--disable-gpu', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-first-run',
     '--disable-crash-reporter', '--no-sandbox', `--user-data-dir=${profile}`, `--window-size=${size}`, url];
   const child = spawn(chrome, args, { stdio: 'ignore' });
