@@ -33,14 +33,14 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string) {
   return sh;
 }
 
-/** 'object' fragments get the raymarch prelude; 'effect' fragments get the post-pass prelude. */
-export function program(gl: WebGL2RenderingContext, frag: string, kind: 'object' | 'effect' = 'object'): Program {
+/** 'object' fragments get the raymarch prelude plus a shade; 'effect' fragments get the post-pass prelude. One program per object and shade pair. */
+export function program(gl: WebGL2RenderingContext, frag: string, kind: 'object' | 'effect' = 'object', shade?: { name: string; frag: string }): Program {
   let m = cache.get(gl);
   if (!m) cache.set(gl, (m = new Map()));
-  const key = kind[0] + frag;
+  const key = kind[0] + (shade?.name ?? '') + '\n' + frag;
   const hit = m.get(key);
   if (hit) return hit;
-  const src = (kind === 'object' ? prelude : effectPrelude) + '\n' + frag;
+  const src = (kind === 'object' ? prelude + '\n' + (shade?.frag ?? '') : effectPrelude) + '\n' + frag;
   const prog = gl.createProgram()!;
   gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, quadVert));
   gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, src));

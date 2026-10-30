@@ -74,7 +74,26 @@ function manifests() {
       if (!new RegExp(`uniform\\s+float\\s+${u.name}\\b`).test(frag)) fail(`${dir}: frag.glsl does not declare uniform ${u.name}`);
     }
   }
-  if (!fails.length) console.log(`manifests ok (${dirs.length} objects, ${fx.length} effects)`);
+  // Shades: like effects, plus a README (shown on the shade page) and no param name shared with any object uniform
+  // (one program holds an object's uniforms and its shade's, and a redeclaration would fail to compile).
+  const objUniforms = new Set(dirs.flatMap((d) => { try { return (JSON.parse(readFileSync(`${root}/${d}/manifest.json`, 'utf8')).uniforms ?? []).map((u) => u.name); } catch { return []; } }));
+  const sh = existsSync('src/shades') ? readdirSync('src/shades', { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name) : [];
+  if (!sh.includes('glass')) fail('src/shades/glass: the glass shade must exist');
+  for (const d of sh) {
+    const dir = `src/shades/${d}`;
+    if (!existsSync(`${dir}/manifest.json`) || !existsSync(`${dir}/frag.glsl`) || !existsSync(`${dir}/README.md`)) { fail(`${dir}: needs manifest.json, frag.glsl and README.md`); continue; }
+    const m = JSON.parse(readFileSync(`${dir}/manifest.json`, 'utf8'));
+    if (m.name !== d) fail(`${dir}: manifest.name must equal folder name`);
+    if (typeof m.description !== 'string') fail(`${dir}: manifest.description missing`);
+    const frag = readFileSync(`${dir}/frag.glsl`, 'utf8');
+    if (!/vec4\s+sdShade\s*\(/.test(frag) || !/vec3\s+sdEdge\s*\(/.test(frag)) fail(`${dir}: frag.glsl must define vec4 sdShade(vec3 p, vec3 n, vec3 rd, float rim) and vec3 sdEdge()`);
+    for (const u of m.params ?? []) {
+      if (!/^[a-z][a-zA-Z0-9]*$/.test(u.name ?? '') || u.type !== 'float' || typeof u.min !== 'number' || typeof u.max !== 'number' || typeof u.label !== 'string') fail(`${dir}: param ${u.name} must be a float with name, min, max, label`);
+      if (!new RegExp(`uniform\\s+float\\s+${u.name}\\b`).test(frag)) fail(`${dir}: frag.glsl does not declare uniform ${u.name}`);
+      if (objUniforms.has(u.name)) fail(`${dir}: param ${u.name} collides with an object uniform of the same name`);
+    }
+  }
+  if (!fails.length) console.log(`manifests ok (${dirs.length} objects, ${fx.length} effects, ${sh.length} shades)`);
 }
 
 
@@ -186,6 +205,21 @@ result.cases.odd = { pixels: pixels(odd), objects: odd.objects.size };
 result.cases.dyn = { pixels: pixels(dyn), objects: dyn.objects.size };
 for (const o of all.objects) if (o.broken) result.compileErrors.push(o.manifest.tag);
 for (const sc of [all, empty, odd, dyn]) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); }
+// Case S: every object compiles with every shade; glass is the dark default; an unknown shade name draws and warns once.
+const shadeNames = [...(registry.shades?.keys() ?? [])];
+result.shades = shadeNames; result.programs = 0;
+for (const name of shadeNames) {
+  const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.setAttribute('shading', name);
+  for (const t of tags) sc.appendChild(document.createElement(t));
+  await frame(); await frame(); sc.frame(1, 16);
+  for (const o of sc.objects) { if (o.broken) result.compileErrors.push(o.manifest.tag + '+' + name); else result.programs++; }
+  sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove();
+}
+{ const warns = []; const cw = console.warn.bind(console); console.warn = (...a) => { warns.push(a.join(' ')); cw(...a); };
+  const g1 = mk({}, { shading: 'glass' }), g0 = mk({}), gx = mk({}, { shading: 'nope' }), gy = mk({}, { shading: 'nope' });
+  await frame(); await frame();
+  result.cases.shade = { glassEqualsDefault: differ(g1, g0), unknownDraws: pixels(gx), unknownWarned: warns.filter((w) => /nope/.test(w)).length, unknownEqualsDefault: differ(gx, g0) };
+  console.warn = cw; for (const sc of [g1, g0, gx, gy]) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); } }
 // Case D: animations move things; reduced motion freezes them.
 const an = document.body.appendChild(document.createElement('sd-scene')); an.className = 'small';
 const spin = document.createElement(tags[0]); spin.setAttribute('animation', 'spin'); an.appendChild(spin);
@@ -554,10 +588,12 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 90000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
-    if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.tags.length})`);
+    if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
+    if (!(r.shades?.length >= 1) || !(r.programs === r.tags.length * r.shades.length)) fail(`shade programs: ${r.programs} compiled for ${r.tags.length} objects x ${r.shades?.length ?? 0} shades`);
+    { const sh = r.cases.shade ?? {}; if (!(sh.glassEqualsDefault < 1e-6) || !(sh.unknownDraws > 100) || sh.unknownWarned !== 1 || !(sh.unknownEqualsDefault < 1e-6)) fail(`shades: glass vs default ${sh.glassEqualsDefault}, unknown name drew ${sh.unknownDraws} px and warned ${sh.unknownWarned} times (expected 1), unknown vs default ${sh.unknownEqualsDefault}`); }
     if (r.consoleErrors.length) fail(`console errors: ${r.consoleErrors.join(' | ').slice(0, 1200)}`);
     if (!(r.cases.all.pixels > 1000)) fail(`smoke: scene drew ${r.cases.all.pixels} pixels, expected > 1000`);
     if (r.cases.empty.objects !== 0 || r.cases.empty.pixels !== 0) fail(`empty scene: ${JSON.stringify(r.cases.empty)}`);

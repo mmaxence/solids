@@ -1,11 +1,11 @@
 import { createGL, initState, program, setUniforms, drawQuad, clearCache, type Program, type ColorSpace } from './gl';
 import { createFBO, resizeFBO, deleteFBO, type FBO } from './fbo';
-import { interactions, effects, effectAttrs, effectParam, interactionAttrs, interactionParam, type Pointer } from './registry';
+import { interactions, effects, shades, resolveShade, effectAttrs, effectParam, interactionAttrs, interactionParam, shadeAttrs, shadeParam, type Pointer } from './registry';
 import { SdObject, reducedMotion } from './object';
 import copyFrag from './copy.glsl';
 
 export class SdScene extends HTMLElement {
-  static get observedAttributes() { return ['interaction', 'effect', 'theme', 'paused', 'dpr', ...effectAttrs(), ...interactionAttrs()]; }
+  static get observedAttributes() { return ['interaction', 'effect', 'shading', 'theme', 'paused', 'dpr', ...effectAttrs(), ...interactionAttrs(), ...shadeAttrs()]; }
   canvas!: HTMLCanvasElement;
   gl: WebGL2RenderingContext | null = null;
   colorSpace: ColorSpace = 'srgb';   // the drawing buffer's space; object colors are parsed into it
@@ -13,6 +13,8 @@ export class SdScene extends HTMLElement {
   pointer: Pointer = { x: 0, y: 0, inside: false };
   interactionNames: string[] = [];
   effectNames: string[] = [];
+  shadeName = 'auto';                     // `shading` attribute: default shade for children whose own is unset
+  shadeParams: Record<string, Record<string, number>> = {};
   effectParams: Record<string, Record<string, number>> = {};
   interactionParams: Record<string, Record<string, number>> = {};
   theme: 'auto' | 'dark' | 'light' = 'auto';
@@ -71,10 +73,11 @@ export class SdScene extends HTMLElement {
     const val = v ?? '';
     if (name === 'interaction') { this.interactionNames = val.split(/\s+/).filter(Boolean); this.interactionNames.forEach((n) => interactions.get(n)?.setup?.(this)); }
     else if (name === 'effect') this.effectNames = val.split(/\s+/).filter(Boolean);
+    else if (name === 'shading') this.shadeName = val.trim() || 'auto';
     else if (name === 'theme') this.theme = (val as typeof this.theme) || 'auto';
     else if (name === 'dpr') { const n = Number(val); this.maxDpr = val && !isNaN(n) && n > 0 ? n : 2; this.measure(); }
     else if (name === 'paused') { this.paused = v !== null; this.paused ? this.stop() : this.start(); }
-    else if (!effectParam(name, v, this.effectParams)) interactionParam(name, v, this.interactionParams);
+    else if (!effectParam(name, v, this.effectParams) && !shadeParam(name, v, this.shadeParams)) interactionParam(name, v, this.interactionParams);
   }
 
   attach(o: SdObject) {
@@ -233,8 +236,12 @@ export class SdScene extends HTMLElement {
     const x = Math.round(cx * this.pixelRatio - w / 2), y = Math.round((this.height - cy) * this.pixelRatio - h / 2);
     if (x >= W || y >= H || x + w <= 0 || y + h <= 0) return; // off the canvas
     const qw = w / this.pixelRatio, qh = h / this.pixelRatio;
+    // Shade: the object's own `shading`, else the scene's, else auto (glass in dark, the light default in light).
+    const shadeName = resolveShade(o.hasAttribute('shading') ? o.shadeName : this.shadeName, theme), shade = shades.get(shadeName)!;
+    const shadeUniforms: Record<string, number> = {};
+    for (const d of shade.manifest.params) shadeUniforms[d.name] = o.shadeParams[shadeName]?.[d.name] ?? this.shadeParams[shadeName]?.[d.name] ?? (d.default as number);
     let p: Program;
-    try { p = program(gl, o.frag); }
+    try { p = program(gl, o.frag, 'object', { name: shadeName, frag: shade.frag }); }
     catch (e) { o.broken = true; console.error(`[solids] <${o.manifest.tag}> shader failed:\n${(e as Error).message}`); return; }
     const chain = o.effectNames.filter((n) => effects.has(n));
     // With its own effects the object renders into a quad-sized buffer first.
@@ -253,7 +260,7 @@ export class SdScene extends HTMLElement {
     setUniforms(gl, p, {
       uTime: t, uResolution: [w, h], uPointer: px, uRotation: o.anim.rotation,
       uScale: sz / w, uState: Math.min(1, Math.max(0, o.stateValue + o.anim.state)), uTheme: theme, uColor: o.rgb,
-      ...o.uniforms,
+      ...shadeUniforms, ...o.uniforms,
     });
     drawQuad(gl);
     if (!chain.length) return;

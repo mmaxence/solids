@@ -4,6 +4,7 @@ import { SdUniverse } from './core/universe';
 import * as registry from './core/registry';
 import './animations';
 import './effects';
+import './shades';
 import './interactions';
 
 import orbManifest from './objects/orb/manifest.json';
