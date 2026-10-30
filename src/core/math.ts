@@ -4,6 +4,18 @@ export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export const ease = (cur: number, target: number, dt: number, tau: number) =>
   cur + (target - cur) * (1 - Math.exp(-dt / Math.max(tau, 1)));
 
+export type Spring = { x: number; y: number; vx: number; vy: number };
+/** A soft spring toward a target, stepped in 16 ms units with a fractional last step, so 120 Hz and 60 Hz settle alike. */
+export function spring(s: Spring, tx: number, ty: number, dt: number, k = 0.08, damp = 0.8) {
+  let h = Math.min(dt, 100) / 16;
+  while (h > 1e-9) {
+    const f = Math.min(1, h); h -= f;
+    const kk = k * f, dd = Math.pow(damp, f);
+    s.vx = (s.vx + (tx - s.x) * kk) * dd; s.x += s.vx * f;
+    s.vy = (s.vy + (ty - s.y) * kk) * dd; s.y += s.vy * f;
+  }
+}
+
 export type Mat3 = Float32Array;
 export const IDENTITY: Mat3 = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 

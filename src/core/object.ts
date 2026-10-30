@@ -1,9 +1,9 @@
 import { ease, lerp, rotXYZ, IDENTITY, parseColor, type Mat3 } from './math';
-import { objects, animations, effectAttrs, effectParam, shadeAttrs, shadeParam, kebab, num, type Manifest, type AnimResult } from './registry';
+import { objects, animations, effectAttrs, effectParam, shadeAttrs, shadeParam, kebab, num, clampTo, type Manifest, type AnimResult } from './registry';
 import type { SdScene } from './scene';
 
-const STATES: Record<string, number> = { off: 0, idle: 0.25, busy: 0.6, active: 1 };
-const CORE_ATTRS = ['animation', 'speed', 'effect', 'shading', 'state', 'color', 'size', 'phase', 'gravity', 'gravity-gap'];
+const STATES = new Map([['off', 0], ['idle', 0.25], ['busy', 0.6], ['active', 1]]);
+const CORE_ATTRS = ['animation', 'speed', 'effect', 'shading', 'state', 'color', 'size', 'phase', 'theme', 'gravity', 'gravity-gap'];
 const camel = (s: string) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
 export type Pose = { rotation: [number, number, number]; offset: [number, number]; scale: number; state: number };
@@ -30,7 +30,8 @@ export class SdObject extends HTMLElement {
   shadeParams: Record<string, Record<string, number>> = {};
   anim = { rotation: new Float32Array(IDENTITY) as Mat3, offset: [0, 0] as [number, number], scale: 1, z: 0, state: 0 };
   pose: Pose | null = null;               // last composed animation pose
-  z = 0;                                  // base draw depth: anim.z starts here each frame (the universe sets it)
+  pinned = false;                         // held in place this frame (a gravity center or orbiter); collide treats it as a wall
+  blurPx = 0;                             // depth-of-field blur for this frame (a universe sets it); draw adds a defocus pass. Not `blur`: HTMLElement has one
   broken = false;                         // shader failed to compile; skip drawing
   private clock = 0;                      // animation time, advanced by dt × speed
   phaseOffset = 0;                        // `phase` attribute: seconds added to the animation clock, so siblings never line up
@@ -55,6 +56,7 @@ export class SdObject extends HTMLElement {
     } else {
       // Lone object: host a one-object scene in the shadow root so the page layout is untouched.
       const scene = document.createElement('sd-scene') as SdScene;
+      if (this.hasAttribute('theme')) scene.setAttribute('theme', this.getAttribute('theme')!);
       this.shadowRoot!.append(scene);
       scene.attach(this);
     }
@@ -70,8 +72,9 @@ export class SdObject extends HTMLElement {
         return;
       case 'effect': this.effectNames = val.split(/\s+/).filter(Boolean); return;
       case 'shading': this.shadeName = val.trim() || 'auto'; return;
-      case 'speed': { const n = Number(val); this.speedValue = val === '' || isNaN(n) ? 1 : n; return; }
-      case 'state': this.stateTarget = STATES[val] ?? 0.25; return;
+      case 'speed': this.speedValue = num(val, 1); return;
+      case 'state': this.stateTarget = STATES.get(val) ?? 0.25; return;
+      case 'theme': this.shadowRoot!.querySelector('sd-scene')?.setAttribute('theme', val); return; // a lone object's own scene
       case 'color': this.recolor(val || '#9bd1ff'); return;
       case 'size': // in the shadow stylesheet, so a framework rewriting the inline style cannot wipe it
         (this.shadowRoot!.querySelectorAll('style')[1] as HTMLStyleElement).textContent = val ? `:host{width:${val}}` : '';
@@ -83,7 +86,7 @@ export class SdObject extends HTMLElement {
     const u = this.manifest.uniforms.find((u) => kebab(u.name) === name);
     if (u) {
       const c = coerce(v === null || v === '' ? u.default : v, u.type);
-      if (c !== null) this.uniforms[u.name] = c;
+      if (c !== null) this.uniforms[u.name] = typeof c === 'number' ? clampTo(c, u) : c;
     }
   }
 
@@ -93,19 +96,26 @@ export class SdObject extends HTMLElement {
     if (c) { this.rgb = c; this.colorSrc = s; }
   }
 
+  /** Where the object is drawn this frame: its layout center plus the offsets animations and interactions added so far, in scene px. (Not center() or radius(): uniform names reflect as properties.) */
+  drawCenter(): [number, number] { const r = this.rect!; return [r.x + r.width / 2 + this.anim.offset[0], r.y + r.height / 2 + this.anim.offset[1]]; }
+  /** Half the drawn size this frame, in scene px. */
+  drawRadius(): number { return (this.rect!.width / 2) * this.anim.scale; }
+
   /** Per-frame: ease state, advance the animation phase, run animations, cross-fade after an `animation` change. */
   update(dt: number) {
     this.stateValue = ease(this.stateValue, this.stateTarget, dt, 150);
-    if (!reducedMotion()) this.clock += (dt / 1000) * this.speedValue;
+    this.pinned = false; this.blurPx = 0;
+    const still = reducedMotion();
+    if (!still) this.clock += (dt / 1000) * this.speedValue;
     const pose: Pose = { rotation: [0, 0, 0], offset: [0, 0], scale: 1, state: 0 };
     for (const name of this.animNames) {
-      const r: AnimResult | undefined = animations.get(name)?.fn(this.clock + this.phaseOffset, this.speedValue, this);
+      // Reduced motion shows the rest pose (t = 0), whatever the phase says.
+      const r: AnimResult | undefined = animations.get(name)?.fn(still ? 0 : this.clock + this.phaseOffset, this.speedValue, this);
       if (!r) continue;
       if (r.rotation) for (let i = 0; i < 3; i++) pose.rotation[i] += r.rotation[i];
       if (r.offset) { pose.offset[0] += r.offset[0]; pose.offset[1] += r.offset[1]; }
       if (r.scale !== undefined) pose.scale *= r.scale;
       if (r.state !== undefined) pose.state += r.state;
-      if (r.uniforms) Object.assign(this.uniforms, r.uniforms);
     }
     let out = pose;
     if (this.prevPose && this.blend < 1) {
@@ -123,7 +133,7 @@ export class SdObject extends HTMLElement {
     this.anim.offset = [out.offset[0], out.offset[1]];
     this.anim.scale = out.scale;
     this.anim.state = out.state;
-    this.anim.z = this.z;
+    this.anim.z = 0;
   }
 }
 
@@ -152,6 +162,7 @@ export function reducedMotion() {
 export function reflect(proto: object, attrs: string[]) {
   for (const a of attrs) {
     if (Object.getOwnPropertyDescriptor(proto, camel(a))) continue;
+    if (camel(a) in HTMLElement.prototype) { console.warn(`[solids] attribute "${a}" is not reflected: it would shadow HTMLElement.${camel(a)}`); continue; }
     Object.defineProperty(proto, camel(a), {
       get(this: HTMLElement) { return this.getAttribute(a); },
       set(this: HTMLElement, v: unknown) { v == null ? this.removeAttribute(a) : this.setAttribute(a, String(v)); },

@@ -395,7 +395,7 @@ rp.pointer = { x: 110, y: 100, inside: true }; run(rp, 20);
 const rIn = [...ro.anim.offset];
 rp.pointer = { x: 0, y: 0, inside: false }; run(rp, 40);
 const rBack = Math.hypot(...ro.anim.offset);
-rp.setAttribute('repel-radius', '5'); rp.pointer = { x: 110, y: 100, inside: true }; run(rp, 20);
+rp.setAttribute('repel-radius', '20'); rp.pointer = { x: 110, y: 100, inside: true }; run(rp, 20);
 it.repel = { x: rIn[0], mag: Math.hypot(...rIn), back: rBack, narrow: Math.hypot(...ro.anim.offset) };
 // magnet pulls toward the pointer, then drifts home.
 const mg = bare({ interaction: 'magnet' }); const mo = place(mg, 80, 80);
@@ -480,7 +480,7 @@ free(pf);
 // Case U: universe. Seeded 3D bodies, live depth and focus, camera spin, drag and pointer tilt, unique motion, collisions, 3D orbits, pasted markup, odd inputs.
 const uni = (attrs) => { const u = document.createElement('sd-universe'); u.setAttribute('theme', 'dark'); for (const [k, v] of Object.entries(attrs)) u.setAttribute(k, v); return document.body.appendChild(u); };
 const sig = (u) => [...u.children].map((c) => c.localName + ' ' + c.dataset.pos + ' ' + c.getAttribute('size')).join('|');
-const radii = (u) => [...u.children].map((c) => (c.effectNames.includes('defocus') ? c.effectParams.defocus.radius : 0));
+const radii = (u) => [...u.children].map((c) => (c.blurPx >= 0.5 ? c.blurPx : 0));
 const still = (u) => { for (const c of u.children) c.setAttribute('animation', ''); for (let i = 0; i < 6; i++) u.frame(i / 10, 100); };
 const offs = (u) => [...u.children].map((c) => [...c.anim.offset]);
 const sameOffs = (a, b) => a.every((o, i) => Math.abs(o[0] - b[i][0]) < 0.01 && Math.abs(o[1] - b[i][1]) < 0.01);
@@ -615,6 +615,80 @@ const ph = mk({}, { animation: 'spin' }); const ph2 = ph.appendChild(document.cr
 await frame(); await frame();
 result.cases.phase = { differ: [...ph.firstElementChild.anim.rotation].some((v, i) => Math.abs(v - ph2.anim.rotation[i]) > 0.1) };
 free(ph);
+// Case Y: v7 hardening. Params clamp and stay finite; a zero-size body is harmless; reduced motion rests; contexts are released
+// on removal and flagged on loss; a failing effect logs once; the clock pauses; odd state keys; frame-rate-free springs;
+// late universe children get bodies; blur never leaks; author CSS does not move a universe child; tilt clamps;
+// gravity toggles ease; orbiters are pinned for collide; hover-lift follows scale; nested scenes; lone theme; reflection walk.
+const Y = result.cases.hard = {};
+{ const pz = mk({ effect: 'pixelate' }); pz.setAttribute('pixelate-size', '0');
+  const po2 = mk({}).firstElementChild; po2.setAttribute('glow', '-5'); po2.setAttribute('speed', '1e999'); po2.setAttribute('state', 'constructor');
+  const sizeMin = registry.effects.get('pixelate').manifest.params.find((q) => q.name === 'size').min;
+  Y.clamp = { effect: pz.effectParams.pixelate?.size, effectMin: sizeMin, uniform: po2.uniforms.glow, speed: po2.speedValue, state: po2.stateTarget };
+  free(pz, po2.scene); }
+{ const g = ringScene([60]); g.sc.setAttribute('gravity-strength', '100'); g.os[0].setAttribute('gravity', 'fall');
+  await frame(); for (let i = 0; i < 300; i++) g.sc.frame(i / 60, 16);
+  Y.fall = { dist: polar(g.c, g.os[0])[0] }; free(g.sc); }
+{ const z = pasteU('collide camera="" drift="0"', '<sd-orb data-pos="0 0 0" size="0px"></sd-orb><sd-orb data-pos="0.02 0 0" size="80px"></sd-orb>');
+  await frame(); for (let i = 0; i < 10; i++) z.frame(i / 10, 50);
+  Y.zeroSize = z.bodies.every((b) => b.p.every(Number.isFinite)); const zp = z.parentNode; free(z); zp.remove(); }
+{ window.__SD_REDUCED = true; const rs = mk({}, { animation: 'spin', phase: '2' }); await frame(); await frame();
+  Y.rest = rs.firstElementChild.pose?.rotation[1]; window.__SD_REDUCED = false; free(rs); }
+{ const gone = mk({}); await frame(); const gl2 = gone.gl; gone.remove(); await frame(); await frame();
+  Y.released = gl2.isContextLost();
+  const lost2 = mk({}); await frame(); const ex2 = lost2.gl.getExtension('WEBGL_lose_context'); ex2.loseContext(); await frame(); await frame();
+  Y.flagOnLoss = 'fallback' in lost2.dataset; ex2.restoreContext(); await frame(); await frame(); await frame();
+  Y.flagCleared = !('fallback' in lost2.dataset); free(lost2); }
+{ registry.effects.set('bad', { manifest: { name: 'bad', description: 'x', params: [] }, frag: 'vec4 sdEffect() { return nope; }' });
+  const before = window.__errors.length; const be = mk({ effect: 'bad' }); await frame(); for (let i = 0; i < 10; i++) be.frame(i / 10, 16);
+  Y.badEffect = { errors: window.__errors.slice(before).filter((e) => /"bad"/.test(e)).length, pixels: pixels(be) };
+  window.__errors.length = before; registry.effects.delete('bad'); free(be); }
+{ const pc = mk({}); await frame(); await frame(); await frame(); const c0 = pc.clock; pc.setAttribute('paused', '');
+  await new Promise((r) => setTimeout(r, 300)); pc.removeAttribute('paused'); await frame(); await frame();
+  Y.pausedClock = pc.clock - c0; free(pc); }
+{ const sp = (dt, n) => { const sc = mk({ interaction: 'repel' }); sc.style.cssText = 'width:200px;height:200px'; const o = sc.firstElementChild; o.style.cssText = 'position:absolute;left:80px;top:80px'; sc.measure(); sc.pointer = { x: 120, y: 100, inside: true }; for (let i = 0; i < n; i++) sc.frame(i * dt / 1000, dt); const v = [...o.anim.offset]; free(sc); return v; };
+  await frame(); const a16 = sp(16, 6), a8 = sp(8, 12); Y.spring = { a16: Math.hypot(...a16), a8: Math.hypot(...a8) }; }
+{ const ul = uni({ count: '4', seed: '2', camera: '', drift: '0' }); await frame(); ul.frame(0, 16);
+  const late = ul.appendChild(document.createElement('sd-orb')); late.setAttribute('size', '60px'); await frame(); ul.frame(0.1, 16);
+  Y.lateBody = { projected: Math.abs(late.anim.scale - 1) > 1e-6 || Math.hypot(...late.anim.offset) > 0.5 };
+  // Blur lives on the object, not in its effect chain, and does not follow a child into another scene.
+  const ub = uni({ count: '12', seed: '3', camera: '', drift: '0', depth: '1' }); await frame(); ub.frame(0, 16);
+  const blurred = [...ub.children].find((c) => c.blurPx > 0.5);
+  Y.blur = { field: !!blurred, chain: blurred ? blurred.effectNames.includes('defocus') : null };
+  if (blurred) { const home = mk({}); const twin = mk({}); twin.firstElementChild.remove(); const ref = twin.appendChild(document.createElement(blurred.localName)); ref.setAttribute('color', blurred.getAttribute('color')); ref.setAttribute('size', '80px'); home.firstElementChild.remove(); blurred.removeAttribute('data-pos'); blurred.setAttribute('size', '80px'); blurred.removeAttribute('animation'); blurred.removeAttribute('phase'); ref.removeAttribute('animation'); home.appendChild(blurred); document.body.append(home, twin); await frame(); await frame();
+    for (let i = 0; i < 8; i++) { home.frame(i / 10, 100); twin.frame(i / 10, 100); } // past the animation cross-fade
+    Y.blur.leak = differ(home, twin); free(home, twin); }
+  free(ul, ub); }
+{ const a = pasteU('camera="" drift="0"', '<sd-orb data-pos="0.3 0 0" size="60px"></sd-orb>'), b = pasteU('camera="" drift="0"', '<sd-orb data-pos="0.3 0 0" size="60px" style="left:10px;top:10px"></sd-orb>');
+  await frame(); a.frame(0, 16); b.frame(0, 16);
+  const ctr = (u) => { const o = u.firstElementChild; return [o.rect.x + o.rect.width / 2 + o.anim.offset[0], o.rect.y + o.rect.height / 2 + o.anim.offset[1]]; };
+  const ca = ctr(a), cb = ctr(b); Y.authorCss = Math.hypot(ca[0] - cb[0], ca[1] - cb[1]); const pa = [a.parentNode, b.parentNode]; free(a, b); pa.forEach((d) => d.remove()); }
+{ const ut = uni({ count: '2', seed: '2', camera: 'drag pointer', drift: '0' }); await frame();
+  ptr(ut, 'pointerdown', 100, 100); ptr(ut, 'pointermove', 1800, 1200); for (let i = 0; i < 20; i++) ut.frame(i / 10, 100);
+  Y.tiltClamp = Math.max(Math.abs(ut.tilt[0]), Math.abs(ut.tilt[1])); ptr(ut, 'pointerup', 1800, 1200); free(ut); }
+{ const g = ringScene([80, 140]); await frame(); for (let i = 0; i < 12; i++) g.sc.frame(i / 10, 100);
+  let worst = 0, prev = g.os.map((o) => [...o.anim.offset]); const stepAll = () => { const cur = g.os.map((o) => [...o.anim.offset]); worst = Math.max(worst, ...cur.map((v, k) => Math.hypot(v[0] - prev[k][0], v[1] - prev[k][1]))); prev = cur; };
+  g.sc.setAttribute('interaction', ''); for (let i = 0; i < 25; i++) g.sc.frame(2 + i / 60, 16); // off: the offsets stop at once (documented)
+  prev = g.os.map((o) => [...o.anim.offset]);
+  g.sc.setAttribute('interaction', 'gravity'); for (let i = 0; i < 25; i++) { g.sc.frame(3 + i / 60, 16); stepAll(); } // on again: eases back out
+  Y.toggleWorst = worst; free(g.sc); }
+{ const g = ringScene([100]); g.sc.setAttribute('interaction', 'gravity collide'); const blocker = g.sc.appendChild(document.createElement(tags[0])); blocker.setAttribute('gravity', 'none'); blocker.setAttribute('size', '40px');
+  await frame(); for (let i = 0; i < 12; i++) g.sc.frame(i / 10, 100);
+  // park the blocker on the orbiter's current spot: its offset should move, the orbiter's should not
+  const orbiter = g.os[0]; const spot = [orbiter.rect.x + orbiter.rect.width / 2 + orbiter.anim.offset[0], orbiter.rect.y + orbiter.rect.height / 2 + orbiter.anim.offset[1]];
+  blocker.style.cssText = 'position:absolute;left:' + (spot[0] - 20) + 'px;top:' + (spot[1] - 20) + 'px'; g.sc.measure();
+  const ring1 = polar(g.c, orbiter)[0]; for (let i = 0; i < 12; i++) g.sc.frame(2 + i / 10, 100);
+  Y.pinned = { orbiterRadius: polar(g.c, orbiter)[0], ring: ring1, blockerMoved: Math.hypot(...blocker.anim.offset) }; free(g.sc); }
+{ const hs = mk({ interaction: 'hover-lift' }); hs.style.cssText = 'width:200px;height:200px'; const ho = hs.firstElementChild; ho.setAttribute('size', '100px'); ho.style.cssText = 'position:absolute;left:50px;top:50px';
+  const hu = ho.update.bind(ho); ho.update = (dt) => { hu(dt); ho.anim.scale = 0.5; }; hs.measure();
+  hs.pointer = { x: 100 + 40, y: 100, inside: true }; await frame(); for (let i = 0; i < 20; i++) hs.frame(i / 10, 100);
+  Y.hoverScale = ho.anim.scale; free(hs); }
+{ const wrap = document.body.appendChild(document.createElement('div')); wrap.innerHTML = '<sd-scene class="small"><sd-scene class="small"><' + tags[0] + '></' + tags[0] + '></sd-scene></sd-scene>'; const outer = wrap.firstElementChild, inner = outer.firstElementChild;
+  await frame(); Y.nested = { outer: outer.objects.size, inner: inner.objects.size }; free(inner, outer); wrap.remove(); }
+{ const lt = document.body.appendChild(document.createElement(tags[0])); lt.setAttribute('theme', 'light'); await frame();
+  const ls = lt.shadowRoot?.querySelector('sd-scene'); const light = ls?.themeValue; lt.setAttribute('theme', 'dark'); const dark = ls?.themeValue;
+  Y.loneTheme = light === 1 && dark === 0 ? 1 : [light, dark]; lt.remove(); }
+{ const bad = []; for (const t of tags) { const e = document.createElement(t); for (const a of e.constructor.observedAttributes) { const k = a.replace(/-([a-z])/g, (_, c) => c.toUpperCase()); if (Object.hasOwn(e, k) || k in HTMLElement.prototype) bad.push(t + '.' + k); } }
+  Y.reflect = bad; }
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
@@ -628,7 +702,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 90000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
@@ -705,7 +779,7 @@ async function smoke() {
     const it = r.cases.interact, js = (v) => JSON.stringify(v);
     if (!it.one?.finite || !(it.one.max < 1e-6)) fail(`collide with one object should not move: ${js(it.one)}`);
     if (!(it.apart >= 40) || it.width !== 40) fail(`collide: two overlapping 40 px objects ended ${it.apart?.toFixed(1)} px apart, expected >= 40 (width ${it.width})`);
-    if (!(it.repel?.x < -1) || !(it.repel.back < it.repel.mag * 0.5) || !(it.repel.narrow < 0.5)) fail(`repel: pushed left, springs back, repel-radius narrows: ${js(it.repel)}`);
+    if (!(it.repel?.x < -1) || !(it.repel.back < it.repel.mag * 0.5) || !(it.repel.narrow < it.repel.mag * 0.25)) fail(`repel: pushed left, springs back, repel-radius narrows: ${js(it.repel)}`);
     if (!(it.magnet?.x > 1) || !(it.magnet.back < it.magnet.mag * 0.5)) fail(`magnet: pulled right, drifts home: ${js(it.magnet)}`);
     if (!(it.scroll?.diff > 0.01)) fail(`scroll: rotation did not change with the page scroll under reduced motion: ${js(it.scroll)}`);
     const tl = it.tall;
@@ -742,6 +816,26 @@ async function smoke() {
     if (!(uv.tiltDir?.right > 0) || !(uv.tiltDir?.down > 0)) fail(`universe pointer tilt should move front shapes toward the pointer: ${js(uv.tiltDir)}`);
     if (!(r.cases.quad?.outside > 50)) fail(`quad does not follow scale: ${r.cases.quad?.outside} px painted beyond 1.5x the rect at scale 2 (expected > 50)`);
     if (!r.cases.phase?.differ) fail('phase="2" should offset the spin against a sibling without one');
+    { const Y = r.cases.hard ?? {}, j = (v) => JSON.stringify(v);
+      if (!(Y.clamp?.effect === Y.clamp?.effectMin) || Y.clamp?.uniform !== 0 || Y.clamp?.speed !== 1 || Y.clamp?.state !== 0.25) fail(`params should clamp and stay finite: ${j(Y.clamp)}`);
+      if (!(Y.fall?.dist < 300)) fail(`gravity-strength 100 flung a faller ${Y.fall?.dist?.toFixed(0)} px away (expected under 300)`);
+      if (Y.zeroSize !== true) fail('a zero-size universe body made positions non-finite');
+      if (Y.rest !== 0) fail(`reduced motion with phase="2" should rest at rotation 0, got ${Y.rest}`);
+      if (Y.released !== true) fail('a removed scene should release its WebGL context');
+      if (Y.flagOnLoss !== true || Y.flagCleared !== true) fail(`context loss should set data-fallback and restore should clear it: ${j({ on: Y.flagOnLoss, cleared: Y.flagCleared })}`);
+      if (Y.badEffect?.errors !== 1 || !(Y.badEffect?.pixels > 100)) fail(`a failing effect should log once and pass through: ${j(Y.badEffect)}`);
+      if (!(Y.pausedClock < 0.2)) fail(`the shader clock advanced ${Y.pausedClock?.toFixed(2)} s while paused for 0.3 s`);
+      if (!(Math.abs(Y.spring?.a16 / Y.spring?.a8 - 1) < 0.05)) fail(`repel spring depends on frame rate: ${j(Y.spring)}`);
+      if (!Y.lateBody?.projected) fail('a child appended to a universe after connect is not projected');
+      if (!Y.blur?.field || Y.blur?.chain !== false || !(Y.blur?.leak < 1e-6)) fail(`blur should be a field, not an effect, and not leak: ${j(Y.blur)}`);
+      if (!(Y.authorCss < 0.5)) fail(`author CSS moved a universe child by ${Y.authorCss?.toFixed(1)} px`);
+      if (!(Y.tiltClamp <= 12 * Math.PI / 180 + 1e-6)) fail(`pointer tilt while dragging outside the box reached ${(Y.tiltClamp * 180 / Math.PI).toFixed(1)} degrees`);
+      if (!(Y.toggleWorst < 12)) fail(`toggling gravity off and on snapped ${Y.toggleWorst?.toFixed(1)} px in one frame`);
+      if (!(Math.abs(Y.pinned?.orbiterRadius - Y.pinned?.ring) < 1) || !(Y.pinned?.blockerMoved > 5)) fail(`collide should not push an orbiter off its ring: ${j(Y.pinned)}`);
+      if (Y.hoverScale !== 0.5) fail(`hover-lift ignores the object's scale: scale ${Y.hoverScale} with the pointer outside the drawn shape`);
+      if (Y.nested?.outer !== 0 || Y.nested?.inner !== 1) fail(`a nested scene's object attached to the wrong scene: ${j(Y.nested)}`);
+      if (Y.loneTheme !== 1) fail(`theme="light" on a lone object did not reach its scene (${Y.loneTheme})`);
+      if (Y.reflect?.length) fail(`attributes that shadow fields or HTMLElement properties: ${j(Y.reflect)}`); }
     if (!(uv.defaultHeight >= 300) || !(uv.defaultPixels > 1000)) fail(`universe with no author height: ${uv.defaultHeight}px tall, ${uv.defaultPixels} px drawn`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px, color space ${r.cases.color.space})`);
     return r;

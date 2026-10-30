@@ -29,7 +29,8 @@ $$('.tabs').forEach((tabs) => {
 const SKIP = new Set(['class', 'id', 'theme']);
 function serialize(el, depth = 0) {
   const pad = '  '.repeat(depth);
-  const attrs = [...el.attributes].filter((a) => !SKIP.has(a.name) && a.value !== '' && !(a.name === 'style' && depth === 0 && !('keepStyle' in el.dataset))).map((a) => ` ${a.name}="${a.value}"`).join('');
+  const q = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  const attrs = [...el.attributes].filter((a) => !SKIP.has(a.name) && a.value !== '' && !(a.name === 'style' && depth === 0 && !('keepStyle' in el.dataset))).map((a) => ` ${a.name}="${q(a.value)}"`).join('');
   const kids = [...el.children].filter((c) => c.tagName.startsWith('SD-'));
   if (!kids.length) return `${pad}<${el.localName}${attrs}></${el.localName}>`;
   return `${pad}<${el.localName}${attrs}>\n${kids.map((k) => serialize(k, depth + 1)).join('\n')}\n${pad}</${el.localName}>`;

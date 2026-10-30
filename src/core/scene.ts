@@ -26,12 +26,16 @@ export class SdScene extends HTMLElement {
   private gpuMs: number | null = null;
   private gpuOn = false;
   private query: WebGLQuery | null = null;   // one timer query in flight at a time
-  private raf = 0; private last = 0; private t0 = 0;
+  private raf = 0; private last = 0;
   private visible = true; private paused = false;
+  private failed = new Set<string>();     // effect names whose shader failed on this context: passed through, logged once
+  private maxTex = 8192;
   private ro: ResizeObserver | null = null;
   private io: IntersectionObserver | null = null;
   private fbos: { scene: FBO; a: FBO; b: FBO; pool: Map<string, [FBO, FBO, number]>; used: Set<string> } | null = null;
   private clock = 0;   // shader time; stops advancing under reduced motion
+  /** The scene clock in seconds: shader time, paused with the scene. */
+  get time() { return this.clock; }
 
   constructor() {
     super();
@@ -45,21 +49,23 @@ export class SdScene extends HTMLElement {
       const g = createGL(this.canvas);
       this.gl = g?.gl ?? null; this.colorSpace = g?.colorSpace ?? 'srgb';
       if (!this.gl) { this.dataset.fallback = ''; for (const o of this.objects) o.dataset.fallback = ''; }
-      this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.stop(); });
+      else this.maxTex = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE);
+      this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.stop(); this.dataset.fallback = ''; });
       this.canvas.addEventListener('webglcontextrestored', () => {
-        clearCache(this.gl!); this.fbos = null; this.query = null; initState(this.gl!);
+        clearCache(this.gl!); this.fbos = null; this.query = null; this.failed.clear(); initState(this.gl!);
         for (const o of this.objects) o.broken = false;
+        delete this.dataset.fallback;
         this.start();
       });
-    }
+    } else if (this.gl.isContextLost()) this.gl.getExtension('WEBGL_lose_context')?.restoreContext(); // released on disconnect, see below
     this.ro = new ResizeObserver(() => this.measure());
     this.ro.observe(this);
-    this.io = new IntersectionObserver(([e]) => { this.visible = e.isIntersecting; this.visible ? this.start() : this.stop(); });
+    this.io = new IntersectionObserver((es) => { this.visible = es[es.length - 1].isIntersecting; this.visible ? this.start() : this.stop(); });
     this.io.observe(this);
     this.addEventListener('pointermove', this.onPointer);
     this.addEventListener('pointerleave', this.onLeave);
     document.addEventListener('visibilitychange', this.onVis);
-    for (const el of this.querySelectorAll('*')) if (el instanceof SdObject) this.attach(el);
+    for (const el of this.querySelectorAll('*')) if (el instanceof SdObject && el.closest('sd-scene, sd-universe') === this) this.attach(el);
     for (const o of this.objects) this.ro.observe(o);
     this.measure();
     this.start();
@@ -68,6 +74,8 @@ export class SdScene extends HTMLElement {
     this.stop();
     this.ro?.disconnect(); this.io?.disconnect();
     document.removeEventListener('visibilitychange', this.onVis);
+    // Browsers keep about 16 live contexts: give this one back unless the scene is only being moved.
+    queueMicrotask(() => { if (!this.isConnected && this.gl && !this.gl.isContextLost()) this.gl.getExtension('WEBGL_lose_context')?.loseContext(); });
   }
   attributeChangedCallback(name: string, _o: string | null, v: string | null) {
     const val = v ?? '';
@@ -89,12 +97,12 @@ export class SdScene extends HTMLElement {
     this.ro?.observe(o);
     this.measure();
   }
-  detach(o: SdObject) { this.objects.delete(o); o.scene = null; this.ro?.unobserve(o); }
+  detach(o: SdObject) { this.objects.delete(o); o.scene = null; this.ro?.unobserve(o); if (this.isConnected) this.measure(); }
 
   get themeValue(): number {
     if (this.theme === 'dark') return 0;
     if (this.theme === 'light') return 1;
-    return matchMedia('(prefers-color-scheme: light)').matches ? 1 : 0;
+    return (lightMq ??= matchMedia('(prefers-color-scheme: light)')).matches ? 1 : 0;
   }
 
   private onPointer = (e: PointerEvent) => {
@@ -125,11 +133,10 @@ export class SdScene extends HTMLElement {
 
   private tick = (now: number) => {
     this.raf = 0;
-    if (!this.t0) this.t0 = now;
     if (this.last) this.fps = ema(this.fps, 1000 / Math.max(now - this.last, 1));
     const dt = this.last ? Math.min(now - this.last, 100) : 16;
     this.last = now;
-    this.frame((now - this.t0) / 1000, dt);
+    this.frame(this.clock + dt / 1000, dt); // shader time is the scene clock, so pausing or hiding does not jump it
     this.raf = requestAnimationFrame(this.tick);
   };
 
@@ -137,7 +144,7 @@ export class SdScene extends HTMLElement {
   frame(t: number, dt: number) {
     const gl = this.gl;
     const W = this.canvas.width, H = this.canvas.height;
-    if (!gl || W === 0 || H === 0) return;
+    if (!gl || gl.isContextLost() || W === 0 || H === 0) return;
     const start = performance.now();
     const timer = this.gpuOn ? this.gpuBegin(gl) : null;
     try { this.render(gl, W, H, t, dt); }
@@ -175,7 +182,7 @@ export class SdScene extends HTMLElement {
 
     // 1. Objects into the scene buffer.
     this.bind(gl, f.scene, 0, 0, W, H, true);
-    const sorted = [...this.objects].filter((o) => o.rect && !o.broken).sort((a, b) => a.anim.z - b.anim.z);
+    const sorted = [...this.objects].filter((o) => o.rect && !o.broken).sort((a, b) => (a.anim.z || 0) - (b.anim.z || 0));
     for (const o of sorted) this.draw(gl, o, t, theme, f);
 
     // 2. Scene effect chain, ping-pong, then blit to the canvas.
@@ -214,9 +221,10 @@ export class SdScene extends HTMLElement {
   }
   private pass(gl: WebGL2RenderingContext, name: string, src: FBO, params: Record<string, number> | undefined, res: [number, number], t: number, theme: number) {
     const e = effects.get(name)!;
+    if (this.failed.has(name)) return this.blit(gl, src);
     let p: Program;
     try { p = program(gl, e.frag, 'effect'); }
-    catch (err) { console.error(`[solids] effect "${name}" shader failed:\n${(err as Error).message}`); this.blit(gl, src); return; }
+    catch (err) { this.failed.add(name); console.error(`[solids] effect "${name}" shader failed:\n${(err as Error).message}`); this.blit(gl, src); return; }
     gl.useProgram(p.prog);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.tex);
     const defaults: Record<string, number> = {};
@@ -228,22 +236,23 @@ export class SdScene extends HTMLElement {
   private draw(gl: WebGL2RenderingContext, o: SdObject, t: number, theme: number, f: NonNullable<typeof this.fbos>, W = this.canvas.width, H = this.canvas.height) {
     const r = o.rect!;
     const bleed = o.manifest.bleed ?? 1.5;
-    const cx = r.x + r.width / 2 + o.anim.offset[0], cy = r.y + r.height / 2 + o.anim.offset[1];
+    const [cx, cy] = o.drawCenter();
     // The quad follows the object's scale, in 8 device px steps so the buffer pool keys stay few; uScale keeps the shape at exactly rect × scale.
     const sz = r.width * o.anim.scale * this.pixelRatio;
     const w = Math.ceil((sz * bleed) / 8) * 8, h = w;
-    if (!(sz > 0) || w > 8192) return;
+    if (!(sz > 0) || w > this.maxTex) return;
     const x = Math.round(cx * this.pixelRatio - w / 2), y = Math.round((this.height - cy) * this.pixelRatio - h / 2);
     if (x >= W || y >= H || x + w <= 0 || y + h <= 0) return; // off the canvas
     const qw = w / this.pixelRatio, qh = h / this.pixelRatio;
     // Shade: the object's own `shading`, else the scene's, else auto (glass in dark, the light default in light).
     const shadeName = resolveShade(o.hasAttribute('shading') ? o.shadeName : this.shadeName, theme), shade = shades.get(shadeName)!;
     const shadeUniforms: Record<string, number> = {};
-    for (const d of shade.manifest.params) { const v = o.shadeParams[shadeName]?.[d.name] ?? this.shadeParams[shadeName]?.[d.name] ?? (d.default as number); shadeUniforms[d.name] = Math.min(d.max ?? v, Math.max(d.min ?? v, v)); }
+    for (const d of shade.manifest.params) shadeUniforms[d.name] = o.shadeParams[shadeName]?.[d.name] ?? this.shadeParams[shadeName]?.[d.name] ?? (d.default as number);
     let p: Program;
     try { p = program(gl, o.frag, 'object', { name: shadeName, frag: shade.frag }); }
     catch (e) { o.broken = true; console.error(`[solids] <${o.manifest.tag}> shader failed:\n${(e as Error).message}`); return; }
     const chain = o.effectNames.filter((n) => effects.has(n));
+    if (o.blurPx >= 0.5 && !chain.includes('defocus')) chain.push('defocus'); // depth of field set by a universe this frame
     // With its own effects the object renders into a quad-sized buffer first.
     // Per-object buffers are pooled by size so a crowd of differently sized objects does not reallocate every frame.
     let pair: [FBO, FBO, number] | undefined;
@@ -268,7 +277,7 @@ export class SdScene extends HTMLElement {
     for (const name of chain) {
       const dst = src === pair![0] ? pair![1] : pair![0];
       this.bind(gl, dst, 0, 0, w, h, true);
-      this.pass(gl, name, src, o.effectParams[name], [w, h], t, theme);
+      this.pass(gl, name, src, name === 'defocus' && o.blurPx >= 0.5 ? { ...o.effectParams[name], radius: o.blurPx } : o.effectParams[name], [w, h], t, theme);
       src = dst;
     }
     this.bind(gl, f.scene, x, y, w, h, false);
@@ -276,5 +285,6 @@ export class SdScene extends HTMLElement {
   }
 }
 
+let lightMq: MediaQueryList | null = null;
 /** Exponential moving average, alpha 0.1; the first sample seeds it. */
 const ema = (prev: number, x: number) => (prev ? prev + (x - prev) * 0.1 : x);
