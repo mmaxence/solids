@@ -28,9 +28,9 @@ Add one script tag, then use the tags anywhere in your markup.
 </sd-scene>
 ```
 
-## Four layers
+## Five layers
 
-Four layers compose on any object. Each one is a single attribute, and each name links to its page.
+Five layers compose on any object. Each one is a single attribute, and each name links to its page.
 
 ## Universe
 
@@ -38,7 +38,7 @@ One element fills its box with a seeded cloud of shapes in three dimensions. Dra
 
 ## Catalogue
 
-Every object, effect and interaction has a page with a live preview, its options and the markup to copy.
+Every object, effect, shade and interaction has a page with a live preview, its options and the markup to copy. The [Shades page](shades.html) shows every shade on every object in both themes.
 
 ## Performance
 

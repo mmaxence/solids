@@ -19,6 +19,8 @@ const kb = (n) => (n / 1024).toFixed(1) + ' KB';
 const { registry } = await import(pathToFileURL('dist/solids.js').href + '?' + Date.now());
 const objects = [...registry.objects.values()].map((o) => ({ ...o.manifest, readme: readFileSync(`src/objects/${o.manifest.name}/README.md`, 'utf8') }));
 const effects = [...registry.effects.values()].map((e) => e.manifest);
+const shades = [...registry.shades.values()].map((s) => ({ ...s.manifest, readme: readFileSync(`src/shades/${s.manifest.name}/README.md`, 'utf8') }));
+const LIGHT_SHADE = registry.LIGHT_SHADE;
 const animations = [...registry.animations.values()].map((a) => a.meta);
 const interactions = [...registry.interactions.values()].map((i) => i.meta);
 
@@ -62,7 +64,7 @@ function nav(root, current) {
   // Two tiers: the guide, always open, then the catalogue as four collapsible groups. Only the current page's group starts open.
   const group = (label, dir, list) => { const open = current.startsWith(dir + '/'); return `<details${open ? ' open' : ''}><summary>${label} <span>${list.length}</span></summary><ul>${list.map((x) => item(`${dir}/${x.name}.html`, x.name)).join('')}</ul></details>`; };
   return `<h2>Guide</h2><ul>${item('index.html', 'Introduction')}${item('accessibility.html', 'Accessibility')}${item('scene.html', 'Scene and gravity')}${item('universe.html', 'Universe')}${item('performance.html', 'Performance')}</ul>
-<h2>Catalogue</h2>${group('Objects', 'objects', objects)}${group('Animations', 'animations', animations)}${group('Effects', 'effects', effects)}${group('Interactions', 'interactions', interactions)}`;
+<h2>Catalogue</h2>${group('Objects', 'objects', objects)}${group('Animations', 'animations', animations)}${group('Effects', 'effects', effects)}${group('Shades', 'shades', shades)}${group('Interactions', 'interactions', interactions)}`;
 }
 
 function page(path, { title, description, main, hero = '' }) {
@@ -107,7 +109,9 @@ const coreControls = (target = 'object') => [
   { kind: 'range', attr: 'speed', label: 'Speed', min: 0.1, max: 3, step: 0.1, value: 1, default: 1, target },
   { kind: 'select', attr: 'state', label: 'State', options: ['', 'off', 'idle', 'busy', 'active'], value: '', target },
   { kind: 'select', attr: 'effect', label: 'Effect', options: ['', ...effects.map((e) => e.name)], value: '', target },
+  shadingControl(target),
 ];
+const shadingControl = (target) => ({ kind: 'select', attr: 'shading', label: 'Shading', options: ['', ...shades.map((s) => s.name)], value: '', target });
 const optionsTable = (rows) => `<table><thead><tr><th>Attribute</th><th>Type</th><th>Default</th><th>Range</th><th>Description</th></tr></thead><tbody>${rows.map((r) => `<tr><td><code>${esc(r[0])}</code></td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td><td>${esc(r[4])}</td></tr>`).join('')}</tbody></table>`;
 const optionsMd = (rows) => `| Attribute | Type | Default | Range | Description |\n|---|---|---|---|---|\n${rows.map((r) => `| ${r.join(' | ')} |`).join('\n')}`;
 const CORE_ROWS = [
@@ -117,6 +121,7 @@ const CORE_ROWS = [
   ['speed', 'number', '1', '0.1 to 3', 'Multiplies animation time.'],
   ['state', 'keyword', 'idle', 'off, idle, busy, active', 'Brightness level, eased on change.'],
   ['effect', 'list', 'none', effects.map((e) => e.name).join(', '), 'Space separated post effects on this object only.'],
+  ['shading', 'keyword', 'auto', ['auto', ...shades.map((s) => s.name)].join(', '), `How the surface takes light. auto is glass in the dark theme and ${LIGHT_SHADE} in the light one; a scene's shading is the default for its children.`],
   ['gravity', 'keyword', 'orbit', 'center, orbit, fall, none', 'Role in a gravity scene.'],
 ];
 const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p>`;
@@ -145,6 +150,7 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
   const heroControls = [
     { kind: 'select', attr: 'center', label: 'Center', options: ids.slice(0, 6), value: 'orb', target: 'scene' },
     { kind: 'select', attr: 'effect', label: 'Effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
+    shadingControl('scene'),
     { kind: 'range', attr: 'gravity-strength', label: 'Gravity', min: 0, max: 1, step: 0.01, value: 0.35, default: 0.6, target: 'scene' },
     ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: ['gravity', 'pointer-follow', 'hover-lift'].includes(i.name), target: 'scene' })),
   ];
@@ -152,7 +158,7 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
     sceneAttrs: 'interaction="gravity pointer-follow hover-lift" gravity-strength="0.35" dpr="1.5"',
     inner: heroInner, controls: heroControls,
     title: 'Lightweight 3D objects for the web',
-    pitch: `Glassy shapes you drop into HTML. One script tag, no dependencies, about ${Math.round(sizes.full / 1024)} KB. Hover, pick a center of gravity, try an effect.`,
+    pitch: `Glassy shapes you drop into HTML. One script tag, no dependencies, about ${Math.round(sizes.full / 1024)} KB. Hover, pick a center of gravity, try an effect or a shade.`,
     prompt: `This is a solids scene: glassy 3D objects as web components, one script tag, no dependencies.\n\n\`\`\`html\n<script type="module" src="${SCRIPT}"></script>\n{{markup}}\n\`\`\`\n\nThe contract for adding an object is ${SKILL}. Read it, clone https://github.com/mmaxence/solids, add the object under src/objects there, run npm run check until it prints ok, then use the new tag in this scene.`,
   });
 
@@ -164,10 +170,12 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
 ${layer('Objects', 'The shape. A fragment shader on a quad.', 'objects', objects, `<sd-orb size="96px" gravity="none" color="${colorOf(0)}"></sd-orb>`)}
 ${layer('Animations', 'Pure functions of time, composable.', 'animations', animations, `<sd-ring size="96px" gravity="none" animation="spin" color="${colorOf(1)}"></sd-ring>`)}
 ${layer('Effects', 'Post passes on an object or a whole scene.', 'effects', effects, `<sd-crystal size="88px" gravity="none" effect="glow" color="${colorOf(2)}"></sd-crystal>`)}
+${layer('Shades', 'How a surface takes light. One attribute, any object.', 'shades', shades, `<sd-orb size="96px" gravity="none" shading="cel" color="${colorOf(4)}"></sd-orb>`)}
 ${layer('Interactions', 'Scene rules that react to the pointer and to each other.', 'interactions', interactions, `<sd-orb size="60px" gravity="center" color="${colorOf(3)}"></sd-orb><sd-star size="34px" animation="spin" color="${colorOf(4)}" style="left:46px"></sd-star>`)}
 </ul></sd-scene>`;
   const catalogue = `<sd-scene class="row" dpr="1.5" interaction="hover-lift"><ul class="catalogue">${objects.map((o, i) => `<li><a href="objects/${o.name}.html"><${o.tag} size="96px" animation="idle" color="${colorOf(i)}"></${o.tag}><span>${esc(o.name)}</span></a></li>`).join('')}</ul></sd-scene>
 <p class="chips"><span>Effects</span>${effects.map((e) => `<a href="effects/${e.name}.html">${esc(e.name)}</a>`).join('')}</p>
+<p class="chips"><span>Shades</span>${shades.map((x) => `<a href="shades/${x.name}.html">${esc(x.name)}</a>`).join('')}</p>
 <p class="chips"><span>Interactions</span>${interactions.map((i) => `<a href="interactions/${i.name}.html">${esc(i.name)}</a>`).join('')}</p>`;
   const numbers = `<dl class="numbers"><div><dt>The whole library, gzipped</dt><dd>${(gzipSync(readFileSync('dist/solids.js')).length / 1024).toFixed(1)} KB</dd></div><div><dt>Objects on the hero, one canvas</dt><dd>${ids.length}</dd></div><div><dt>One hero frame, measured now</dt><dd id="live-frame">measuring</dd></div></dl>`;
   const universe = `<sd-universe class="band-universe" count="36" seed="5" collide depth="0.55" dpr="1.5" style="position:relative;height:70vh;min-height:480px"></sd-universe>`;
@@ -219,10 +227,28 @@ effects.forEach((e) => {
     { kind: 'select', attr: 'object', label: 'Object', options: objects.map((o) => o.tag), value: 'sd-orb', target: 'scene' },
     ...e.params.map((p) => rangeControl(p, 'scene', `${e.name}-${kebab(p.name)}`)),
     { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: e.name, target: 'scene' },
+    shadingControl('scene'),
   ];
   const prompt = `Effect "${e.name}": ${e.description}\n\nSet it on a scene (applies to everything) or on one object. Parameters are attributes prefixed with the effect name.\n\n${optionsMd(rows)}\n\n\`\`\`html\n{{markup}}\n\`\`\``;
   page(`effects/${e.name}.html`, { title: e.name, description: e.description, main: `<h1>${esc(e.name)}</h1><p class="lede">${esc(e.description)}</p>${preview({ sceneAttrs: `effect="${e.name}"`, inner: `<sd-orb size="220px" color="${colorOf(0)}" animation="idle"></sd-orb>`, controls, prompt })}<h2>Options</h2>${optionsTable(rows)}<p>Put <code>effect="${e.name}"</code> on a scene to process the whole canvas, or on a single object to process only that object. Chain several with spaces; they run in the order written.</p>${license}` });
 });
+
+// --- Shade pages and the comparison page ---
+shades.forEach((sh) => {
+  const rows = sh.params.map((p) => [`${sh.name}-${kebab(p.name)}`, 'number', String(p.default), `${p.min} to ${p.max}`, p.label]);
+  const controls = [
+    { kind: 'select', attr: 'object', label: 'Object', options: objects.map((o) => o.tag), value: 'sd-orb', target: 'scene' },
+    ...sh.params.map((p) => rangeControl(p, 'scene', `${sh.name}-${kebab(p.name)}`)),
+    { kind: 'select', attr: 'shading', label: 'Shading', options: ['', ...shades.map((x) => x.name)], value: sh.name, target: 'scene' },
+    { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
+  ];
+  const prompt = `Shade "${sh.name}": ${sh.description}\n\nSet shading="${sh.name}" on a scene (the default for its children) or on one object. Parameters are attributes prefixed with the shade name. shading="auto" is glass in the dark theme and ${LIGHT_SHADE} in the light one.\n\n${optionsMd(rows)}\n\n\`\`\`html\n{{markup}}\n\`\`\``;
+  page(`shades/${sh.name}.html`, { title: sh.name, description: sh.description, main: `<h1>${esc(sh.name)}</h1><p class="lede">${esc(sh.description)}</p>${preview({ sceneAttrs: `shading="${sh.name}"`, inner: `<sd-orb size="220px" color="${colorOf(0)}" animation="idle"></sd-orb>`, controls, prompt })}${rows.length ? `<h2>Options</h2>${optionsTable(rows)}` : ''}<h2>Notes</h2>${md(sh.readme.replace(/^# .*\n/, ''))}<p>Put <code>shading="${sh.name}"</code> on a scene to shade every object in it, or on one object. Compare all shades on the <a href="../shades.html">Shades page</a>.</p>${license}` });
+});
+{
+  const row = (sh, i) => `<li><h2><a href="shades/${sh.name}.html">${esc(sh.name)}</a></h2><p>${esc(sh.description)}</p><sd-scene class="row" dpr="1.5" shading="${sh.name}" interaction="hover-lift"><ul class="catalogue compare">${objects.map((o, k) => `<li><${o.tag} size="96px" animation="idle" color="${colorOf(k)}"></${o.tag}></li>`).join('')}</ul></sd-scene></li>`;
+  page('shades.html', { title: 'Shades', description: 'Every shade on every object, in both themes. Pick the one that reads best on your background.', main: `<h1>Shades</h1><p class="lede">Every shade on every object. Use the Theme button to compare them on dark and on light. <code>shading="auto"</code> is <code>glass</code> in the dark theme and <code>${LIGHT_SHADE}</code> is the light default today.</p><ul class="compare-rows">${shades.map(row).join('')}</ul><p>Set <code>shading</code> on a scene to shade everything in it, or on one object. Each shade page has its parameters and the markup to copy; the contract for adding a shade is in <a href="skill.md">skill.md</a>.</p>${license}` });
+}
 
 // --- Interaction pages and the Scene page ---
 const sceneInner = `<sd-orb id="orb" gravity="center" animation="breathe" color="${colorOf(0)}" size="150px" style="position:absolute;left:calc(50% - 75px);top:calc(50% - 75px)"></sd-orb>
@@ -236,6 +262,7 @@ const sceneControls = (active) => [
   { kind: 'range', attr: 'gravity-strength', label: 'Gravity strength', min: 0, max: 1, step: 0.01, value: 0.6, default: 0.6, target: 'scene' },
   ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: active.includes(i.name), target: 'scene' })),
   { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
+  shadingControl('scene'),
 ];
 const scenePrompt = `A solids scene holds objects on one canvas and applies interactions between them. Gravity: mark one object gravity="center"; the others orbit it by default, each on its own ring (sorted by distance in the layout, spread evenly, farther rings turn slower like real orbits), gravity="fall" drifts toward it and stops at gravity-gap, gravity="none" opts out. Change the center at runtime and everything eases to its new path.\n\n\`\`\`html\n{{markup}}\n\`\`\``;
 page('scene.html', { title: 'Scene and gravity', description: 'Objects in one scene interact. Pick the center of gravity and watch the others follow.', main: `<h1>Scene and gravity</h1><p class="lede">Objects inside one scene share a canvas and can react to each other. Pick which object is the center of gravity.</p>${preview({ sceneAttrs: 'interaction="gravity hover-lift" gravity-strength="0.6"', inner: sceneInner, controls: sceneControls(['gravity', 'hover-lift']), prompt: scenePrompt, stageClass: 'scatter' })}
@@ -287,6 +314,7 @@ ${effects.map((e) => row(`data-effect="${e.name}"`, `<a href="effects/${e.name}.
     { kind: 'range', attr: 'depth', label: 'Depth', min: 0, max: 1, step: 0.05, value: 0.5, default: 0.5, target: 'scene' },
     { kind: 'range', attr: 'focus', label: 'Focus', min: -1, max: 1, step: 0.05, value: 0, default: 0, target: 'scene' },
     { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
+    shadingControl('scene'),
   ];
   const rows = [
     ['count', 'number', '24', '0 to 120', 'How many shapes. Changing it regenerates the children.'],
@@ -338,13 +366,18 @@ ${entries('animations', animations)}
 
 ${entries('effects', effects)}
 
+## Shades
+
+${entries('shades', shades)}
+- [Shades](${BASE}shades.html): every shade on every object, both themes.
+
 ## Interactions
 
 ${entries('interactions', interactions)}
 
 ## Pages
 
-- [Introduction](${BASE}index.html): install, the four layers, the catalogue.
+- [Introduction](${BASE}index.html): install, the five layers, the catalogue.
 - [Scene and gravity](${BASE}scene.html): objects in one scene and the center of gravity.
 - [Universe](${BASE}universe.html): a scene that fills its box with seeded shapes in 3D, with a camera that spins and drags, a depth of field and optional collisions.
 - [Performance](${BASE}performance.html): bundle sizes, a live frame meter, and a benchmark that runs in the browser.

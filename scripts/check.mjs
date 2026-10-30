@@ -743,20 +743,36 @@ async function site() {
   const text = (f) => (existsSync(`site/dist/${f}`) ? readFileSync(`site/dist/${f}`, 'utf8') : '');
   if (!existsSync('site/dist/skill.md') || !readFileSync('site/dist/skill.md').equals(readFileSync('docs/SKILL.md'))) fail('site/skill.md is not a byte copy of docs/SKILL.md');
   const llms = text('llms.txt');
-  const unlisted = pages.filter((f) => /^(objects|effects|interactions)\//.test(f) && !llms.includes(f));
+  const unlisted = pages.filter((f) => /^(objects|effects|shades|interactions)\//.test(f) && !llms.includes(f));
   for (const extra of ['universe.html', 'performance.html']) if (existsSync(`site/dist/${extra}`) && !llms.includes(extra)) unlisted.push(extra);
   if (!llms.startsWith('# solids') || !llms.includes('skill.md') || unlisted.length) fail(`site/llms.txt: title, skill.md and every object, effect and interaction page expected; missing ${unlisted.join(', ') || 'none'}`);
   for (const f of ['skill.md', 'llms.txt']) if (/\u2014/.test(text(f))) fail(`site/${f}: contains an em dash`);
   // Landing: the sections under the hero, in the spec order, and a Copy prompt in the dock.
   const index = text('index.html');
   const h2s = [...index.slice(index.indexOf('<main')).matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
-  const ORDER = ['Built for agents', 'Install', 'Four layers', 'Universe', 'Catalogue', 'Performance', 'Details'];
+  const ORDER = ['Built for agents', 'Install', 'Five layers', 'Universe', 'Catalogue', 'Performance', 'Details'];
   { const band = index.match(/<sd-universe class="band-universe"[^>]*>/)?.[0] ?? ''; if (!/\bcollide\b/.test(band) || /\bgravity\b/.test(band)) fail(`site/index: the universe band should run with collide and no gravity: ${band}`); }
+  // Shades on the site: a page per shade, a comparison page, a catalogue row, a Shading select in every dock, docs.
+  { const shadeDirs = readdirSync('src/shades', { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+    for (const n of shadeDirs) if (!existsSync(`site/dist/shades/${n}.html`)) fail(`site/shades/${n}.html missing`);
+    const cmp = text('shades.html');
+    if ((cmp.match(/<sd-scene/g) ?? []).length !== shadeDirs.length || (cmp.match(/<sd-[a-z]+ /g) ?? []).length < 12 * shadeDirs.length) fail(`site/shades.html: expected ${shadeDirs.length} scenes with 12 objects each`);
+    if (!/light default/.test(cmp)) fail('site/shades.html: the lede should name the light default');
+    if (!/<p class="chips"><span>Shades<\/span>/.test(index)) fail('site/index: the catalogue band has no Shades row');
+    if (!/<h2[^>]*>Five layers<\/h2>/.test(index)) fail('site/index: the layers band should read Five layers');
+    for (const f of ['objects/orb.html', 'effects/glow.html', 'scene.html', 'universe.html', 'index.html', 'shades/cel.html']) {
+      const spec = JSON.parse(text(f).match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{"controls":[]}');
+      const c = spec.controls.find((x) => x.attr === 'shading');
+      if (!c || c.kind !== 'select' || !c.options.includes('cel') || !c.options.includes('')) fail(`site/${f}: dock has no Shading select listing auto and every shade`);
+    }
+    const skill = text('skill.md');
+    if (!/sdShade/.test(skill) || !/sdEdge/.test(skill) || !/sdLightDir/.test(skill)) fail('site/skill.md: the shade contract (sdShade, sdEdge, sdLightDir) is missing');
+    if (!/shades\.html/.test(text('llms.txt')) || shadeDirs.some((n) => !text('llms.txt').includes(`shades/${n}.html`))) fail('site/llms.txt: shade pages or shades.html unlisted'); }
   // Side menu: two tiers, four collapsible catalogue groups with counts; only the current page's group is open.
   { const side = (f) => text(f).match(/<nav class="side"[\s\S]*?<\/nav>/)?.[0] ?? '';
     const groups = (h) => [...h.matchAll(/<details[^>]*>\s*<summary>([^<]*)<span>([0-9]+)<\/span>/g)].map((m) => m[1].trim() + ' ' + m[2]);
     const idx = side('index.html'), orb = side('objects/orb.html'), glow = side('effects/glow.html');
-    if (groups(idx).join('|') !== 'Objects 12|Animations 5|Effects 13|Interactions 7') fail(`site/index: side menu groups ${JSON.stringify(groups(idx))}`);
+    if (groups(idx).join('|') !== 'Objects 12|Animations 5|Effects 13|Shades 5|Interactions 7') fail(`site/index: side menu groups ${JSON.stringify(groups(idx))}`);
     if ((idx.match(/<details open/g) ?? []).length !== 0) fail('site/index: a catalogue group is open on the Introduction');
     const openOrb = orb.match(/<details open[\s\S]*?<\/details>/g) ?? [];
     if (openOrb.length !== 1 || !/aria-current="page"/.test(openOrb[0]) || !/>Objects\s*</.test(openOrb[0])) fail(`site/objects/orb: expected only the Objects group open with the current link inside, got ${openOrb.length} open`);
@@ -778,7 +794,7 @@ async function site() {
   }
   const chrome = chromePath();
   if (!chrome) return;
-  for (const [f, size] of [['scene.html'], ['index.html'], ['index.html', '500,800'], ['objects/orb.html'], ['effects/glow.html'], ['performance.html'], ['universe.html']]) {
+  for (const [f, size] of [['scene.html'], ['index.html'], ['index.html', '500,800'], ['objects/orb.html'], ['effects/glow.html'], ['shades/cel.html'], ['performance.html'], ['universe.html']]) {
     const { srv, port, result } = await serve('site/dist');
     try {
       const r = await runPage(`http://127.0.0.1:${port}/${f}?__check`, chrome, result, 30000, size);
@@ -808,7 +824,7 @@ async function site() {
       if (r.errors.length) fail(`site/${f}: console errors: ${r.errors.join(' | ').slice(0, 600)}`);
       if (!(r.scenes >= 1)) fail(`site/${f}: no scene mounted`);
       if (r.theme !== 'light') fail(`site/${f}: one click on Theme gave "${r.theme}", expected light`);
-      if (f.startsWith('effects/') && r.subject !== 'sd-cube') fail(`site/${f}: Object select left subject "${r.subject}"`);
+      if ((f.startsWith('effects/') || f.startsWith('shades/')) && r.subject !== 'sd-cube') fail(`site/${f}: Object select left subject "${r.subject}"`);
       if (f === 'scene.html' && !/<sd-ring[^>]*gravity="center"/.test(r.live)) fail(`site/${f}: center select did not mark the ring: ${r.live?.slice(0, 160)}`);
       if (f === 'scene.html' && /<sd-scene[^>]*gravity="/.test(r.live)) fail(`site/${f}: junk gravity attribute on the scene`);
       if (f === 'universe.html' && !/<sd-universe[^>]*camera="none"/.test(r.live)) fail(`site/${f}: with Spin, Drag and Pointer off, Copy code should carry camera="none": ${r.live?.slice(0, 120)}`);
