@@ -148,7 +148,7 @@ window.addEventListener('error', (e) => window.__errors.push(String(e.message)))
 window.addEventListener('unhandledrejection', (e) => window.__errors.push(String(e.reason)));
 </script>
 <script type="module">
-import { registry, reflect } from '/dist/solids.js';
+import { registry, reflect, defineObject } from '/dist/solids.js';
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const mark = (l) => fetch('/__progress', { method: 'POST', body: l }).catch(() => {});
 const tags = [...registry.objects.values()].map((o) => o.manifest.tag);
@@ -729,7 +729,7 @@ mark('Z start');
   const a = mkAll(); await frame(); await frame(); const bufA = dump(a);
   const orig = WebGL2RenderingContext.prototype.shaderSource; let patched = 0;
   let culls = 0;
-  WebGL2RenderingContext.prototype.shaderSource = function (sh, src) { const n1 = src.replace('if (t > 4.6) break;', 'if (t > 7.0) break;'); const n = n1.replace('if (sdMisses(ro, rd)) return vec4(0.0); // cull', ''); if (n1 !== src) patched++; if (n !== n1) culls++; return orig.call(this, sh, n); };
+  WebGL2RenderingContext.prototype.shaderSource = function (sh, src) { const n1 = src.replace('if (t > 3.0 + uBound) break;', 'if (t > 7.0) break;').replace('uBound * uBound <= 0.0', '2.56 <= 0.0'); const n = n1.replace('if (sdMisses(ro, rd)) return vec4(0.0); // cull', ''); if (n1 !== src) patched++; if (n !== n1) culls++; return orig.call(this, sh, n); };
   const b = mkAll(); await frame(); await frame(); const bufB = dump(b);
   WebGL2RenderingContext.prototype.shaderSource = orig;
   let diff = 0; for (let i = 0; i < bufA.length; i++) if (bufA[i] !== bufB[i]) diff++;
@@ -745,6 +745,32 @@ mark('Z start');
   um.setAttribute('seed', '9'); mark('Z regen'); um.frame(0, 16); Z.measures = measures; um.remove(); mark('Z measures done'); } // regenerate from 120 (removal plus attach); frame() by hand: 120 bodies in software GL are slow
 { const uc = uni({ count: '120', seed: '7', collide: '', camera: '', drift: '0.5' }); uc.step(16);
   const t0 = performance.now(); for (let i = 0; i < 60; i++) uc.step(16); Z.collideMs = (performance.now() - t0) / 60; uc.remove(); mark('Z collide done'); }
+mark('Case AC');
+// Case AC: non-square boxes and the field texture. Unit space is the box's short side, so a 1:3 box reaches 3 units: a tall runtime-defined
+// pillar paints the ends of its 100 x 300 rect and a wide slab paints the ends of its 300 x 100 rect; hover-lift tests the rect's half extents; a field uploads once per version and binds for a shader that samples it.
+const AC = result.cases.boxes = {};
+defineObject({ name: 'pillar', tag: 'sd-pillar', description: 'x', uniforms: [] }, 'float map(vec3 p) { vec3 q = abs(p) - vec3(0.4, 2.7, 0.3); return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0); } void main() { fragColor = sdRender(1.0, 0.0); }');
+defineObject({ name: 'slab', tag: 'sd-slab', description: 'x', uniforms: [] }, 'float map(vec3 p) { vec3 q = abs(p) - vec3(2.7, 0.4, 0.3); return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0); } void main() { fragColor = sdRender(1.0, 0.0); }');
+defineObject({ name: 'fielded', tag: 'sd-fielded', description: 'x', uniforms: [] }, 'uniform sampler2D uField; uniform vec2 uFieldSize; uniform float uFieldRange; float map(vec3 p) { float d2 = (texture(uField, p.xy * 0.5 + 0.5).r - 0.5) * 2.0 * uFieldRange * 0.4; vec2 w = vec2(d2, abs(p.z) - 0.3); return min(max(w.x, w.y), 0.0) + length(max(w, 0.0)); } void main() { fragColor = sdRender(1.0, 0.0); }');
+const rowsPainted = (sc, fromY, toY) => { const b = read(sc), gl = sc.gl, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, pr = sc.pixelRatio; let n = 0; for (let y = Math.max(0, Math.floor(fromY * pr)); y < Math.min(H, toY * pr); y++) for (let x = 0; x < W; x++) if (b[(y * W + x) * 4 + 3] > 8) n++; return n; };
+const colsPainted = (sc, fromX, toX) => { const b = read(sc), gl = sc.gl, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, pr = sc.pixelRatio; let n = 0; for (let y = 0; y < H; y++) for (let x = Math.max(0, Math.floor(fromX * pr)); x < Math.min(W, toX * pr); x++) if (b[(y * W + x) * 4 + 3] > 8) n++; return n; };
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.style.cssText = 'position:relative;width:300px;height:400px';
+  const o = sc.appendChild(document.createElement('sd-pillar')); o.style.cssText = 'position:absolute;left:100px;top:50px;width:100px;height:300px'; await frame();
+  AC.tall = { top: rowsPainted(sc, 0, 80), bottom: rowsPainted(sc, 320, 400), middle: rowsPainted(sc, 180, 220) }; // GL rows run bottom up: rows 0..80 are the rect's bottom end
+  free(sc); }
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.style.cssText = 'position:relative;width:400px;height:200px';
+  const o = sc.appendChild(document.createElement('sd-slab')); o.style.cssText = 'position:absolute;left:50px;top:50px;width:300px;height:100px'; await frame();
+  AC.wide = { left: colsPainted(sc, 50, 80), right: colsPainted(sc, 320, 350) }; free(sc); }
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.setAttribute('interaction', 'hover-lift'); sc.style.cssText = 'position:relative;width:400px;height:300px';
+  const o = sc.appendChild(document.createElement('sd-slab')); o.style.cssText = 'position:absolute;left:100px;top:100px;width:200px;height:100px'; await frame();
+  sc.pointer = { x: 200, y: 230, inside: true, down: false, tap: null }; for (let i = 0; i < 20; i++) sc.frame(i / 10, 100); AC.hoverOutside = o.anim.scale;
+  sc.pointer = { x: 290, y: 150, inside: true, down: false, tap: null }; for (let i = 0; i < 20; i++) sc.frame(i / 10, 100); AC.hoverInside = o.anim.scale; free(sc); }
+{ let uploads = 0; const ti = WebGL2RenderingContext.prototype.texImage2D; WebGL2RenderingContext.prototype.texImage2D = function (...a) { if (a[2] === this.R8) uploads++; return ti.apply(this, a); };
+  const sc = mk({}); sc.firstElementChild.remove(); const o = sc.appendChild(document.createElement('sd-fielded'));
+  const disc = new Uint8Array(16 * 16); for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 7.5) - 5; disc[y * 16 + x] = Math.max(0, Math.min(255, Math.round(128 + d / 4 * 127))); }
+  o.field = { data: disc, width: 16, height: 16, range: 4, version: 1 }; await frame(); for (let i = 0; i < 5; i++) sc.frame(i / 10, 16);
+  const px1 = pixels(sc), u1 = uploads; o.field = { ...o.field, version: 2 }; sc.frame(1, 16); AC.field = { pixels: px1, uploadsAfterFive: u1, uploadsAfterBump: uploads };
+  WebGL2RenderingContext.prototype.texImage2D = ti; free(sc); }
 mark('Case AB');
 // Case AB: tap input. A press and release under 8 px is a tap (a new object each time); a drag, a cancel or a slow press is not;
 // pointer.down tracks the press; scene.tap() taps by hand; a nested scene keeps its tap to itself.
@@ -815,7 +841,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 240000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms', 'taps']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms', 'taps', 'boxes']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
@@ -937,6 +963,11 @@ async function smoke() {
       const fl = r.cases.fall ?? {}; if (!(Math.abs(fl.dist - fl.expected) < 3)) fail(`gravity="fall" settled at ${fl.dist?.toFixed(1)} px, expected ${fl.expected}`);
       if (r.dupNames?.length) fail(`layer names collide: ${r.dupNames.join(', ')}`);
       for (const [name, px] of Object.entries(r.shadePixels ?? {})) if (!(px > 1000)) fail(`shade ${name} draws ${px} px on twelve objects (expected > 1000)`); }
+    { const B = r.cases.boxes ?? {}, j = (v) => JSON.stringify(v);
+      if (!(B.tall?.top > 200) || !(B.tall?.bottom > 200) || !(B.tall?.middle > 200)) fail(`a tall object should paint the ends of its rect (non-square quads): ${j(B.tall)}`);
+      if (!(B.wide?.left > 200) || !(B.wide?.right > 200)) fail(`a wide object should paint the ends of its rect: ${j(B.wide)}`);
+      if (B.hoverOutside !== 1 || !(B.hoverInside > 1.05)) fail(`hover-lift should use the rect's half extents: outside ${B.hoverOutside}, inside ${B.hoverInside}`);
+      if (!(B.field?.pixels > 200) || B.field?.uploadsAfterFive !== 1 || B.field?.uploadsAfterBump !== 2) fail(`a field texture should draw and upload once per version: ${j(B.field)}`); }
     { const T = r.cases.taps ?? {}, j = (v) => JSON.stringify(v);
       if (!T.tap || Math.abs(T.tap.x - 52) > 1 || Math.abs(T.tap.y - 51) > 1 || T.tap.downAfter !== false || T.downDuring !== true) fail(`a press and release should tap and track pointer.down: ${j({ tap: T.tap, downDuring: T.downDuring })}`);
       if (T.survivesMove !== true) fail('the tap should survive a pointer move');

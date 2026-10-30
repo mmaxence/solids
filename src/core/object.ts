@@ -7,6 +7,9 @@ const CORE_ATTRS = ['animation', 'speed', 'effect', 'shading', 'state', 'color',
 const camel = (s: string) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
 export type Pose = { rotation: [number, number, number]; offset: [number, number]; scale: number; state: number };
+/** A distance field the shader may sample as `uField` (R8: 0.5 is the edge, signed distance in texels up to `range`, positive outside,
+ * rows top down). The core uploads it once per `version` and binds it on texture unit 1 with `uFieldSize` and `uFieldRange`. */
+export type Field = { data: Uint8Array; width: number; height: number; range: number; version: number };
 
 export class SdObject extends HTMLElement {
   static manifest: Manifest;
@@ -32,6 +35,7 @@ export class SdObject extends HTMLElement {
   pose: Pose | null = null;               // last composed animation pose
   pinned = false;                         // held in place this frame (a gravity center or orbiter); collide treats it as a wall
   blurPx = 0;                             // depth-of-field blur for this frame (a universe sets it); draw adds a defocus pass. Not `blur`: HTMLElement has one
+  field: Field | null = null;             // an optional distance-field texture for the shader (text uses it)
   broken = false;                         // shader failed to compile; skip drawing
   private clock = 0;                      // animation time, advanced by dt × speed
   phaseOffset = 0;                        // `phase` attribute: seconds added to the animation clock, so siblings never line up

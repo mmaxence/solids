@@ -5,6 +5,7 @@ uniform float uTime;       // seconds
 uniform vec2  uResolution; // quad size in device px
 uniform mat3  uRotation;   // object rotation from animations and interactions
 uniform float uScale;      // object scale (already divided by bleed)
+uniform float uBound;      // radius of the sphere holding the shape and its halo: 1.6 for a square box, more for a wide or tall one
 uniform float uState;      // 0..1 eased state
 uniform float uTheme;      // 0 dark, 1 light
 uniform vec3  uColor;      // accent, linear-ish 0..1
@@ -37,7 +38,7 @@ float sdMarch(vec3 ro, vec3 rd, out float minD) {
     float d = map(p);
     minD = min(minD, d);
     if (d < 1e-3) return t;
-    if (t > 4.6) break; // every ray has left the r = 1.6 bound (|p| < 0.8 plus the halo's reach) by here; pixel-identical to 7.0
+    if (t > 3.0 + uBound) break; // every ray has left the bound sphere by here (4.6 for a square box); pixel-identical to 7.0
     t += d * 0.9;
   }
   return -1.0;
@@ -54,7 +55,7 @@ vec3 sdView(vec3 v) { return uRotation * v; }
 vec4 sdShade(vec3 p, vec3 n, vec3 rd, float rim);
 vec3 sdEdge();
 // True when the ray never enters the r = 1.6 sphere that holds every shape and halo (the quad corners).
-bool sdMisses(vec3 ro, vec3 rd) { float b = dot(ro, rd); return b * b - dot(ro, ro) + 2.56 <= 0.0; }
+bool sdMisses(vec3 ro, vec3 rd) { float b = dot(ro, rd); return b * b - dot(ro, ro) + uBound * uBound <= 0.0; }
 // Default renderer: march, shade, soft edge, optional halo on miss.
 vec4 sdRender(float rim, float glow) {
   vec3 ro, rd; sdRay(ro, rd);
