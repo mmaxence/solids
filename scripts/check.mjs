@@ -820,6 +820,10 @@ const AE = result.cases.fixes = {};
 { const light = textScene(T1, {}, 'light'); await frame(); await frame();
   const b = read(light); let sum = 0, n = 0; for (let i = 0; i < b.length; i += 4) { const a = b[i + 3]; if (a > 40 && a < 200) { sum += (0.299 * b[i] + 0.587 * b[i + 1] + 0.114 * b[i + 2]) / a; n++; } }
   AE.lightEdge = n ? sum / n : NaN; free(light); }
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.setAttribute('interaction', 'collide'); sc.style.cssText = 'position:relative;width:400px;height:300px';
+  const slab = sc.appendChild(document.createElement('sd-slab')); slab.style.cssText = 'position:absolute;left:50px;top:100px;width:300px;height:100px';
+  const orb = sc.appendChild(document.createElement(tags[0])); orb.setAttribute('size', '40px'); orb.style.cssText = 'position:absolute;left:180px;top:50px'; // 80 px above the slab's center: clear of its height, inside its width
+  await frame(); for (let i = 0; i < 30; i++) sc.frame(i / 10, 100); AE.wideCollide = Math.hypot(...orb.anim.offset); free(sc); }
 mark('Case AB');
 // Case AB: tap input. A press and release under 8 px is a tap (a new object each time); a drag, a cancel or a slow press is not;
 // pointer.down tracks the press; scene.tap() taps by hand; a nested scene keeps its tap to itself.
@@ -1018,6 +1022,7 @@ async function smoke() {
       if (!(E.staleTap < 1e-6)) fail(`enabling shockwave after a tap fired on the stale tap (${E.staleTap?.toFixed(1)} px)`);
       if (!(E.turnedSlab?.left > 500) || !(E.turnedSlab?.right > 500) || !(E.turnedSlab?.middle > 50)) fail(`a wide box turned toward the camera is sliced by the march start: ${j(E.turnedSlab)}`);
       if (!(E.narrowText?.glyphHeight > 0.55 * E.narrowText?.box)) fail(`a one-glyph text should keep its em: glyph ${E.narrowText?.glyphHeight?.toFixed(0)} px tall in a ${E.narrowText?.box?.toFixed(0)} px box`);
+      if (!(E.wideCollide < 1e-6)) fail(`collide should treat a wide shape as a disc of its short side; the orb above a slab moved ${E.wideCollide?.toFixed(1)} px`);
       if (!(E.lightEdge < 0.7)) fail(`the light-theme word's edge should contrast with the page (edge luminance ${E.lightEdge?.toFixed(2)}, expected under 0.7)`); }
     { const X = r.cases.text ?? {}, j = (v) => JSON.stringify(v);
       if (!(X.pixels > 2000) || X.hasField !== true) fail(`<sd-text>Solids</sd-text> should draw its word from a field texture: ${j({ pixels: X.pixels, field: X.hasField })}`);

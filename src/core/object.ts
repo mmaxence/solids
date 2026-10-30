@@ -100,8 +100,8 @@ export class SdObject extends HTMLElement {
 
   /** Where the object is drawn this frame: its layout center plus the offsets animations and interactions added so far, in scene px. (Not center() or radius(): uniform names reflect as properties.) */
   drawCenter(): [number, number] { const r = this.rect!; return [r.x + r.width / 2 + this.anim.offset[0], r.y + r.height / 2 + this.anim.offset[1]]; }
-  /** Half the drawn size this frame, in scene px. */
-  drawRadius(): number { return (this.rect!.width / 2) * this.anim.scale; }
+  /** Half the drawn size this frame, in scene px: the short side, so a wide word collides as a disc of its height. */
+  drawRadius(): number { return (Math.min(this.rect!.width, this.rect!.height) / 2) * this.anim.scale; }
 
   /** Per-frame: ease state, advance the animation phase, run animations, cross-fade after an `animation` change. */
   update(dt: number) {

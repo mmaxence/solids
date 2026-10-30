@@ -158,7 +158,7 @@ td:first-child code { white-space: nowrap; }
 .hero-lede p { font-size: 17px; line-height: 1.45; color: var(--muted); margin: 0; max-width: 40ch; }
 .hero-full sd-text h1 { font: inherit; margin: 0; letter-spacing: inherit; }
 /* Moods: radio pills; the first is the page default */
-.presets { display: flex; gap: 6px; margin: 0; padding: 0; border: 0; }
+.controls fieldset.presets { display: flex; flex-wrap: nowrap; gap: 6px; margin: 0; padding: 0; border: 0; grid-column: auto; }
 .presets .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .presets label { position: relative; font-size: 13px; padding: 6px 14px; border-radius: 999px; color: var(--muted); cursor: pointer; white-space: nowrap; }
 .presets label:hover { color: var(--fg); }
