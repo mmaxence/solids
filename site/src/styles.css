@@ -119,7 +119,8 @@ td:first-child code { white-space: nowrap; }
 .fps.warn b { color: #e7b53b; }
 .fps.bad b { color: #ff6b6b; }
 .band-stage { position: relative; }
-.band-stage > .fps { top: 8px; right: 8px; }
+.band-stage > .fps { top: -8px; right: 0; transform: translateY(-100%); } /* above the row, clear of the cards */
+.band-stage:has(> sd-universe) > .fps { top: 12px; right: 12px; transform: none; } /* the universe fills its band; keep the badge inside */
 .foot { display: flex; justify-content: space-between; gap: 16px; padding: 18px 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 .foot a { color: var(--fg); }
 
