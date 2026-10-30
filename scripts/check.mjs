@@ -365,6 +365,22 @@ gs.style.left = '180px'; gr.measure();
 for (let i = 0; i < 12; i++) await frame();
 result.cases.gravity.resizedRadius = Math.hypot(gs.rect.x + gs.rect.width / 2 + gs.anim.offset[0] - (gc.rect.x + gc.rect.width / 2), gs.rect.y + gs.rect.height / 2 + gs.anim.offset[1] - (gc.rect.y + gc.rect.height / 2));
 free(co.scene, gr);
+// Case R: orbit rings. Three orbiters at rest distances 60, 100 and 180 px sit on evenly spaced rings (60, 120, 180);
+// the inner ring turns 3^1.5 times faster than the outer (Kepler); an orbiter placed 10 px out is pushed to the clearance ring.
+const ringScene = (dists) => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.setAttribute('interaction', 'gravity'); sc.style.cssText = 'position:relative;width:600px;height:400px';
+  const c = sc.appendChild(document.createElement(tags[0])); c.setAttribute('gravity', 'center'); c.setAttribute('size', '40px'); c.style.cssText = 'position:absolute;left:280px;top:180px';
+  const os = dists.map((d) => { const o = sc.appendChild(document.createElement(tags[0])); o.setAttribute('size', '20px'); o.style.cssText = 'position:absolute;left:' + (290 + d) + 'px;top:190px'; return o; });
+  return { sc, c, os }; };
+const polar = (c, o) => { const dx = o.rect.x + o.rect.width / 2 + o.anim.offset[0] - (c.rect.x + c.rect.width / 2), dy = o.rect.y + o.rect.height / 2 + o.anim.offset[1] - (c.rect.y + c.rect.height / 2); return [Math.hypot(dx, dy), Math.atan2(dy, dx)]; };
+{ const r3 = ringScene([60, 100, 180]), r1 = ringScene([10]);
+  await frame();
+  for (let i = 0; i < 12; i++) { r3.sc.frame(i / 10, 100); r1.sc.frame(i / 10, 100); } // past the 800 ms join blend
+  const a0 = r3.os.map((o) => polar(r3.c, o));
+  r3.sc.frame(2, 1000);
+  const a1 = r3.os.map((o) => polar(r3.c, o));
+  const da = a1.map((p, i) => Math.abs(p[1] - a0[i][1]));
+  result.cases.rings = { radii: a0.map((p) => p[0]), speedRatio: da[0] / da[2], clamped: polar(r1.c, r1.os[0])[0] };
+  free(r3.sc, r1.sc); }
 // Case P: frame metrics. After ten frames frameTime and fps are positive; reading gpuTime opts in to the timer and never throws.
 const pf = mk({}); pf.style.cssText = 'position:fixed;left:0;top:0';
 const gpu0 = pf.gpuTime;
@@ -524,7 +540,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 90000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.tags.length})`);
@@ -572,6 +588,10 @@ async function smoke() {
     const sr = r.cases.color.spacedRed;
     if (!sr || !(sr[0] > 0.8) || !(sr[1] < 0.35)) fail(`rgb( 255, 0, 0 ) parsed as ${JSON.stringify(sr)}, expected red`);
     if (!r.cases.color.removedIsDefault) fail('removing the color attribute did not restore the default color');
+    { const g = r.cases.rings ?? {}, want = [60, 120, 180];
+      if (!g.radii || !g.radii.every((v, i) => Math.abs(v - want[i]) < 1)) fail(`orbit rings: radii ${JSON.stringify(g.radii)}, expected ${JSON.stringify(want)}`);
+      if (!(Math.abs(g.speedRatio / Math.pow(3, 1.5) - 1) < 0.02)) fail(`orbit rings: inner over outer angular speed ${g.speedRatio?.toFixed(3)}, expected 3^1.5 = 5.196`);
+      if (!(g.clamped >= 38)) fail(`orbit rings: an orbiter 10 px from the center sits at ${g.clamped?.toFixed(1)} px, expected the clearance ring (>= 38)`); }
     if (!(Math.abs(r.cases.gravity.resizedRadius - 100) < 6)) fail(`orbit radius after moving the rest position: ${r.cases.gravity.resizedRadius?.toFixed(1)} px, expected about 100`);
     if (!r.cases.anim.spinMoved) fail('animation "spin" did not change rotation between frames');
     if (r.cases.anim.reducedScale !== 1) fail(`reduced motion: pulse scale ${r.cases.anim.reducedScale}, expected 1`);

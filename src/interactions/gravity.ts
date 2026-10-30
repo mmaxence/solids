@@ -13,7 +13,7 @@ const smooth = (k: number) => k * k * (3 - 2 * k);
 export const gravity: Interaction = {
   meta: {
     name: 'gravity',
-    description: 'One object is the center. The others orbit it, or fall toward it and settle, in the plane of the page.',
+    description: 'One object is the center. The others orbit it on rings, farther rings turning slower like real orbits, or fall toward it and settle, in the plane of the page.',
     params: [
       { name: 'strength', type: 'float', default: 0.6, min: 0, max: 1, step: 0.01, label: 'Strength (scene attribute gravity-strength)' },
       { name: 'gap', type: 'float', default: 24, min: 0, max: 200, step: 1, label: 'Fall gap in px (object attribute gravity-gap)' },
@@ -25,9 +25,16 @@ export const gravity: Interaction = {
     const strength = num(scene.getAttribute('gravity-strength'), 0.6);
     const c = center ? mid(center) : null;
     const frozen = reducedMotion();
+    const role = (o: SdObject) => (!c || o === center ? 'none' : o.getAttribute('gravity') ?? 'orbit');
+    // Rings: orbiters sorted by rest distance share evenly spaced radii from a clearance ring (the shapes do not touch)
+    // out to the farthest rest distance. Angular speed follows Kepler: the outer ring sets the pace, w ~ r^-1.5.
+    const orbiters = objs.filter((o) => role(o) === 'orbit').map((o) => { const m = mid(o); return { o, d: Math.hypot(m[0] - c![0], m[1] - c![1]) }; }).sort((a, b) => a.d - b.d);
+    const inner = orbiters.length ? Math.max(orbiters[0].d, (center!.rect!.width + orbiters[0].o.rect!.width) / 4 + 24) : 0;
+    const outer = orbiters.length ? Math.max(orbiters[orbiters.length - 1].d, inner) : 0;
+    const ring = (o: SdObject) => { const i = orbiters.findIndex((e) => e.o === o), n = orbiters.length; return n > 1 ? inner + ((outer - inner) * i) / (n - 1) : inner; };
     for (const o of objs) {
       const mode = o.getAttribute('gravity');
-      const active = !!c && o !== center && mode !== 'none';
+      const active = role(o) !== 'none' && mode !== 'none';
       let b = bodies.get(o);
       if (!b && !active) continue;
       if (!b) bodies.set(o, (b = { angle: 0, r: 0, center: null, offset: [0, 0], from: [0, 0], k: 1 }));
@@ -45,8 +52,8 @@ export const gravity: Interaction = {
           const stop = num(o.getAttribute('gravity-gap'), 24) + (center!.rect!.width + o.rect!.width) / 4;
           if (!frozen) b.r += (stop - b.r) * (1 - Math.exp(-dt / 700)) * (0.3 + strength);
         } else {
-          if (!frozen) b.angle += (dt / 1000) * 0.25 * strength;
-          b.r = Math.hypot(rest[0] - c![0], rest[1] - c![1]); // layout can change under us (resize, vmin positions)
+          b.r = ring(o); // recomputed each frame: layout can change under us (resize, vmin positions)
+          if (!frozen) b.angle += (dt / 1000) * 0.3 * strength * Math.pow(outer / b.r, 1.5);
           z = Math.sin(b.angle);
         }
         target = [c![0] + Math.cos(b.angle) * b.r - rest[0], c![1] + Math.sin(b.angle) * b.r - rest[1]];
@@ -55,7 +62,7 @@ export const gravity: Interaction = {
         b.from = [b.offset[0], b.offset[1]]; b.k = 0; b.center = null;
       }
       if (b.k < 1) {
-        b.k = Math.min(1, b.k + dt / 800);
+        b.k = frozen ? 1 : Math.min(1, b.k + dt / 800); // reduced motion: take the new path at once, no ease
         const s = smooth(b.k);
         target = [lerp(b.from[0], target[0], s), lerp(b.from[1], target[1], s)];
       }
