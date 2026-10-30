@@ -209,3 +209,6 @@ td:first-child code { white-space: nowrap; }
 .stage.universe { height: 70vh; min-height: 420px; }
 .stage.universe sd-universe { width: 100%; }
 .codebar pre { max-height: 16em; }
+
+/* Landing: what a shape costs an agent, under the catalogue grid */
+.cost { margin: 18px 0 0; color: var(--muted); font-size: 14px; max-width: 70ch; }

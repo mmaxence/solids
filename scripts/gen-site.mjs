@@ -1,5 +1,5 @@
 // Generates site/dist from src/objects, src/effects, the bundle's meta, and site/src.
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
+import { statSync, readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
@@ -172,7 +172,17 @@ ${layer('Interactions', 'Scene rules that react to the pointer and to each other
 <p class="chips"><span>Interactions</span>${interactions.map((i) => `<a href="interactions/${i.name}.html">${esc(i.name)}</a>`).join('')}</p>`;
   const numbers = `<dl class="numbers"><div><dt>The whole library, gzipped</dt><dd>${(gzipSync(readFileSync('dist/solids.js')).length / 1024).toFixed(1)} KB</dd></div><div><dt>Objects on the hero, one canvas</dt><dd>${ids.length}</dd></div><div><dt>One hero frame, measured now</dt><dd id="live-frame">measuring</dd></div></dl>`;
   const universe = `<sd-universe class="band-universe" count="36" seed="5" collide depth="0.55" dpr="1.5" style="position:relative;height:70vh;min-height:480px"></sd-universe>`;
-  const live = { 'Four layers': layers, Universe: universe, Catalogue: catalogue, Performance: numbers };
+  // What a new shape costs an agent, from the files it reads and writes. Reads: the contract, the SDF prelude and the largest object
+  // as a reference, re-read over 4 turns, plus two check runs of about 2 KB each; writes: one object of mean size. Bytes / 4 per token.
+  // Prices: Claude Opus 5.5 list, $4 in / $20 out per million tokens, as of 2026-10-06.
+  const bytes = (...fs) => fs.reduce((t, f) => { const st = statSync(f); if (!st.size) throw new Error(`empty ${f}`); return t + st.size; }, 0);
+  const objFiles = (n) => ['manifest.json', 'frag.glsl', 'README.md'].map((f) => `src/objects/${n}/${f}`);
+  const reads = bytes('docs/SKILL.md', 'src/core/prelude.glsl', ...objFiles('knot'));
+  const writes = objects.reduce((t, o) => t + bytes(...objFiles(o.name)), 0) / objects.length;
+  const inTok = (4 * reads + 2 * 2048) / 4, outTok = writes / 4;
+  const usd = inTok * 4e-6 + outTok * 20e-6;
+  const cost = `<p class="cost">Adding a shape costs an agent about ${Math.round((inTok + outTok) / 1000)} K tokens: it reads the contract and one reference object, writes three small files and runs the check twice. That is around $${usd.toFixed(2)} at Claude Opus 5.5 list prices (2026-10-06); Codex or another agent reads the same files and lands in the same range. A full agent session carries its own system prompt on top, so count on a few times that.</p>`;
+  const live = { 'Four layers': layers, Universe: universe, Catalogue: catalogue + cost, Performance: numbers };
   const main = `<div class="landing">${readFileSync('site/src/intro.md', 'utf8').split(/^(?=## )/m).map((s) => {
     const h = s.match(/^## (.*)/)[1];
     return `<section class="band" id="${h.toLowerCase().replace(/\s+/g, '-')}">${md(s)}${live[h] ?? ''}</section>`;
