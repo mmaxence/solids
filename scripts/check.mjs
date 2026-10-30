@@ -220,6 +220,29 @@ for (const name of shadeNames) {
   await frame(); await frame();
   result.cases.shade = { glassEqualsDefault: differ(g1, g0), unknownDraws: pixels(gx), unknownWarned: warns.filter((w) => /nope/.test(w)).length, unknownEqualsDefault: differ(gx, g0) };
   console.warn = cw; for (const sc of [g1, g0, gx, gy]) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); } }
+// Shade behavior: shades differ from each other, params change the image, scene shading is inherited, the object overrides,
+// auto is the theme default (glass in dark, the light default in light), and params merge scene under object.
+{ const drop = (...scs) => { for (const sc of scs) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); } };
+  const light = (attrs, objAttrs) => { const sc = mk(attrs, objAttrs); sc.setAttribute('theme', 'light'); return sc; };
+  const sGlass = mk({}, { shading: 'glass' }), sMatte = mk({}, { shading: 'matte' }), sCel = mk({}, { shading: 'cel' }), sClay = mk({}, { shading: 'clay' }), sMetal = mk({}, { shading: 'metal' });
+  await frame(); await frame();
+  const names = ['glass', 'matte', 'cel', 'clay', 'metal'], bufs = [sGlass, sMatte, sCel, sClay, sMetal].map((sc) => read(sc));
+  let least = 1; for (let i = 0; i < bufs.length; i++) for (let j = i + 1; j < bufs.length; j++) least = Math.min(least, differ(bufs[i], bufs[j]));
+  drop(sGlass, sMatte, sCel, sClay, sMetal);
+  const b2 = mk({}, { shading: 'cel', 'cel-bands': '2' }), b5 = mk({}, { shading: 'cel', 'cel-bands': '5' });
+  const inh = mk({ shading: 'cel' }), exp = mk({}, { shading: 'cel' }), ovr = mk({ shading: 'cel' }, { shading: 'metal' }), met = mk({}, { shading: 'metal' });
+  const autoObj = mk({ shading: 'cel' }, { shading: 'auto' }), glassObj = mk({}, { shading: 'glass' });
+  const aL = light({}, {}), dL = light({}, { shading: registry.LIGHT_SHADE }), gL = light({}, { shading: 'glass' });
+  const pm = mk({ 'cel-bands': '2' }, { shading: 'cel', 'cel-bands': '5' }), pmScene = mk({ shading: 'cel', 'cel-bands': '2' });
+  await frame(); await frame();
+  result.cases.shade.least = least;
+  result.cases.shade.bands = differ(b2, b5);
+  result.cases.shade.inherit = differ(inh, exp);
+  result.cases.shade.override = { equalsMetal: differ(ovr, met), differsFromCel: differ(ovr, exp) };
+  result.cases.shade.autoOnObject = differ(autoObj, glassObj);
+  result.cases.shade.autoLight = { equalsDefault: differ(aL, dL), differsFromGlass: differ(aL, gL), name: registry.LIGHT_SHADE };
+  result.cases.shade.paramMerge = { objectWins: differ(pm, b5), sceneAlone: differ(pmScene, b2) };
+  drop(b2, b5, inh, exp, ovr, met, autoObj, glassObj, aL, dL, gL, pm, pmScene); }
 // Case D: animations move things; reduced motion freezes them.
 const an = document.body.appendChild(document.createElement('sd-scene')); an.className = 'small';
 const spin = document.createElement(tags[0]); spin.setAttribute('animation', 'spin'); an.appendChild(spin);
@@ -593,6 +616,14 @@ async function smoke() {
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
     if (!(r.shades?.length >= 1) || !(r.programs === r.tags.length * r.shades.length)) fail(`shade programs: ${r.programs} compiled for ${r.tags.length} objects x ${r.shades?.length ?? 0} shades`);
+    { const sh = r.cases.shade ?? {}, pc = (v) => (v * 100).toFixed(2) + '%';
+      if (!(sh.least > 0.02)) fail(`shades: two of glass, matte, cel, clay, metal look alike (least difference ${pc(sh.least ?? 0)})`);
+      if (!(sh.bands > 0.02)) fail(`shades: cel-bands 2 vs 5 differ by ${pc(sh.bands ?? 0)}`);
+      if (!(sh.inherit < 1e-6)) fail(`shades: scene shading="cel" not inherited (${pc(sh.inherit ?? 1)} differs)`);
+      if (!(sh.override?.equalsMetal < 1e-6) || !(sh.override?.differsFromCel > 0.02)) fail(`shades: object shading should override the scene: ${JSON.stringify(sh.override)}`);
+      if (!(sh.autoOnObject < 1e-6)) fail(`shades: shading="auto" on an object inside a cel scene should be the theme default (glass), differs ${pc(sh.autoOnObject ?? 1)}`);
+      if (!(sh.autoLight?.equalsDefault < 1e-6) || !(sh.autoLight?.differsFromGlass > 0.02)) fail(`shades: auto in the light theme should be ${sh.autoLight?.name}: ${JSON.stringify(sh.autoLight)}`);
+      if (!(sh.paramMerge?.objectWins < 1e-6) || !(sh.paramMerge?.sceneAlone < 1e-6)) fail(`shades: params should merge scene under object: ${JSON.stringify(sh.paramMerge)}`); }
     { const sh = r.cases.shade ?? {}; if (!(sh.glassEqualsDefault < 1e-6) || !(sh.unknownDraws > 100) || sh.unknownWarned !== 1 || !(sh.unknownEqualsDefault < 1e-6)) fail(`shades: glass vs default ${sh.glassEqualsDefault}, unknown name drew ${sh.unknownDraws} px and warned ${sh.unknownWarned} times (expected 1), unknown vs default ${sh.unknownEqualsDefault}`); }
     if (r.consoleErrors.length) fail(`console errors: ${r.consoleErrors.join(' | ').slice(0, 1200)}`);
     if (!(r.cases.all.pixels > 1000)) fail(`smoke: scene drew ${r.cases.all.pixels} pixels, expected > 1000`);
