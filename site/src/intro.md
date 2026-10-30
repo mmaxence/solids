@@ -38,7 +38,7 @@ One element fills its box with a seeded cloud of shapes in three dimensions. Dra
 
 ## Catalogue
 
-Every object, effect, shade and interaction has a page with a live preview, its options and the markup to copy. The [Shades page](shades.html) shows every shade on every object in both themes.
+Every object, effect, shade and interaction has a page with a live preview, its options and the markup to copy; [Text](text.html) lifts your own HTML into 3D. The [Shades page](shades.html) shows every shade on every object in both themes.
 
 ## Performance
 

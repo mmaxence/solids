@@ -72,7 +72,7 @@ pixel font; and handle light and dark backgrounds cleanly for the font.
 | Neon | orb | glow | glass | 0.5 | gravity pointer-follow hover-lift shockwave poke |
 | Ink | orb | outline | cel | 0.35 | gravity pointer-follow hover-lift poke |
 | Pixel | orb | pixelate dither | matte | 0.35 | gravity pointer-follow shockwave |
-| Storm | orb | none | metal | 0 | repel shockwave pull poke collide |
+| Storm | orb | none | metal | 0 | repel shockwave poke pull collide |
 
 ## Non-goals
 
@@ -92,6 +92,6 @@ for byte as before the quad change under every shade (the Z.march wrapper now re
 version; `<sd-text>Solids</sd-text>` draws more than 2000 px, pixel 8 differs from 0, depth and bevel min
 versus max differ, a wrapped h1 keeps its text and transparent color, a lone text renders, a text change
 rebuilds, legibility on both themes; the hero markup carries the word and Copy code reproduces it; five
-pills, Storm sets the interaction order `repel shockwave pull poke collide` and gravity 0, a manual
+pills, Storm sets the interaction order `repel shockwave poke pull collide` and gravity 0, a manual
 change clears the pill, Tweak holds Copy prompt and the four legends, no overflow at 500 px, the h1
 bottom stays above the dock.

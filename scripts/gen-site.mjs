@@ -80,12 +80,14 @@ const badge = () => `<output class="fps" aria-hidden="true" title="Frames per se
 const bandStage = (html) => `<div class="band-stage">${badge()}${html}</div>`;
 
 /** Full-viewport hero: the scene fills the first screen; title top-left, control dock at the bottom. */
-function hero({ sceneAttrs, inner, controls, title, pitch, prompt }) {
-  const spec = JSON.stringify({ controls, prompt }).replace(/</g, '\\u003c');
+function hero({ sceneAttrs, inner, controls, presets, pitch, prompt }) {
+  const spec = JSON.stringify({ controls, presets, prompt }).replace(/</g, '\\u003c');
+  // The dock: five moods, one Tweak disclosure holding the grouped controls and Copy prompt, and Copy code. The wordmark in the
+  // scene is the page heading.
   return `<section class="hero-full">
   <div class="stage scatter hero-stage">${badge()}<sd-scene id="demo" data-keep-style style="position:relative;height:100%;min-height:560px" ${sceneAttrs}>${inner}</sd-scene></div>
-  <div class="hero-title"><h1>${esc(title)}</h1><p>${esc(pitch)}</p></div>
-  <form id="controls" class="controls dock" onsubmit="return false"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button><button type="button" class="btn" id="copy-code">Copy code</button></form>
+  <div class="hero-lede"><p>${esc(pitch)}</p></div>
+  <form id="controls" class="controls dock" onsubmit="return false"><div class="presets" role="radiogroup" aria-label="Mood"></div><details class="tweak"><summary>Tweak</summary><div class="tune-body"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button></div></details><button type="button" class="btn" id="copy-code">Copy code</button></form>
   <script type="application/json" id="spec">${spec}</script>
 </section>`;
 }
@@ -153,20 +155,32 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
     edge('sd-prism', 'prism', 70, 5, 40, colorOf(1), 'idle'),
     edge('sd-shell', 'shell', 72, 70, 68, colorOf(2), 'float'),
     edge('sd-disc', 'disc', 60, 60, 4, colorOf(0), 'spin'),
+    // The wordmark: the page heading, lifted into 3D over the center. Last so it draws on top of ties; orbiters swing in front and behind.
+    `<sd-text id="mark" data-subject gravity="none" pixel="6" depth="0.5" animation="float" speed="0.6" color="${colorOf(0)}" style="position:absolute;left:50%;top:50%;translate:-50% -50%;font:700 clamp(56px, 18vmin, 180px)/1 ui-monospace, Menlo, Consolas, monospace;letter-spacing:0.04em"><h1>Solids</h1></sd-text>`,
   ].join('\n');
-  const ids = ['orb', 'ring', 'crystal', 'knot', 'capsule', 'star', 'cube', 'coil', 'blob', 'prism', 'shell', 'disc'];
+  const ids = ['orb', 'ring', 'crystal', 'knot', 'capsule', 'star', 'cube', 'coil', 'blob', 'prism', 'shell', 'disc', 'mark'];
+  const HERO_RULES = 'gravity pointer-follow hover-lift shockwave poke';
   const heroControls = [
-    { kind: 'select', attr: 'center', label: 'Center', options: ids.slice(0, 6), value: 'orb', target: 'scene' },
-    { kind: 'select', attr: 'effect', label: 'Effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
-    shadingControl('scene'),
-    { kind: 'range', attr: 'gravity-strength', label: 'Gravity', min: 0, max: 1, step: 0.01, value: 0.35, default: 0.6, target: 'scene' },
-    ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: ['gravity', 'pointer-follow', 'hover-lift'].includes(i.name), target: 'scene' })),
+    { kind: 'select', attr: 'center', label: 'Center', options: ids.slice(0, 6), value: 'orb', target: 'scene', group: 'Scene' },
+    { kind: 'range', attr: 'gravity-strength', label: 'Gravity', min: 0, max: 1, step: 0.01, value: 0.35, default: 0.6, target: 'scene', group: 'Scene' },
+    ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: HERO_RULES.split(' ').includes(i.name), target: 'scene', group: 'Rules' })),
+    shadingControl('scene', 'Look'),
+    { kind: 'select', attr: 'effect', label: 'Effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene', group: 'Look' },
+    { kind: 'range', attr: 'depth', label: 'Depth', min: 0.02, max: 1, step: 0.01, value: 0.5, default: 0.35, target: 'object', group: 'Text' },
+    { kind: 'range', attr: 'pixel', label: 'Pixel', min: 0, max: 24, step: 1, value: 6, default: 0, target: 'object', group: 'Text' },
+  ];
+  // A mood is a record of control values applied through the controls themselves, so Tweak and Copy code stay truthful.
+  const heroPresets = [
+    { name: 'Orbit', set: { center: 'orb', effect: '', shading: '', 'gravity-strength': '0.35', interaction: HERO_RULES } },
+    { name: 'Neon', set: { center: 'orb', effect: 'glow', shading: 'glass', 'gravity-strength': '0.5', interaction: HERO_RULES } },
+    { name: 'Ink', set: { center: 'orb', effect: 'outline', shading: 'cel', 'gravity-strength': '0.35', interaction: 'gravity pointer-follow hover-lift poke' } },
+    { name: 'Pixel', set: { center: 'orb', effect: 'pixelate dither', shading: 'matte', 'gravity-strength': '0.35', interaction: 'gravity pointer-follow shockwave' } },
+    { name: 'Storm', set: { center: 'orb', effect: '', shading: 'metal', 'gravity-strength': '0', interaction: 'repel shockwave pull poke collide' } },
   ];
   const heroHtml = hero({
-    sceneAttrs: 'interaction="gravity pointer-follow hover-lift" gravity-strength="0.35" dpr="1.5"',
-    inner: heroInner, controls: heroControls,
-    title: 'Lightweight 3D objects for the web',
-    pitch: `Glassy shapes you drop into HTML. One script tag, no dependencies, about ${Math.round(sizes.full / 1024)} KB. Hover, pick a center of gravity, try an effect or a shade.`,
+    sceneAttrs: `interaction="${HERO_RULES}" gravity-strength="0.35" dpr="1.5"`,
+    inner: heroInner, controls: heroControls, presets: heroPresets,
+    pitch: `Lightweight 3D objects for the web. One script tag, no dependencies, about ${Math.round(sizes.full / 1024)} KB. Tap the scene, pick a mood, copy the code.`,
     prompt: `This is a solids scene: glassy 3D objects as web components, one script tag, no dependencies.\n\n\`\`\`html\n<script type="module" src="${SCRIPT}"></script>\n{{markup}}\n\`\`\`\n\nThe contract for adding an object is ${SKILL}. Read it, clone https://github.com/mmaxence/solids, add the object under src/objects there, run npm run check until it prints ok, then use the new tag in this scene.`,
   });
 

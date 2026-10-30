@@ -1080,7 +1080,16 @@ async function site() {
     const groupsOf = (f) => [...new Set(spec(f).map((c) => c.group ?? ''))];
     const expect = { 'objects/orb.html': ['Shape', 'Motion', 'Look'], 'scene.html': ['Scene', 'Interactions', 'Look'], 'universe.html': ['Universe', 'Camera', 'Depth', 'Look'], 'effects/glow.html': ['Scene', 'Effect', 'Look'], 'shades/cel.html': ['Scene', 'Shade', 'Look'], 'interactions/repel.html': ['Scene', 'Interactions', 'Look'] };
     for (const [f, want] of Object.entries(expect)) { const got = groupsOf(f); if (want.some((g) => !got.includes(g)) || got.includes('')) fail(`site/${f}: dock groups ${JSON.stringify(got)}, expected ${JSON.stringify(want)} with every control grouped`); }
-    if (spec('index.html').some((c) => c.group)) fail('site/index: the hero dock keeps one flat row (no groups)');
+    // Hero: presets, a Tweak panel with the grouped controls and Copy prompt, the Solids wordmark as the heading.
+    { const hs = JSON.parse(text('index.html').match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}');
+      const names = (hs.presets ?? []).map((p) => p.name);
+      if (names.join('|') !== 'Orbit|Neon|Ink|Pixel|Storm') fail(`site/index: hero presets ${JSON.stringify(names)}`);
+      const hg = [...new Set((hs.controls ?? []).map((c) => c.group ?? ''))];
+      if (hg.includes('') || !['Scene', 'Rules', 'Look', 'Text'].every((g) => hg.includes(g))) fail(`site/index: hero controls should all sit in the Tweak groups Scene, Rules, Look, Text: ${JSON.stringify(hg)}`);
+      if (!/<form[^>]*class="controls dock"[\s\S]*?<div class="presets"[\s\S]*?<details class="tweak">[\s\S]*?id="copy-prompt"[\s\S]*?<\/details>[\s\S]*?id="copy-code"/.test(index)) fail('site/index: the dock should be presets, a Tweak details holding Copy prompt, then Copy code');
+      if (!/<sd-text id="mark"[^>]*>\s*<h1>Solids<\/h1>\s*<\/sd-text>/.test(index)) fail('site/index: the hero heading should be <sd-text id="mark"><h1>Solids</h1></sd-text>');
+      if (/class="hero-title"><h1>/.test(index)) fail('site/index: the old hero h1 should be gone (the wordmark is the heading)');
+      if (!/interaction="gravity pointer-follow hover-lift shockwave poke"/.test(index)) fail('site/index: the hero default interactions should be gravity pointer-follow hover-lift shockwave poke'); }
     const css = readFileSync('site/src/styles.css', 'utf8');
     if (!/\.codebar pre \{[^}]*overflow-x: auto/.test(css)) fail('site/styles: the live markup should scroll horizontally (.codebar pre overflow-x: auto)');
     if (!/\.fps b \{[^}]*font-size: 20px/.test(css)) fail('site/styles: the fps figure should be 20 px');
@@ -1147,14 +1156,17 @@ async function site() {
     try {
       const r = await runPage(`http://127.0.0.1:${port}/${f}?__check`, chrome, result, 30000, size);
       if (f === 'index.html') {
-        if (!(r.objects >= 12)) fail(`site/index (${size ?? 'desktop'}): hero has ${r.objects} objects, expected 12`);
+        if (!(r.objects >= 13)) fail(`site/index (${size ?? 'desktop'}): hero has ${r.objects} objects, expected 13 with the wordmark`);
+        if (!r.storm || !/repel.*shockwave.*poke.*pull.*collide/.test(r.storm.interaction ?? '') || r.storm.gravity !== '0' || r.storm.checked !== 'Storm') fail(`site/index (${size ?? 'desktop'}): the Storm preset should drive the controls: ${JSON.stringify(r.storm)}`);
+        if (r.manualClears !== 0) fail(`site/index (${size ?? 'desktop'}): a manual change should clear the active preset, ${r.manualClears} still checked`);
+        if (!/<sd-text[^>]*>[\s\S]*Solids[\s\S]*<\/sd-text>/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code should carry the wordmark with its text`);
         if (!r.hasCenter) fail(`site/index (${size ?? 'desktop'}): dock has no Center control`);
         if (r.scrollWidth > r.innerWidth) fail(`site/index (${size ?? 'desktop'}): horizontal overflow ${r.scrollWidth} > ${r.innerWidth}`);
         if (!(r.h1Bottom < r.dockTop)) fail(`site/index (${size ?? 'desktop'}): title bottom ${r.h1Bottom} is not above the dock top ${r.dockTop}`);
         const styled = (r.markup?.match(/style="position:\s*absolute;/g) || []).length;
         if (styled < 12 || !/<sd-scene[^>]*style="[^"]*height/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code markup does not reproduce the layout (${styled} positioned objects)`);
         if (!r.centerOptions || r.centerOptions.length !== 6 || r.centerOptions.includes('cube')) fail(`site/index (${size ?? 'desktop'}): Center options should be the orb and its five orbiters, got ${JSON.stringify(r.centerOptions)}`);
-        if (r.interactionAttr && !/gravity.*collide/.test(r.interactionAttr)) fail(`site/index (${size ?? 'desktop'}): toggling reordered interactions to "${r.interactionAttr}"`);
+        if (r.interactionAttr && !/gravity.*shockwave.*collide/.test(r.interactionAttr)) fail(`site/index (${size ?? 'desktop'}): toggling reordered interactions to "${r.interactionAttr}"`);
         if (!/<section class="band" id="performance">[\s\S]*?href="performance.html"/.test(index)) fail('site/index: the Performance band has no link to performance.html');
         if (!size && !/\d+(\.\d+)? ms/.test(r.liveFrame ?? '')) fail(`site/index: the Performance band's live frame number reads ${JSON.stringify(r.liveFrame)}`);
         if (!(r.contexts <= 6)) fail(`site/index (${size ?? 'desktop'}): ${r.contexts} WebGL scenes, expected at most 6 (one per section row, never one per card)`);
