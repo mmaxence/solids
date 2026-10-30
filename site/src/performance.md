@@ -4,7 +4,7 @@ What solids costs, in bytes and in milliseconds. The sizes come from the build. 
 
 ## Sizes
 
-Gzipped bytes of the two bundles, written by the build to `dist/sizes.json` and checked against the budgets (18 KB for the core, 60 KB for everything) on every push. The core is the engine alone: scene, object base, animations, interactions and the five shades. The full bundle is what the script tag loads.
+Gzipped bytes of the two bundles, measured when the site is generated and checked against the budgets (18 KB for the core, 60 KB for everything) on every push. The core is the engine alone: scene, object base, animations, interactions and the five shades. The full bundle is what the script tag loads.
 
 ## Live meter
 

@@ -152,7 +152,7 @@ export function reducedMotion() {
 export function reflect(proto: object, attrs: string[]) {
   for (const a of attrs) {
     if (Object.getOwnPropertyDescriptor(proto, camel(a))) continue;
-    if (camel(a) in HTMLElement.prototype) { console.warn(`[solids] attribute "${a}" is not reflected: it would shadow HTMLElement.${camel(a)}`); continue; }
+    if (camel(a) in proto) { console.warn(`[solids] attribute "${a}" is not reflected: it would shadow the ${camel(a)} member`); continue; } // HTMLElement's too: proto inherits it
     Object.defineProperty(proto, camel(a), {
       get(this: HTMLElement) { return this.getAttribute(a); },
       set(this: HTMLElement, v: unknown) { v == null ? this.removeAttribute(a) : this.setAttribute(a, String(v)); },

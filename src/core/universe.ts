@@ -39,8 +39,8 @@ export class SdUniverse extends SdScene {
   yaw = 0; pitch = 0;
   private body = new WeakMap<SdObject, Body>();   // one per child, made on first sight from the seeded stream
   private rnd = mulberry32(1);
-  /** The bodies of the current children, in DOM order. */
-  get bodies(): Body[] { return [...this.objects].map((o) => this.bodyOf(o)); }
+  /** The bodies made so far, in DOM order (reading this creates none; step() does, in sorted order). */
+  get bodies(): Body[] { return [...this.objects].map((o) => this.body.get(o)).filter((b): b is Body => !!b); }
   private ready = false;
   private simTime = 0;                       // sim clock for the wobble (frozen under reduced motion)
   private drag: { id: number; x: number; y: number; t: number } | null = null;
@@ -185,7 +185,7 @@ export class SdUniverse extends SdScene {
     const Ux = (W / 2) * 0.95, Uy = (H / 2) * 0.95 * (D - 0.6) / D;
     if (!still) this.simTime += dt / 1000;
     // Bodies drift and turn back at the edge of the ball.
-    const bodies = this.bodies;
+    const bodies = [...this.objects].map((o) => this.bodyOf(o));
     if (drift > 0) for (const b of bodies) {
       for (let k = 0; k < 3; k++) b.p[k] += b.v[k] * (dt / 1000) * drift;
       const l = len(b.p);

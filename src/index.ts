@@ -1,5 +1,5 @@
 import { SdScene } from './core/scene';
-import { SdObject, defineObject } from './core/object';
+import { SdObject, defineObject, reflect } from './core/object';
 import { SdUniverse, PALETTE } from './core/universe';
 import * as registry from './core/registry';
 import './animations';
@@ -48,4 +48,4 @@ defineObject(discManifest as registry.Manifest, discFrag);
 // After the objects, so a parsed universe upgrades with its children already upgraded and keeps them.
 if (!customElements.get('sd-universe')) customElements.define('sd-universe', SdUniverse);
 
-export { SdScene, SdUniverse, SdObject, defineObject, registry, PALETTE };
+export { SdScene, SdUniverse, SdObject, defineObject, reflect, registry, PALETTE };

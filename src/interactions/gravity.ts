@@ -43,7 +43,7 @@ export const gravity: Interaction = {
       if (!b && !active) continue;
       if (!b) bodies.set(o, (b = { angle: 0, r: 0, center: null, offset: [0, 0], from: [0, 0], k: 1, at: 0 }));
       b.at = scene.time;
-      if (active) o.pinned = true; // held on its ring or on its fall: collide treats it as a wall
+      if (mode === 'orbit') o.pinned = true; // held on its ring: collide treats it as a wall (fallers stay free so collide keeps them apart)
       let target: [number, number] = [0, 0];
       let z = 0;
       if (active) {

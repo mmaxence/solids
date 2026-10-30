@@ -113,9 +113,9 @@ $$('.fps').forEach((badge) => {
   if (!scene) return;
   const tick = () => {
     if (!(scene.fps > 0)) return;
-    const fps = Math.round(scene.fps);
-    badge.firstElementChild.textContent = `${fps} fps`;
-    badge.lastElementChild.textContent = ` ${scene.frameTime.toFixed(2)} ms`;
+    const fps = Math.round(scene.fps), ms = ` ${scene.frameTime.toFixed(2)} ms`, f = `${fps} fps`;
+    if (badge.firstElementChild.textContent !== f) badge.firstElementChild.textContent = f;
+    if (badge.lastElementChild.textContent !== ms) badge.lastElementChild.textContent = ms;
     badge.classList.toggle('warn', fps < 50 && fps >= 30);
     badge.classList.toggle('bad', fps < 30);
   };

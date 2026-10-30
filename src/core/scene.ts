@@ -32,6 +32,7 @@ export class SdScene extends HTMLElement {
   private frames = 0;
   private failed = new Set<string>();     // effect names whose shader failed on this context: passed through, logged once
   private maxTex = 8192;
+  private lose: WEBGL_lose_context | null = null; // cached: getExtension returns null once the context is lost
   private ro: ResizeObserver | null = null;
   private io: IntersectionObserver | null = null;
   private fbos: { scene: FBO | null; a: FBO | null; b: FBO | null; pool: Map<string, [FBO, FBO, number]>; used: Set<string> } | null = null;
@@ -51,15 +52,15 @@ export class SdScene extends HTMLElement {
       const g = createGL(this.canvas);
       this.gl = g?.gl ?? null; this.colorSpace = g?.colorSpace ?? 'srgb';
       if (!this.gl) { this.dataset.fallback = ''; for (const o of this.objects) o.dataset.fallback = ''; }
-      else this.maxTex = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE);
-      this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.stop(); this.dataset.fallback = ''; });
+      else { this.maxTex = Math.min(8192, this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE)); this.lose = this.gl.getExtension('WEBGL_lose_context'); }
+      this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.stop(); this.dataset.fallback = ''; if (this.isConnected) this.lose?.restoreContext(); }); // a release that raced a re-insert comes straight back
       this.canvas.addEventListener('webglcontextrestored', () => {
         clearCache(this.gl!); this.fbos = null; this.query = null; this.failed.clear(); initState(this.gl!);
         for (const o of this.objects) o.broken = false;
         delete this.dataset.fallback;
         this.start();
       });
-    } else if (this.gl.isContextLost()) this.gl.getExtension('WEBGL_lose_context')?.restoreContext(); // released on disconnect, see below
+    } else if (this.gl.isContextLost()) this.lose?.restoreContext(); // released on disconnect, see below
     this.ro = new ResizeObserver(() => this.measure());
     this.ro.observe(this);
     // Start only if on screen now; the observer takes over from its first report (offscreen scenes then compile nothing on load).
@@ -80,7 +81,7 @@ export class SdScene extends HTMLElement {
     this.ro?.disconnect(); this.io?.disconnect();
     document.removeEventListener('visibilitychange', this.onVis);
     // Browsers keep about 16 live contexts: give this one back unless the scene is only being moved.
-    queueMicrotask(() => { if (!this.isConnected && this.gl && !this.gl.isContextLost()) this.gl.getExtension('WEBGL_lose_context')?.loseContext(); });
+    queueMicrotask(() => { if (!this.isConnected && this.gl && !this.gl.isContextLost()) this.lose?.loseContext(); });
   }
   attributeChangedCallback(name: string, _o: string | null, v: string | null) {
     const val = v ?? '';
@@ -152,6 +153,7 @@ export class SdScene extends HTMLElement {
   /** Advance one frame and draw. Public so tests and tools can render synchronously. */
   frame(t: number, dt: number) {
     const gl = this.gl;
+    if (this.dirty) this.settle(); // before the size is read: a measure may resize the canvas
     const W = this.canvas.width, H = this.canvas.height;
     if (!gl || gl.isContextLost() || W === 0 || H === 0) return;
     const start = performance.now();
@@ -182,7 +184,6 @@ export class SdScene extends HTMLElement {
   private render(gl: WebGL2RenderingContext, W: number, H: number, t: number, dt: number) {
     if (!reducedMotion()) this.clock = t;
     t = this.clock;
-    if (this.dirty) this.settle();
     for (const o of this.objects) o.update(dt);
     this.step(dt);
     for (const n of this.interactionNames) interactions.get(n)?.frame(this, dt, this.pointer);

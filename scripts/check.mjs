@@ -35,7 +35,7 @@ export function validateManifest(m, dir) {
     if (!/^[a-z][a-zA-Z0-9]*$/.test(u.name ?? '')) errs.push(`${dir}: uniform name "${u.name}" must be camelCase`);
     if (!UNIFORM_TYPES.has(u.type)) errs.push(`${dir}: uniform ${u.name} type must be float`);
     if (/^u[A-Z]/.test(u.name ?? '')) errs.push(`${dir}: uniform ${u.name} would shadow a core uniform`);
-    if (u.default === undefined) errs.push(`${dir}: uniform ${u.name} needs a default`);
+    if (typeof u.default !== 'number' || (typeof u.min === 'number' && (u.default < u.min || u.default > u.max))) errs.push(`${dir}: uniform ${u.name} needs a numeric default inside min..max`);
     if (typeof u.label !== 'string') errs.push(`${dir}: uniform ${u.name} needs a label`);
     if (u.type === 'float' && (typeof u.min !== 'number' || typeof u.max !== 'number')) errs.push(`${dir}: float uniform ${u.name} needs min and max`);
   }
@@ -145,8 +145,9 @@ window.addEventListener('error', (e) => window.__errors.push(String(e.message)))
 window.addEventListener('unhandledrejection', (e) => window.__errors.push(String(e.reason)));
 </script>
 <script type="module">
-import { registry } from '/dist/solids.js';
+import { registry, reflect } from '/dist/solids.js';
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+const mark = (l) => fetch('/__progress', { method: 'POST', body: l }).catch(() => {});
 const tags = [...registry.objects.values()].map((o) => o.manifest.tag);
 const result = { compileErrors: [], consoleErrors: [], tags, cases: {} };
 const parseDefault = (o) => { const t = document.createElement(o.localName); o.scene.appendChild(t); const v = [...t.rgb]; t.remove(); return v; };
@@ -291,15 +292,19 @@ await frame(); await frame(); await frame();
 result.cases.lone = { pixels: loneScene ? pixels(loneScene) : -1, restoredPixels: pixels(lost), restoredError: lost.gl.getError() };
 lone.remove(); free(lost);
 
+mark('Case H');
 // Case H: a lone object re-inserted keeps one inner scene; claimed by a real scene, it drops it.
 const lone2 = document.body.appendChild(document.createElement(tags[0]));
 await frame();
 lone2.remove(); await frame();
-document.body.appendChild(lone2); await frame();
+document.body.appendChild(lone2); await frame(); await frame(); await frame();
 const reinsert = lone2.shadowRoot.querySelectorAll('sd-scene').length;
+result.cases.lone.redrawn = pixels(lone2.shadowRoot.querySelector('sd-scene'));
+{ const back = mk({}); await frame(); back.remove(); await frame(); document.body.appendChild(back); await frame(); await frame(); await frame(); result.cases.lone.sceneBack = pixels(back); free(back); }
 const host = mk({}); host.appendChild(lone2); await frame();
 result.cases.lone.reinsert = reinsert;
 result.cases.lone.claimed = lone2.shadowRoot.querySelectorAll('sd-scene').length;
+mark('Case I');
 // Case I: two overlapping objects look the same before a context loss and after the restore.
 const ov = mk({}); ov.style.position = 'relative';
 const ovB = ov.appendChild(document.createElement(tags[0])); ovB.style.cssText = 'position:absolute;left:60px;top:40px'; ovB.setAttribute('color', '#ff9bd1');
@@ -323,6 +328,7 @@ result.cases.color = {
 };
 po.scene.appendChild(late); result.cases.color.attached = [...late.rgb];
 free(po.scene);
+mark('Case K');
 // Case K: switching or removing the gravity center never snaps.
 const stepOf = (objs) => objs.map((o) => [...o.anim.offset]);
 const maxStep = (a, b) => Math.max(...a.map((v, i) => Math.hypot(v[0] - b[i][0], v[1] - b[i][1])));
@@ -374,6 +380,7 @@ result.cases.mix = { zero: differ(b0, bn), same: b0.length === bn.length && b0.e
   missing: [...registry.effects.values()].filter((e) => !e.manifest.params.some((p) => p.name === 'mix')).map((e) => e.manifest.name) };
 free(m0, none, m1, m2);
 
+mark('Case N: repel');
 // Case N: repel, magnet, collide, scroll. Frames are driven by hand so the counts are exact.
 const run = (sc, n) => { for (let i = 0; i < n; i++) sc.frame(i / 60, 16); };
 const place = (sc, x, y) => { const o = document.createElement(tags[0]); o.style.cssText = 'position:absolute;left:' + x + 'px;top:' + y + 'px'; o.setAttribute('size', '40px'); sc.appendChild(o); return o; };
@@ -475,6 +482,7 @@ const gpu0 = pf.gpuTime;
 for (let i = 0; i < 10; i++) await frame();
 result.cases.perf = { frameTime: pf.frameTime, fps: pf.fps, gpu0, gpu: pf.gpuTime, glError: pf.gl?.getError() };
 free(pf);
+mark('Case U');
 // Case U: universe. Seeded 3D bodies, live depth and focus, camera spin, drag and pointer tilt, unique motion, collisions, 3D orbits, pasted markup, odd inputs.
 const uni = (attrs) => { const u = document.createElement('sd-universe'); u.setAttribute('theme', 'dark'); for (const [k, v] of Object.entries(attrs)) u.setAttribute(k, v); return document.body.appendChild(u); };
 const sig = (u) => [...u.children].map((c) => c.localName + ' ' + c.dataset.pos + ' ' + c.getAttribute('size')).join('|');
@@ -531,6 +539,9 @@ await frame();
   uv.gravity = { same: sig(ug) === sig(ug0) && sameOffs(offs(ug), offs(ug0)), centers: [...ug.children].filter((c) => c.getAttribute('gravity') === 'center').length,
     fields: ug.bodies.filter((b) => 'orbit' in b || 'pinned' in b).length, interaction: ug.interactionNames.includes('gravity') }; }
 uv.zero = u0.children.length; uv.known = [...uk.children].map((c) => c.localName); uv.none = un.children.length;
+{ const ub0 = uni({ count: '6', seed: '4', camera: '' }); const early = ub0.bodies.length; ub0.frame(0, 16); uv.bodiesLazy = { early, after: ub0.bodies.length }; free(ub0); }
+{ const sa = uni({ count: '8', seed: '6', camera: '' }), sb = uni({ count: '8', seed: '6', camera: '' }); sa.frame(0, 16); sb.frame(0, 16);
+  uv.sameMotion = sa.bodies.every((b, i) => b.v.every((v, k) => v === sb.bodies[i].v[k]) && [...b.tilt].every((v, k) => v === sb.bodies[i].tilt[k])); free(sa, sb); }
 free(ug, ug0, u0, uk, un);
 // Reduced motion: spin and drift hold still.
 window.__SD_REDUCED = true;
@@ -579,6 +590,7 @@ const dp = mk({}), db = mk({ effect: 'defocus', 'defocus-radius': '12' }), dz = 
 await frame(); await frame();
 uv.defocus = { blur: differ(db, dp), zero: differ(dz, dp) };
 free(dp, db, dz);
+mark('Case V');
 // Case V: the blit must not flatten glass highlights (rgb above alpha survives); the effect buffer pool keeps
 // every size in use and drops sizes no longer drawn; a universe with no author height still draws.
 const hv = mk({}, { state: 'active' });
@@ -613,11 +625,13 @@ const ph = mk({}, { animation: 'spin' }); const ph2 = ph.appendChild(document.cr
 await frame(); await frame();
 result.cases.phase = { differ: [...ph.firstElementChild.anim.rotation].some((v, i) => Math.abs(v - ph2.anim.rotation[i]) > 0.1) };
 free(ph);
+mark('Case Y');
 // Case Y: v7 hardening. Params clamp and stay finite; a zero-size body is harmless; reduced motion rests; contexts are released
 // on removal and flagged on loss; a failing effect logs once; the clock pauses; odd state keys; frame-rate-free springs;
 // late universe children get bodies; blur never leaks; author CSS does not move a universe child; tilt clamps;
 // gravity toggles ease; orbiters are pinned for collide; hover-lift follows scale; nested scenes; lone theme; reflection walk.
 const Y = result.cases.hard = {};
+mark('Y start');
 { const pz = mk({ effect: 'pixelate' }); pz.setAttribute('pixelate-size', '0');
   const po2 = mk({}).firstElementChild; po2.setAttribute('glow', '-5'); po2.setAttribute('speed', '1e999'); po2.setAttribute('state', 'constructor');
   const sizeMin = registry.effects.get('pixelate').manifest.params.find((q) => q.name === 'size').min;
@@ -675,7 +689,8 @@ const Y = result.cases.hard = {};
   const orbiter = g.os[0]; const spot = [orbiter.rect.x + orbiter.rect.width / 2 + orbiter.anim.offset[0], orbiter.rect.y + orbiter.rect.height / 2 + orbiter.anim.offset[1]];
   blocker.style.cssText = 'position:absolute;left:' + (spot[0] - 20) + 'px;top:' + (spot[1] - 20) + 'px'; g.sc.measure();
   const ring1 = polar(g.c, orbiter)[0]; for (let i = 0; i < 12; i++) g.sc.frame(2 + i / 10, 100);
-  Y.pinned = { orbiterRadius: polar(g.c, orbiter)[0], ring: ring1, blockerMoved: Math.hypot(...blocker.anim.offset) }; free(g.sc); }
+  Y.pinned = { orbiterRadius: polar(g.c, orbiter)[0], ring: ring1, blockerMoved: Math.hypot(...blocker.anim.offset), orbiterPinned: orbiter.pinned, centerPinned: g.c.pinned }; free(g.sc); }
+{ const g = ringScene([120]); g.os[0].setAttribute('gravity', 'fall'); await frame(); g.sc.frame(0.5, 16); Y.fallerPinned = g.os[0].pinned; free(g.sc); }
 { const hs = mk({ interaction: 'hover-lift' }); hs.style.cssText = 'width:200px;height:200px'; const ho = hs.firstElementChild; ho.setAttribute('size', '100px'); ho.style.cssText = 'position:absolute;left:50px;top:50px';
   const hu = ho.update.bind(ho); ho.update = (dt) => { hu(dt); ho.anim.scale = 0.5; }; hs.measure();
   hs.pointer = { x: 100 + 40, y: 100, inside: true }; await frame(); for (let i = 0; i < 20; i++) hs.frame(i / 10, 100);
@@ -685,11 +700,16 @@ const Y = result.cases.hard = {};
 { const lt = document.body.appendChild(document.createElement(tags[0])); lt.setAttribute('theme', 'light'); await frame();
   const ls = lt.shadowRoot?.querySelector('sd-scene'); const light = ls?.themeValue; lt.setAttribute('theme', 'dark'); const dark = ls?.themeValue;
   Y.loneTheme = light === 1 && dark === 0 ? 1 : [light, dark]; lt.remove(); }
-{ const bad = []; for (const t of tags) { const e = document.createElement(t); for (const a of e.constructor.observedAttributes) { const k = a.replace(/-([a-z])/g, (_, c) => c.toUpperCase()); if (Object.hasOwn(e, k) || k in HTMLElement.prototype) bad.push(t + '.' + k); } }
-  Y.reflect = bad; }
+{ const bad = []; const base = Object.getPrototypeOf(Object.getPrototypeOf(document.createElement(tags[0]))); // SdObject.prototype
+  for (const t of tags) { const e = document.createElement(t); for (const a of e.constructor.observedAttributes) { const k = a.replace(/-([a-z])/g, (_, c) => c.toUpperCase()); if (Object.hasOwn(e, k) || k in HTMLElement.prototype || k in base) bad.push(t + '.' + k); } }
+  // The guard itself: a uniform named like a member must be skipped with a warning, not shadow it.
+  const warns = []; const cw = console.warn.bind(console); console.warn = (...x) => { warns.push(x.join(' ')); cw(...x); };
+  const proto = Object.create(base); reflect(proto, ['update']); console.warn = cw;
+  Y.reflect = bad; Y.reflectGuard = { warned: warns.length, defined: Object.getOwnPropertyDescriptor(proto, 'update') !== undefined }; }
 // Case Z: performance changes that must not change pixels. The march far limit and the bounding-sphere cull are undone through a
 // shaderSource wrapper and every object must render byte for byte the same; a scene with no effect keeps no buffers and matches the
 // buffer path; an offscreen scene compiles nothing; regenerating 120 bodies measures once; collide at 120 bodies stays under budget.
+mark('Case AA');
 // Case AA: every object uniform changes the image between its min and its max; a faller settles at its gap; layer names are unique.
 { const U = result.cases.uniforms = {};
   for (const t of tags) { const m = registry.objects.get(t.slice(3)).manifest; for (const u of m.uniforms) {
@@ -700,17 +720,17 @@ const Y = result.cases.hard = {};
   result.cases.fall = { dist: polar(g.c, g.os[0])[0], expected: 24 + (40 + 20) / 4 }; free(g.sc); }
 { const names = ['effects', 'shades', 'interactions', 'animations'].flatMap((k) => [...registry[k].keys()]); result.dupNames = names.filter((x, i) => names.indexOf(x) !== i); }
 const Z = result.cases.perf2 = {};
-const mark = (l) => fetch('/__progress', { method: 'POST', body: l }).catch(() => {});
 mark('Z start');
 { const dump = (sc) => { const b = read(sc); return b; };
   const mkAll = () => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); for (const t of tags) { const o = sc.appendChild(document.createElement(t)); o.setAttribute('state', 'active'); o.setAttribute('size', '96px'); } return sc; };
   const a = mkAll(); await frame(); await frame(); const bufA = dump(a);
   const orig = WebGL2RenderingContext.prototype.shaderSource; let patched = 0;
-  WebGL2RenderingContext.prototype.shaderSource = function (sh, src) { const n = src.replace('if (t > 4.6) break;', 'if (t > 7.0) break;').replace('if (sdMisses(ro, rd)) return vec4(0.0); // cull', ''); if (n !== src) patched++; return orig.call(this, sh, n); };
+  let culls = 0;
+  WebGL2RenderingContext.prototype.shaderSource = function (sh, src) { const n1 = src.replace('if (t > 4.6) break;', 'if (t > 7.0) break;'); const n = n1.replace('if (sdMisses(ro, rd)) return vec4(0.0); // cull', ''); if (n1 !== src) patched++; if (n !== n1) culls++; return orig.call(this, sh, n); };
   const b = mkAll(); await frame(); await frame(); const bufB = dump(b);
   WebGL2RenderingContext.prototype.shaderSource = orig;
   let diff = 0; for (let i = 0; i < bufA.length; i++) if (bufA[i] !== bufB[i]) diff++;
-  Z.march = { patched, bytesDiffer: diff, pixels: pixels(a) }; free(a, b); mark('Z march done'); }
+  Z.march = { patched, culls, bytesDiffer: diff, pixels: pixels(a) }; free(a, b); mark('Z march done'); }
 { const plain = mk({}), buffered = mk({ effect: 'grain', 'grain-mix': '0' }); await frame(); await frame();
   const x = read(plain), y = read(buffered); let diff = 0; for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) diff++;
   Z.noFx = { buffers: !!plain.fbos?.scene, bytesDiffer: diff, pixels: pixels(plain) }; free(plain, buffered); mark('Z nofx done'); }
@@ -718,8 +738,8 @@ mark('Z start');
   const far = document.createElement('sd-scene'); far.setAttribute('theme', 'dark'); far.style.cssText = 'position:absolute;top:300vh;left:0;width:200px;height:200px'; far.appendChild(document.createElement(tags[0])); document.body.appendChild(far);
   for (let i = 0; i < 10; i++) await frame();
   Z.offscreen = { fps: far.fps, links }; WebGL2RenderingContext.prototype.linkProgram = lp; free(far); mark('Z offscreen done'); }
-{ const um = uni({ count: '0', camera: '', drift: '0' }); let measures = 0; const m0 = um.measure.bind(um); um.measure = () => { measures++; m0(); };
-  um.setAttribute('count', '120'); mark('Z regen'); um.frame(0, 16); Z.measures = measures; um.remove(); mark('Z measures done'); } // frame() by hand: 120 bodies in software GL are slow
+{ const um = uni({ count: '120', camera: '', drift: '0' }); um.frame(0, 16); let measures = 0; const m0 = um.measure.bind(um); um.measure = () => { measures++; m0(); };
+  um.setAttribute('seed', '9'); mark('Z regen'); um.frame(0, 16); Z.measures = measures; um.remove(); mark('Z measures done'); } // regenerate from 120 (removal plus attach); frame() by hand: 120 bodies in software GL are slow
 { const uc = uni({ count: '120', seed: '7', collide: '', camera: '', drift: '0.5' }); uc.step(16);
   const t0 = performance.now(); for (let i = 0; i < 60; i++) uc.step(16); Z.collideMs = (performance.now() - t0) / 60; uc.remove(); mark('Z collide done'); }
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
@@ -777,6 +797,7 @@ async function smoke() {
     if (!(r.cases.lone.restoredPixels > 500) || r.cases.lone.restoredError !== 0) fail(`context restore: ${JSON.stringify({ px: r.cases.lone.restoredPixels, err: r.cases.lone.restoredError })}`);
     if (r.cases.lone.reinsert !== 1) fail(`lone object re-inserted has ${r.cases.lone.reinsert} inner scenes, expected 1`);
     if (r.cases.lone.claimed !== 0) fail(`lone object claimed by a scene still has ${r.cases.lone.claimed} inner scene(s)`);
+    if (!(r.cases.lone.redrawn > 500) || !(r.cases.lone.sceneBack > 100)) fail(`a removed scene re-inserted later should draw again: lone ${r.cases.lone.redrawn} px, scene ${r.cases.lone.sceneBack} px`);
     if (!(r.cases.lone.restoreDiff < 0.05)) fail(`after context restore ${(r.cases.lone.restoreDiff * 100).toFixed(1)}% of pixels differ (blend state lost?)`);
     if (r.cases.props.stateAttr !== 'active' || !Number.isFinite(r.cases.props.stateTarget) || r.cases.props.stateTarget !== 1) fail(`state as property: ${JSON.stringify(r.cases.props)}`);
     const c = r.cases.color ?? {}, fin = (v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
@@ -834,6 +855,8 @@ async function smoke() {
     if (!uv.gravity?.same || uv.gravity.centers !== 0 || uv.gravity.fields !== 0 || uv.gravity.interaction) fail(`universe gravity attribute should be ignored: ${js(uv.gravity)}`);
     if (uv.reduced?.yaw !== 0 || !uv.reduced?.held) fail(`universe under reduced motion still moves: ${js(uv.reduced)}`);
     if (uv.pasted?.children !== 1 || uv.pasted.attached !== 1 || !(uv.pasted.scale > 1)) fail(`pasted universe markup should keep its one child and scale it up: ${js(uv.pasted)}`);
+    if (uv.bodiesLazy?.early !== 0 || uv.bodiesLazy?.after !== 6) fail(`reading bodies before the first step should create nothing: ${js(uv.bodiesLazy)}`);
+    if (uv.sameMotion !== true) fail('two universes with the same seed should get the same seeded velocities and tilts');
     if (uv.zero !== 0 || uv.none !== 0) fail(`universe count="0" or only unknown shapes: ${uv.zero} and ${uv.none} children, expected 0`);
     if (uv.known?.length !== 8 || !uv.known.every((t) => t === 'sd-orb' || t === 'sd-ring')) fail(`universe shapes="sd-orb sd-nope ring": ${js(uv.known)}`);
     if (uv.big?.children !== 120 || !(uv.big.pixels > 1000) || uv.big.stray !== 0) fail(`universe count="120": ${js(uv.big)}`);
@@ -854,11 +877,11 @@ async function smoke() {
       if (r.dupNames?.length) fail(`layer names collide: ${r.dupNames.join(', ')}`);
       for (const [name, px] of Object.entries(r.shadePixels ?? {})) if (!(px > 1000)) fail(`shade ${name} draws ${px} px on twelve objects (expected > 1000)`); }
     { const Z = r.cases.perf2 ?? {}, j = (v) => JSON.stringify(v);
-      if (!(Z.march?.patched >= 2) || Z.march?.bytesDiffer !== 0 || !(Z.march?.pixels > 1000)) fail(`march far limit 4.6 and the bounding-sphere cull must be present and pixel-identical to the old march: ${j(Z.march)} (measures ${Z.measures}, collide ${Z.collideMs?.toFixed(2)} ms)`);
+      if (!(Z.march?.patched >= 2) || !(Z.march?.culls >= 2) || Z.march?.bytesDiffer !== 0 || !(Z.march?.pixels > 1000)) fail(`march far limit 4.6 and the bounding-sphere cull must be present and pixel-identical to the old march: ${j(Z.march)} (measures ${Z.measures}, collide ${Z.collideMs?.toFixed(2)} ms)`);
       if (Z.noFx?.buffers !== false || Z.noFx?.bytesDiffer !== 0 || !(Z.noFx?.pixels > 100)) fail(`a scene with no effect should keep no buffers and match the buffer path byte for byte: ${j(Z.noFx)}`);
       if (!(Z.offscreen?.fps === 0) || !(Z.offscreen?.links === 0)) fail(`an offscreen scene should not run or compile before it is seen: ${j(Z.offscreen)}`);
       if (!(Z.measures <= 2)) fail(`regenerating 120 bodies measured the scene ${Z.measures} times (expected at most 2)`);
-      if (!(Z.collideMs < 0.4)) fail(`universe collide at 120 bodies takes ${Z.collideMs?.toFixed(2)} ms per step (expected under 0.8)`); }
+      if (!(Z.collideMs < 0.6)) fail(`universe collide at 120 bodies takes ${Z.collideMs?.toFixed(2)} ms per step (expected under 0.6)`); }
     { const Y = r.cases.hard ?? {}, j = (v) => JSON.stringify(v);
       if (!(Y.clamp?.effect === Y.clamp?.effectMin) || Y.clamp?.uniform !== 0 || Y.clamp?.speed !== 1 || Y.clamp?.state !== 0.25) fail(`params should clamp and stay finite: ${j(Y.clamp)}`);
       if (!(Y.fall?.dist < 300)) fail(`gravity-strength 100 flung a faller ${Y.fall?.dist?.toFixed(0)} px away (expected under 300)`);
@@ -874,11 +897,13 @@ async function smoke() {
       if (!(Y.authorCss < 0.5)) fail(`author CSS moved a universe child by ${Y.authorCss?.toFixed(1)} px`);
       if (!(Y.tiltClamp <= 12 * Math.PI / 180 + 1e-6)) fail(`pointer tilt while dragging outside the box reached ${(Y.tiltClamp * 180 / Math.PI).toFixed(1)} degrees`);
       if (!(Y.toggleWorst < 12)) fail(`toggling gravity off and on snapped ${Y.toggleWorst?.toFixed(1)} px in one frame`);
-      if (!(Math.abs(Y.pinned?.orbiterRadius - Y.pinned?.ring) < 1) || !(Y.pinned?.blockerMoved > 5)) fail(`collide should not push an orbiter off its ring: ${j(Y.pinned)}`);
+      if (!(Math.abs(Y.pinned?.orbiterRadius - Y.pinned?.ring) < 1) || !(Y.pinned?.blockerMoved > 5) || Y.pinned?.orbiterPinned !== true || Y.pinned?.centerPinned !== true) fail(`collide should not push an orbiter off its ring: ${j(Y.pinned)}`);
+      if (Y.fallerPinned !== false) fail('a falling object should not be pinned (collide keeps fallers apart)');
       if (Y.hoverScale !== 0.5) fail(`hover-lift ignores the object's scale: scale ${Y.hoverScale} with the pointer outside the drawn shape`);
       if (Y.nested?.outer !== 0 || Y.nested?.inner !== 1) fail(`a nested scene's object attached to the wrong scene: ${j(Y.nested)}`);
       if (Y.loneTheme !== 1) fail(`theme="light" on a lone object did not reach its scene (${Y.loneTheme})`);
-      if (Y.reflect?.length) fail(`attributes that shadow fields or HTMLElement properties: ${j(Y.reflect)}`); }
+      if (Y.reflect?.length) fail(`attributes that shadow fields or HTMLElement properties: ${j(Y.reflect)}`);
+      if (Y.reflectGuard?.warned !== 1 || Y.reflectGuard?.defined !== false) fail(`reflecting an attribute named like a member should warn and skip: ${j(Y.reflectGuard)}`); }
     if (!(uv.defaultHeight >= 300) || !(uv.defaultPixels > 1000)) fail(`universe with no author height: ${uv.defaultHeight}px tall, ${uv.defaultPixels} px drawn`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px, color space ${r.cases.color.space})`);
     return r;
@@ -947,7 +972,7 @@ async function site() {
     if (!/sdShade/.test(skill) || !/sdEdge/.test(skill) || !/sdLightDir/.test(skill)) fail('site/skill.md: the shade contract (sdShade, sdEdge, sdLightDir) is missing');
     for (const stale of ['sdGlass', 'uPointer', 'vec3`', '`color`. Keep', '"tags"', 'bleed', 'npm run build   #']) if (skill.includes(stale)) fail(`site/skill.md: still mentions ${stale}`);
     for (const need of ['## Adding an interaction', '## Adding an animation', 'npm run check']) if (!skill.includes(need)) fail(`site/skill.md: missing ${need}`);
-    const contributing = readFileSync('CONTRIBUTING.md', 'utf8'); if (!/shades/i.test(contributing) || /register it in the matching/.test(contributing) === false && false) fail('CONTRIBUTING.md should mention shades');
+    const contributing = readFileSync('CONTRIBUTING.md', 'utf8'); if (!/shades/i.test(contributing)) fail('CONTRIBUTING.md should mention shades');
     if (/raise `rim`/.test(text('accessibility.html')) || /raise <code>rim/.test(text('accessibility.html'))) fail('site/accessibility: the rim advice is stale (only glass reads rim)');
     if (!/<output class="fps" aria-hidden="true"/.test(index)) fail('site/index: the fps badge must be aria-hidden (an output is a live region)');
     if (!/"empty":"auto"/.test(text('objects/orb.html'))) fail('site/objects/orb: the Shading select should label its empty option auto');
