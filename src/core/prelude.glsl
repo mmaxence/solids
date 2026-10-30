@@ -43,11 +43,14 @@ float sdMarch(vec3 ro, vec3 rd, out float minD) {
   }
   return -1.0;
 }
-// A key light at `azimuthDeg` around the view (0 from the right, 90 from the top), 45 degrees up toward the viewer.
+// A key light at `azimuthDeg` around the view (0 from the right, 90 from the top), about 47 degrees up toward the viewer.
+// Fixed to the view: the object turns under it (p, n and rd are object space, so the direction is brought into that space).
 vec3 sdLightDir(float azimuthDeg) {
   float a = radians(azimuthDeg);
-  return normalize(vec3(cos(a) * 0.7, sin(a) * 0.7, 0.75));
+  return transpose(uRotation) * normalize(vec3(cos(a) * 0.7, sin(a) * 0.7, 0.75));
 }
+// A view-space direction from an object-space one (for sky and environment lookups that must not turn with the object).
+vec3 sdView(vec3 v) { return uRotation * v; }
 // A shade (src/shades/<name>/frag.glsl) defines these two: the color of a surface hit and the tint of the soft edge on a miss.
 vec4 sdShade(vec3 p, vec3 n, vec3 rd, float rim);
 vec3 sdEdge();

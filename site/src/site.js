@@ -57,7 +57,7 @@ if (specEl) {
       input = Object.assign(document.createElement('input'), { type: 'color', value: c.value });
     } else if (c.kind === 'select') {
       input = document.createElement('select');
-      for (const o of c.options) input.append(new Option(o || 'none', o));
+      for (const o of c.options) input.append(new Option(o || c.empty || 'none', o));
       input.value = c.value ?? '';
     } else if (c.kind === 'check') {
       label.className = 'check';

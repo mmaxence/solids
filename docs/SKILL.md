@@ -84,7 +84,9 @@ What the prelude gives you:
 | `sdRay(ro, rd)` | camera ray for this pixel, rotated by `uRotation` |
 | `sdMarch(ro, rd, minD)` | hit distance or -1; `minD` is the closest approach |
 | `sdNormal(p)` | normal from `map` |
-| `sdGlass(p, n, rd, rim)` | the house shading: tinted body, fresnel rim, one specular, premultiplied alpha |
+| `sdShade(p, n, rd, rim)` | the active shade's surface color (glass, matte, cel, clay, metal), premultiplied; called by `sdRender` |
+| `sdEdge()` | the active shade's tint for the soft edge and halo on a miss |
+| `sdLightDir(azimuthDeg)` | a key light fixed to the view, in object space; `sdView(v)` turns an object-space direction into view space |
 | `sdRender(rim, glow)` | march, shade, soft edge, halo on miss. Most objects just call this |
 
 Output is premultiplied RGBA. If you write your own `main`, multiply rgb by alpha before writing `fragColor`.
@@ -149,7 +151,7 @@ vec4 sdShade(vec3 p, vec3 n, vec3 rd, float rim) {   // premultiplied color of a
 vec3 sdEdge() { return uColor; }                     // tint of the soft edge and halo when a ray misses
 ```
 
-It sees `uColor`, `uTheme` (0 dark, 1 light: branch with `mix(dark, light, uTheme)` and tune both), `uState`, `map(p)` for occlusion tricks, and `sdLightDir(azimuthDeg)`. Param names must not equal any object uniform name (the check enforces it). Users pick a shade with `shading="<name>"` on an object or a scene; `auto` is glass in dark and the light default in light. Params become `<shade>-<param>` attributes.
+It sees `uColor`, `uTheme` (0 dark, 1 light: branch with `mix(dark, light, uTheme)` and tune both), `uState`, `map(p)` for occlusion tricks, `sdLightDir(azimuthDeg)` (a key light fixed to the view, already in object space) and `sdView(v)` (object to view space, for sky or environment lookups). Return `rgb` at most 1 with alpha 1 for an opaque surface, or premultiplied `rgb * a`: the scene composites premultiplied color. Param names must not equal any object uniform name (the check enforces it). Users pick a shade with `shading="<name>"` on an object or a scene; `auto` is glass in dark and the light default in light. Params become `<shade>-<param>` attributes.
 
 ## The universe
 

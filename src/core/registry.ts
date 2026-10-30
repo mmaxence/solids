@@ -49,7 +49,9 @@ function param(metas: Meta[], name: string, value: string | null, into: Record<s
     if (!name.startsWith(prefix)) continue;
     const p = m.params.find((p) => kebab(p.name) === name.slice(prefix.length));
     if (!p) continue;
-    (into[m.name] ??= {})[p.name] = num(value, p.default as number);
+    // Unset, empty or unparseable removes the entry, so a scene's value (or the manifest default) shows through again.
+    const n = value == null || value === '' ? NaN : Number(value);
+    if (isNaN(n)) delete into[m.name]?.[p.name]; else (into[m.name] ??= {})[p.name] = n;
     return true;
   }
   return false;

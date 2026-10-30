@@ -243,6 +243,20 @@ for (const name of shadeNames) {
   result.cases.shade.autoLight = { equalsDefault: differ(aL, dL), differsFromGlass: differ(aL, gL), name: registry.LIGHT_SHADE };
   result.cases.shade.paramMerge = { objectWins: differ(pm, b5), sceneAlone: differ(pmScene, b2) };
   drop(b2, b5, inh, exp, ovr, met, autoObj, glassObj, aL, dL, gL, pm, pmScene); }
+// Review fixes: the key light is fixed to the view (a sphere turned 180 degrees looks the same); removing an object's param lets the
+// scene's value through; out-of-range params clamp to the manifest range; cel's ink edge is valid premultiplied color.
+{ const drop = (...scs) => { for (const sc of scs) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); } };
+  const lit = mk({}, { shading: 'cel' }), turned = mk({}, { shading: 'cel' });
+  const to = turned.firstElementChild, up = to.update.bind(to);
+  to.update = (dt) => { up(dt); to.anim.rotation = new Float32Array([-1, 0, 0, 0, 1, 0, 0, 0, -1]); };
+  const rm = mk({ 'cel-bands': '2' }, { shading: 'cel', 'cel-bands': '5' }), sc2 = mk({ 'cel-bands': '2' }, { shading: 'cel' });
+  const big = mk({}, { shading: 'metal', 'metal-roughness': '1.5' }), one = mk({}, { shading: 'metal', 'metal-roughness': '1' });
+  const ink = mk({}, { shading: 'cel' });
+  await frame(); await frame();
+  rm.firstElementChild.removeAttribute('cel-bands'); await frame(); await frame();
+  let over = 0; { const b = read(ink); for (let i = 0; i < b.length; i += 4) if (b[i] > b[i + 3] + 1 || b[i + 1] > b[i + 3] + 1 || b[i + 2] > b[i + 3] + 1) over++; }
+  result.cases.shade.fixed = { viewLight: differ(lit, turned), paramRemoved: differ(rm, sc2), clamp: { same: differ(big, one), pixels: pixels(big) }, inkOver: over };
+  drop(lit, turned, rm, sc2, big, one, ink); }
 // Case D: animations move things; reduced motion freezes them.
 const an = document.body.appendChild(document.createElement('sd-scene')); an.className = 'small';
 const spin = document.createElement(tags[0]); spin.setAttribute('animation', 'spin'); an.appendChild(spin);
@@ -623,7 +637,12 @@ async function smoke() {
       if (!(sh.override?.equalsMetal < 1e-6) || !(sh.override?.differsFromCel > 0.02)) fail(`shades: object shading should override the scene: ${JSON.stringify(sh.override)}`);
       if (!(sh.autoOnObject < 1e-6)) fail(`shades: shading="auto" on an object inside a cel scene should be the theme default (glass), differs ${pc(sh.autoOnObject ?? 1)}`);
       if (!(sh.autoLight?.equalsDefault < 1e-6) || !(sh.autoLight?.differsFromGlass > 0.02)) fail(`shades: auto in the light theme should be ${sh.autoLight?.name}: ${JSON.stringify(sh.autoLight)}`);
-      if (!(sh.paramMerge?.objectWins < 1e-6) || !(sh.paramMerge?.sceneAlone < 1e-6)) fail(`shades: params should merge scene under object: ${JSON.stringify(sh.paramMerge)}`); }
+      if (!(sh.paramMerge?.objectWins < 1e-6) || !(sh.paramMerge?.sceneAlone < 1e-6)) fail(`shades: params should merge scene under object: ${JSON.stringify(sh.paramMerge)}`);
+      const fx = sh.fixed ?? {};
+      if (!(fx.viewLight < 0.01)) fail(`shades: the key light should stay fixed to the view: a sphere turned 180 degrees differs by ${pc(fx.viewLight ?? 1)}`);
+      if (!(fx.paramRemoved < 1e-6)) fail(`shades: removing an object's cel-bands should let the scene's value through, differs ${pc(fx.paramRemoved ?? 1)}`);
+      if (!(fx.clamp?.same < 1e-6) || !(fx.clamp?.pixels > 100)) fail(`shades: metal-roughness="1.5" should clamp to 1: ${JSON.stringify(fx.clamp)}`);
+      if (fx.inkOver !== 0) fail(`shades: cel ink edge has ${fx.inkOver} pixels with rgb above alpha (invalid premultiplied color)`); }
     { const sh = r.cases.shade ?? {}; if (!(sh.glassEqualsDefault < 1e-6) || !(sh.unknownDraws > 100) || sh.unknownWarned !== 1 || !(sh.unknownEqualsDefault < 1e-6)) fail(`shades: glass vs default ${sh.glassEqualsDefault}, unknown name drew ${sh.unknownDraws} px and warned ${sh.unknownWarned} times (expected 1), unknown vs default ${sh.unknownEqualsDefault}`); }
     if (r.consoleErrors.length) fail(`console errors: ${r.consoleErrors.join(' | ').slice(0, 1200)}`);
     if (!(r.cases.all.pixels > 1000)) fail(`smoke: scene drew ${r.cases.all.pixels} pixels, expected > 1000`);
@@ -772,6 +791,9 @@ async function site() {
     }
     const skill = text('skill.md');
     if (!/sdShade/.test(skill) || !/sdEdge/.test(skill) || !/sdLightDir/.test(skill)) fail('site/skill.md: the shade contract (sdShade, sdEdge, sdLightDir) is missing');
+    if (/sdGlass/.test(skill)) fail('site/skill.md: still mentions sdGlass, which no longer exists');
+    if (!/<output class="fps" aria-hidden="true"/.test(index)) fail('site/index: the fps badge must be aria-hidden (an output is a live region)');
+    if (!/"empty":"auto"/.test(text('objects/orb.html'))) fail('site/objects/orb: the Shading select should label its empty option auto');
     if (!/shades\.html/.test(text('llms.txt')) || shadeDirs.some((n) => !text('llms.txt').includes(`shades/${n}.html`))) fail('site/llms.txt: shade pages or shades.html unlisted'); }
   // Side menu: two tiers, four collapsible catalogue groups with counts; only the current page's group is open.
   { const side = (f) => text(f).match(/<nav class="side"[\s\S]*?<\/nav>/)?.[0] ?? '';

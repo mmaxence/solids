@@ -15,6 +15,6 @@ vec4 sdShade(vec3 p, vec3 n, vec3 rd, float rim) {
   vec3 col = base * (mix(0.28, 0.38, uTheme) + 0.6 * wrap) + warm * (0.12 * back + 0.08 * thin) + vec3(spec);
   col *= 0.6 + 0.4 * ao;
   col *= 0.85 + 0.3 * uState;
-  return vec4(col, 1.0);
+  return vec4(min(col, vec3(1.0)), 1.0);
 }
 vec3 sdEdge() { return mix(uColor, vec3(0.9, 0.82, 0.72), 0.25); }

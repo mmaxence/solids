@@ -75,7 +75,7 @@ function page(path, { title, description, main, hero = '' }) {
 }
 
 /** The fps badge every stage carries; site.js feeds it from the stage's own scene. */
-const badge = () => `<output class="fps" title="Frames per second and CPU ms per frame of this scene, measured live"><b>&ndash;</b><span></span></output>`;
+const badge = () => `<output class="fps" aria-hidden="true" title="Frames per second and CPU ms per frame of this scene, measured live"><b>&ndash;</b><span></span></output>`;
 /** A landing or comparison row: a relative box around a scene so the badge has a corner. */
 const bandStage = (html) => `<div class="band-stage">${badge()}${html}</div>`;
 
@@ -116,7 +116,7 @@ const coreControls = (target = 'object') => [
   { kind: 'select', attr: 'effect', label: 'Effect', options: ['', ...effects.map((e) => e.name)], value: '', target },
   shadingControl(target),
 ];
-const shadingControl = (target) => ({ kind: 'select', attr: 'shading', label: 'Shading', options: ['', ...shades.map((s) => s.name)], value: '', target });
+const shadingControl = (target) => ({ kind: 'select', attr: 'shading', label: 'Shading', options: ['', ...shades.map((s) => s.name)], value: '', empty: 'auto', target });
 const optionsTable = (rows) => `<table><thead><tr><th>Attribute</th><th>Type</th><th>Default</th><th>Range</th><th>Description</th></tr></thead><tbody>${rows.map((r) => `<tr><td><code>${esc(r[0])}</code></td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td><td>${esc(r[4])}</td></tr>`).join('')}</tbody></table>`;
 const optionsMd = (rows) => `| Attribute | Type | Default | Range | Description |\n|---|---|---|---|---|\n${rows.map((r) => `| ${r.join(' | ')} |`).join('\n')}`;
 const CORE_ROWS = [
@@ -244,7 +244,7 @@ shades.forEach((sh) => {
   const controls = [
     { kind: 'select', attr: 'object', label: 'Object', options: objects.map((o) => o.tag), value: 'sd-orb', target: 'scene' },
     ...sh.params.map((p) => rangeControl(p, 'scene', `${sh.name}-${kebab(p.name)}`)),
-    { kind: 'select', attr: 'shading', label: 'Shading', options: ['', ...shades.map((x) => x.name)], value: sh.name, target: 'scene' },
+    { kind: 'select', attr: 'shading', label: 'Shading', options: ['', ...shades.map((x) => x.name)], value: sh.name, empty: 'auto', target: 'scene' },
     { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
   ];
   const prompt = `Shade "${sh.name}": ${sh.description}\n\nSet shading="${sh.name}" on a scene (the default for its children) or on one object. Parameters are attributes prefixed with the shade name. shading="auto" is glass in the dark theme and ${LIGHT_SHADE} in the light one.\n\n${optionsMd(rows)}\n\n\`\`\`html\n{{markup}}\n\`\`\``;

@@ -190,7 +190,7 @@ td:first-child code { white-space: nowrap; }
 #built-for-agents li { counter-increment: step; padding: 16px 18px; }
 #built-for-agents li::before { content: counter(step); display: grid; place-items: center; width: 26px; height: 26px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 50%; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-.layers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.layers { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
 .layer { padding: 0 18px 16px; }
 .layer .mini { display: grid; place-items: center; height: 150px; margin: 0 -18px 14px; border-bottom: 1px solid var(--line); }
 .layer .mini > * { grid-area: 1 / 1; }

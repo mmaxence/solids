@@ -239,7 +239,7 @@ export class SdScene extends HTMLElement {
     // Shade: the object's own `shading`, else the scene's, else auto (glass in dark, the light default in light).
     const shadeName = resolveShade(o.hasAttribute('shading') ? o.shadeName : this.shadeName, theme), shade = shades.get(shadeName)!;
     const shadeUniforms: Record<string, number> = {};
-    for (const d of shade.manifest.params) shadeUniforms[d.name] = o.shadeParams[shadeName]?.[d.name] ?? this.shadeParams[shadeName]?.[d.name] ?? (d.default as number);
+    for (const d of shade.manifest.params) { const v = o.shadeParams[shadeName]?.[d.name] ?? this.shadeParams[shadeName]?.[d.name] ?? (d.default as number); shadeUniforms[d.name] = Math.min(d.max ?? v, Math.max(d.min ?? v, v)); }
     let p: Program;
     try { p = program(gl, o.frag, 'object', { name: shadeName, frag: shade.frag }); }
     catch (e) { o.broken = true; console.error(`[solids] <${o.manifest.tag}> shader failed:\n${(e as Error).message}`); return; }
