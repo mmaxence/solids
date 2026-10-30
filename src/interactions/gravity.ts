@@ -3,7 +3,7 @@ import { num } from '../core/registry';
 import type { SdObject } from '../core/object';
 import { reducedMotion } from '../core/object';
 import type { SdScene } from '../core/scene';
-import { lerp } from '../core/math';
+import { lerp, ease } from '../core/math';
 
 type Body = { angle: number; r: number; center: SdObject | null; offset: [number, number]; from: [number, number]; k: number };
 const bodies = new WeakMap<SdObject, Body>();
@@ -25,7 +25,8 @@ export const gravity: Interaction = {
     const strength = num(scene.getAttribute('gravity-strength'), 0.6);
     const c = center ? mid(center) : null;
     const frozen = reducedMotion();
-    const role = (o: SdObject) => (!c || o === center ? 'none' : o.getAttribute('gravity') ?? 'orbit');
+    // Roles: the center and opted-out objects are 'none'; 'fall' falls; anything else (orbit, an extra center, a typo) orbits.
+    const role = (o: SdObject) => { const g = o.getAttribute('gravity'); return !c || o === center || g === 'none' ? 'none' : g === 'fall' ? 'fall' : 'orbit'; };
     // Rings: orbiters sorted by rest distance share evenly spaced radii from a clearance ring (the shapes do not touch)
     // out to the farthest rest distance. Angular speed follows Kepler: the outer ring sets the pace, w ~ r^-1.5.
     const orbiters = objs.filter((o) => role(o) === 'orbit').map((o) => { const m = mid(o); return { o, d: Math.hypot(m[0] - c![0], m[1] - c![1]) }; }).sort((a, b) => a.d - b.d);
@@ -33,8 +34,8 @@ export const gravity: Interaction = {
     const outer = orbiters.length ? Math.max(orbiters[orbiters.length - 1].d, inner) : 0;
     const ring = (o: SdObject) => { const i = orbiters.findIndex((e) => e.o === o), n = orbiters.length; return n > 1 ? inner + ((outer - inner) * i) / (n - 1) : inner; };
     for (const o of objs) {
-      const mode = o.getAttribute('gravity');
-      const active = role(o) !== 'none' && mode !== 'none';
+      const mode = role(o);
+      const active = mode !== 'none';
       let b = bodies.get(o);
       if (!b && !active) continue;
       if (!b) bodies.set(o, (b = { angle: 0, r: 0, center: null, offset: [0, 0], from: [0, 0], k: 1 }));
@@ -52,9 +53,10 @@ export const gravity: Interaction = {
           const stop = num(o.getAttribute('gravity-gap'), 24) + (center!.rect!.width + o.rect!.width) / 4;
           if (!frozen) b.r += (stop - b.r) * (1 - Math.exp(-dt / 700)) * (0.3 + strength);
         } else {
-          b.r = ring(o); // recomputed each frame: layout can change under us (resize, vmin positions)
+          // Rings move when the layout or the set of orbiters changes; ease onto the new radius rather than jump.
+          b.r = frozen || b.k === 0 ? ring(o) : ease(b.r, ring(o), dt, 300);
           if (!frozen) b.angle += (dt / 1000) * 0.3 * strength * Math.pow(outer / b.r, 1.5);
-          z = Math.sin(b.angle);
+          z = Math.sin(b.angle) * (b.r / outer); // outer rings swing deeper, so a pass between rings keeps a stable draw order
         }
         target = [c![0] + Math.cos(b.angle) * b.r - rest[0], c![1] + Math.sin(b.angle) * b.r - rest[1]];
       } else if (b.center) {

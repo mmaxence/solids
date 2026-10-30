@@ -180,7 +180,7 @@ ${layer('Interactions', 'Scene rules that react to the pointer and to each other
   const writes = objects.reduce((t, o) => t + bytes(...objFiles(o.name)), 0) / objects.length;
   const inTok = (4 * reads + 2 * 2048) / 4, outTok = writes / 4;
   const usd = inTok * 4e-6 + outTok * 20e-6;
-  const cost = `<p class="cost">Adding a shape costs an agent about ${Math.round((inTok + outTok) / 1000)} K tokens: it reads the contract and one reference object, writes three small files and runs the check twice. That is around $${usd.toFixed(2)} at Claude Opus 5.5 list prices (2026-10-06); Codex or another agent reads the same files and lands in the same range. A full agent session carries its own system prompt on top, so count on a few times that.</p>`;
+  const cost = `<p class="cost">The files an agent reads and writes to add a shape come to about ${Math.round((inTok + outTok) / 1000)} K tokens: the contract, one reference object, and the three small files it writes, with two check runs. That is around $${usd.toFixed(2)} at Claude Opus 5.5 list prices (2026-10-06), before the agent's own system prompt and reasoning, which a full session adds on top. Codex reads the same files.</p>`;
   const live = { 'Four layers': layers, Universe: universe, Catalogue: catalogue + cost, Performance: numbers };
   const main = `<div class="landing">${readFileSync('site/src/intro.md', 'utf8').split(/^(?=## )/m).map((s) => {
     const h = s.match(/^## (.*)/)[1];

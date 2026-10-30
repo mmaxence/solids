@@ -362,7 +362,7 @@ const gc = gr.firstElementChild; gc.setAttribute('gravity', 'center'); gc.setAtt
 const gs = gr.appendChild(document.createElement(tags[0])); gs.setAttribute('size', '40px'); gs.style.cssText = 'position:absolute;left:140px;top:80px';
 for (let i = 0; i < 6; i++) await frame();
 gs.style.left = '180px'; gr.measure();
-for (let i = 0; i < 12; i++) await frame();
+for (let i = 0; i < 60; i++) await frame(); // the ring eases onto the new radius over about 300 ms
 result.cases.gravity.resizedRadius = Math.hypot(gs.rect.x + gs.rect.width / 2 + gs.anim.offset[0] - (gc.rect.x + gc.rect.width / 2), gs.rect.y + gs.rect.height / 2 + gs.anim.offset[1] - (gc.rect.y + gc.rect.height / 2));
 free(co.scene, gr);
 // Case R: orbit rings. Three orbiters at rest distances 60, 100 and 180 px sit on evenly spaced rings (60, 120, 180);
@@ -379,8 +379,24 @@ const polar = (c, o) => { const dx = o.rect.x + o.rect.width / 2 + o.anim.offset
   r3.sc.frame(2, 1000);
   const a1 = r3.os.map((o) => polar(r3.c, o));
   const da = a1.map((p, i) => Math.abs(p[1] - a0[i][1]));
-  result.cases.rings = { radii: a0.map((p) => p[0]), speedRatio: da[0] / da[2], clamped: polar(r1.c, r1.os[0])[0] };
+  // Depth: z follows sin(angle) scaled by ring radius over the outer ring, so a pass between rings draws in a stable order.
+  const zr = r3.os.map((o, i) => o.anim.z / (Math.sin(a1[i][1]) || 1e-9) * (180 / a1[i][0]));
+  // Leaving: the outer orbiter opts out; the others re-spread with an ease, no frame moves more than 12 px.
+  let worstLeave = 0, prevL = r3.os.map((o) => [...o.anim.offset]);
+  r3.os[2].setAttribute('gravity', 'none');
+  for (let i = 0; i < 20; i++) { r3.sc.frame(3 + i / 60, 16); const cur = r3.os.map((o) => [...o.anim.offset]); worstLeave = Math.max(worstLeave, ...cur.map((v, k) => Math.hypot(v[0] - prevL[k][0], v[1] - prevL[k][1]))); prevL = cur; }
+  result.cases.rings = { radii: a0.map((p) => p[0]), speedRatio: da[0] / da[2], clamped: polar(r1.c, r1.os[0])[0], zRatio: zr, worstLeave };
   free(r3.sc, r1.sc); }
+// Odd roles never make NaN: a second center and an empty gravity value both orbit, with two real orbiters and with none.
+{ const rx = ringScene([60, 300]), ry = ringScene([]);
+  const x2 = rx.sc.appendChild(document.createElement(tags[0])); x2.setAttribute('gravity', 'center'); x2.setAttribute('size', '20px'); x2.style.cssText = 'position:absolute;left:200px;top:120px';
+  const y1 = ry.sc.appendChild(document.createElement(tags[0])); y1.setAttribute('gravity', ''); y1.setAttribute('size', '20px'); y1.style.cssText = 'position:absolute;left:200px;top:120px';
+  const y2 = ry.sc.appendChild(document.createElement(tags[0])); y2.setAttribute('gravity', 'center'); y2.setAttribute('size', '20px'); y2.style.cssText = 'position:absolute;left:400px;top:120px';
+  await frame();
+  for (let i = 0; i < 12; i++) { rx.sc.frame(i / 10, 100); ry.sc.frame(i / 10, 100); }
+  const fin = (o) => o.anim.offset.every(Number.isFinite) && Number.isFinite(o.anim.z) && Math.hypot(...o.anim.offset) > 0.01;
+  result.cases.rings.oddRoles = { extraCenter: fin(x2), empty: fin(y1), extraCenterAlone: fin(y2) };
+  free(rx.sc, ry.sc); }
 // Case P: frame metrics. After ten frames frameTime and fps are positive; reading gpuTime opts in to the timer and never throws.
 const pf = mk({}); pf.style.cssText = 'position:fixed;left:0;top:0';
 const gpu0 = pf.gpuTime;
@@ -589,6 +605,9 @@ async function smoke() {
     { const g = r.cases.rings ?? {}, want = [60, 120, 180];
       if (!g.radii || !g.radii.every((v, i) => Math.abs(v - want[i]) < 1)) fail(`orbit rings: radii ${JSON.stringify(g.radii)}, expected ${JSON.stringify(want)}`);
       if (!(Math.abs(g.speedRatio / Math.pow(3, 1.5) - 1) < 0.02)) fail(`orbit rings: inner over outer angular speed ${g.speedRatio?.toFixed(3)}, expected 3^1.5 = 5.196`);
+      if (!g.zRatio || !g.zRatio.every((v) => Math.abs(v - 1) < 0.02)) fail(`orbit rings: depth should scale with the ring radius over the outer ring, got z/sin ratios ${JSON.stringify(g.zRatio)}`);
+      if (!(g.worstLeave < 12)) fail(`orbit rings: an orbiter leaving re-spread the others by ${g.worstLeave?.toFixed(1)} px in one frame (expected an ease, < 12)`);
+      if (!g.oddRoles || !g.oddRoles.extraCenter || !g.oddRoles.empty || !g.oddRoles.extraCenterAlone) fail(`orbit rings: odd gravity roles should orbit without NaN: ${JSON.stringify(g.oddRoles)}`);
       if (!(g.clamped >= 38)) fail(`orbit rings: an orbiter 10 px from the center sits at ${g.clamped?.toFixed(1)} px, expected the clearance ring (>= 38)`); }
     if (!(Math.abs(r.cases.gravity.resizedRadius - 100) < 6)) fail(`orbit radius after moving the rest position: ${r.cases.gravity.resizedRadius?.toFixed(1)} px, expected about 100`);
     if (!r.cases.anim.spinMoved) fail('animation "spin" did not change rotation between frames');
@@ -677,7 +696,7 @@ async function site() {
     if (!/<details open[^>]*>\s*<summary>Effects/.test(glow)) fail('site/effects/glow: the Effects group should be open');
     if (!/<h2>Guide<\/h2>/.test(idx) || !/<h2>Catalogue<\/h2>/.test(idx)) fail('site/index: side menu tiers Guide and Catalogue missing'); }
   { const band = index.slice(index.indexOf('id="catalogue"'), index.indexOf('id="performance"'));
-    if (!/about [0-9]+ K tokens/.test(band) || !/\$[0-9]+\.[0-9]{2}/.test(band) || !band.includes('2026-10-06')) fail('site/index: the catalogue band should say what a shape costs an agent (K tokens, dollars, price date)'); }
+    if (!/about [0-9]+ K tokens/.test(band) || !/\$[0-9]+\.[0-9]{2}/.test(band) || !band.includes('2026-10-06') || !/before the agent/.test(band)) fail('site/index: the catalogue band should say what a shape costs an agent (K tokens, dollars, price date)'); }
   if (h2s.join('|') !== ORDER.join('|')) fail(`site/index: sections ${JSON.stringify(h2s)}, expected ${JSON.stringify(ORDER)}`);
   const dock = index.match(/class="controls dock"[\s\S]*?<\/form>/)?.[0] ?? '';
   const heroPrompt = JSON.parse(index.match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}').prompt ?? '';
