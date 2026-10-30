@@ -148,7 +148,7 @@ window.addEventListener('error', (e) => window.__errors.push(String(e.message)))
 window.addEventListener('unhandledrejection', (e) => window.__errors.push(String(e.reason)));
 </script>
 <script type="module">
-import { registry, reflect } from '/dist/solids.js';
+import { registry, reflect, defineObject } from '/dist/solids.js';
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const mark = (l) => fetch('/__progress', { method: 'POST', body: l }).catch(() => {});
 const tags = [...registry.objects.values()].map((o) => o.manifest.tag);
@@ -729,7 +729,7 @@ mark('Z start');
   const a = mkAll(); await frame(); await frame(); const bufA = dump(a);
   const orig = WebGL2RenderingContext.prototype.shaderSource; let patched = 0;
   let culls = 0;
-  WebGL2RenderingContext.prototype.shaderSource = function (sh, src) { const n1 = src.replace('if (t > 4.6) break;', 'if (t > 7.0) break;'); const n = n1.replace('if (sdMisses(ro, rd)) return vec4(0.0); // cull', ''); if (n1 !== src) patched++; if (n !== n1) culls++; return orig.call(this, sh, n); };
+  WebGL2RenderingContext.prototype.shaderSource = function (sh, src) { const n1 = src.replace('if (t > zs + uBound) break;', 'if (t > 7.0) break;').replace('uBound * uBound <= 0.0', '2.56 <= 0.0'); const n = n1.replace('if (sdMisses(ro, rd)) return vec4(0.0); // cull', ''); if (n1 !== src) patched++; if (n !== n1) culls++; return orig.call(this, sh, n); };
   const b = mkAll(); await frame(); await frame(); const bufB = dump(b);
   WebGL2RenderingContext.prototype.shaderSource = orig;
   let diff = 0; for (let i = 0; i < bufA.length; i++) if (bufA[i] !== bufB[i]) diff++;
@@ -745,10 +745,143 @@ mark('Z start');
   um.setAttribute('seed', '9'); mark('Z regen'); um.frame(0, 16); Z.measures = measures; um.remove(); mark('Z measures done'); } // regenerate from 120 (removal plus attach); frame() by hand: 120 bodies in software GL are slow
 { const uc = uni({ count: '120', seed: '7', collide: '', camera: '', drift: '0.5' }); uc.step(16);
   const t0 = performance.now(); for (let i = 0; i < 60; i++) uc.step(16); Z.collideMs = (performance.now() - t0) / 60; uc.remove(); mark('Z collide done'); }
+mark('Case AC');
+// Case AC: non-square boxes and the field texture. Unit space is the box's short side, so a 1:3 box reaches 3 units: a tall runtime-defined
+// pillar paints the ends of its 100 x 300 rect and a wide slab paints the ends of its 300 x 100 rect; hover-lift tests the rect's half extents; a field uploads once per version and binds for a shader that samples it.
+const AC = result.cases.boxes = {};
+defineObject({ name: 'pillar', tag: 'sd-pillar', description: 'x', uniforms: [] }, 'float map(vec3 p) { vec3 q = abs(p) - vec3(0.4, 2.7, 0.3); return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0); } void main() { fragColor = sdRender(1.0, 0.0); }');
+defineObject({ name: 'slab', tag: 'sd-slab', description: 'x', uniforms: [] }, 'float map(vec3 p) { vec3 q = abs(p) - vec3(2.7, 0.4, 0.3); return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0); } void main() { fragColor = sdRender(1.0, 0.0); }');
+defineObject({ name: 'fielded', tag: 'sd-fielded', description: 'x', uniforms: [] }, 'uniform sampler2D uField; uniform vec2 uFieldSize; uniform float uFieldRange; float map(vec3 p) { float d2 = (texture(uField, p.xy * 0.5 + 0.5).r - 0.5) * 2.0 * uFieldRange * 0.4; vec2 w = vec2(d2, abs(p.z) - 0.3); return min(max(w.x, w.y), 0.0) + length(max(w, 0.0)); } void main() { fragColor = sdRender(1.0, 0.0); }');
+const rowsPainted = (sc, fromY, toY) => { const b = read(sc), gl = sc.gl, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, pr = sc.pixelRatio; let n = 0; for (let y = Math.max(0, Math.floor(fromY * pr)); y < Math.min(H, toY * pr); y++) for (let x = 0; x < W; x++) if (b[(y * W + x) * 4 + 3] > 8) n++; return n; };
+const colsPainted = (sc, fromX, toX) => { const b = read(sc), gl = sc.gl, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, pr = sc.pixelRatio; let n = 0; for (let y = 0; y < H; y++) for (let x = Math.max(0, Math.floor(fromX * pr)); x < Math.min(W, toX * pr); x++) if (b[(y * W + x) * 4 + 3] > 8) n++; return n; };
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.style.cssText = 'position:relative;width:300px;height:400px';
+  const o = sc.appendChild(document.createElement('sd-pillar')); o.style.cssText = 'position:absolute;left:100px;top:50px;width:100px;height:300px'; await frame();
+  AC.tall = { top: rowsPainted(sc, 0, 80), bottom: rowsPainted(sc, 320, 400), middle: rowsPainted(sc, 180, 220) }; // GL rows run bottom up: rows 0..80 are the rect's bottom end
+  free(sc); }
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.style.cssText = 'position:relative;width:400px;height:200px';
+  const o = sc.appendChild(document.createElement('sd-slab')); o.style.cssText = 'position:absolute;left:50px;top:50px;width:300px;height:100px'; await frame();
+  AC.wide = { left: colsPainted(sc, 50, 80), right: colsPainted(sc, 320, 350) }; free(sc); }
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.setAttribute('interaction', 'hover-lift'); sc.style.cssText = 'position:relative;width:400px;height:300px';
+  const o = sc.appendChild(document.createElement('sd-slab')); o.style.cssText = 'position:absolute;left:100px;top:100px;width:200px;height:100px'; await frame();
+  sc.pointer = { x: 200, y: 230, inside: true, down: false, tap: null }; for (let i = 0; i < 20; i++) sc.frame(i / 10, 100); AC.hoverOutside = o.anim.scale;
+  sc.pointer = { x: 290, y: 150, inside: true, down: false, tap: null }; for (let i = 0; i < 20; i++) sc.frame(i / 10, 100); AC.hoverInside = o.anim.scale; free(sc); }
+{ let uploads = 0; const ti = WebGL2RenderingContext.prototype.texImage2D; WebGL2RenderingContext.prototype.texImage2D = function (...a) { if (a[2] === this.R8) uploads++; return ti.apply(this, a); };
+  const sc = mk({}); sc.firstElementChild.remove(); const o = sc.appendChild(document.createElement('sd-fielded'));
+  const disc = new Uint8Array(16 * 16); for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 7.5) - 5; disc[y * 16 + x] = Math.max(0, Math.min(255, Math.round(128 + d / 4 * 127))); }
+  o.field = { data: disc, width: 16, height: 16, range: 4, version: 1 }; await frame(); for (let i = 0; i < 5; i++) sc.frame(i / 10, 16);
+  const px1 = pixels(sc), u1 = uploads; o.field = { ...o.field, version: 2 }; sc.frame(1, 16); AC.field = { pixels: px1, uploadsAfterFive: u1, uploadsAfterBump: uploads };
+  WebGL2RenderingContext.prototype.texImage2D = ti; free(sc); }
+mark('Case AD');
+// Case AD: <sd-text>. The light DOM is the text; the 3D twin draws over it; pixel, depth and bevel change the image; a wrapped h1 keeps
+// its text and goes transparent; a lone text renders; a text change rebuilds; the word reads on both themes.
+const AD = result.cases.text = {};
+const textScene = (inner, attrs = {}, theme = 'dark') => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', theme); for (const [k, v] of Object.entries(attrs)) sc.setAttribute(k, v); sc.style.cssText = 'position:relative;width:420px;height:160px;display:grid;place-items:center'; sc.innerHTML = inner; return sc; };
+const T1 = '<sd-text style="font:700 64px ui-monospace, Menlo, monospace">Solids</sd-text>';
+{ const a = textScene(T1), b = textScene(T1.replace('<sd-text ', '<sd-text pixel="8" ')), c = textScene(T1.replace('<sd-text ', '<sd-text depth="0.02" ')), d = textScene(T1.replace('<sd-text ', '<sd-text depth="1" ')), e = textScene(T1.replace('<sd-text ', '<sd-text bevel="0" ')), f = textScene(T1.replace('<sd-text ', '<sd-text bevel="1" '));
+  await frame(); await frame();
+  const t = a.firstElementChild;
+  AD.pixels = pixels(a); AD.hasField = !!t.field; AD.pixelDiff = differ(a, b); AD.depthDiff = differ(c, d); AD.bevelDiff = differ(e, f);
+  AD.registry = { inObjects: registry.objects.has('text'), defined: !!customElements.get('sd-text') };
+  const v0 = t.field?.version; t.textContent = 'Hello'; await frame(); await frame(); AD.rebuild = { bumped: t.field?.version > v0, differs: differ(a, b) };
+  free(a, b, c, d, e, f); }
+{ const w = textScene('<sd-text style="font:700 64px ui-monospace, Menlo, monospace"><h1 style="margin:0;font:inherit">Solids</h1></sd-text>'); await frame(); await frame();
+  const h1 = w.querySelector('h1'); AD.wrapped = { text: h1.textContent, color: getComputedStyle(h1).color, pixels: pixels(w), box: h1.getBoundingClientRect().width > 100 }; free(w); }
+{ const lone = document.body.appendChild(document.createElement('sd-text')); lone.style.cssText = 'font:700 48px ui-monospace, monospace'; lone.textContent = 'Lone'; await frame(); await frame();
+  const ls = lone.shadowRoot.querySelector('sd-scene'); AD.lone = ls ? pixels(ls) : -1; lone.remove(); }
+{ const dark = textScene(T1, {}, 'dark'), light = textScene(T1, {}, 'light'); await frame(); await frame();
+  const lum = (sc) => { const b = read(sc); let sum = 0, n = 0; for (let i = 0; i < b.length; i += 4) { const a = b[i + 3]; if (a > 200) { sum += (0.299 * b[i] + 0.587 * b[i + 1] + 0.114 * b[i + 2]) / a; n++; } } return n ? sum / n : NaN; };
+  AD.theme = { dark: lum(dark), light: lum(light) }; free(dark, light); }
+mark('Case AE');
+// Case AE: review fixes. Poke hits the drawn spot (after collide's push) and the shape drawn on top; enabling a tap rule after a tap
+// does not fire on the stale tap; a wide box turned toward the camera is not sliced by the march start; a narrow text keeps its em;
+// the light-theme word has a contrasting edge.
+const AE = result.cases.fixes = {};
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.setAttribute('interaction', 'poke collide'); sc.setAttribute('collide-gap', '60'); sc.style.cssText = 'position:relative;width:400px;height:300px';
+  const a = sc.appendChild(document.createElement(tags[0])), b = sc.appendChild(document.createElement(tags[0]));
+  for (const o of [a, b]) o.setAttribute('size', '40px'); a.style.cssText = 'position:absolute;left:170px;top:130px'; b.style.cssText = 'position:absolute;left:180px;top:130px';
+  await frame(); for (let i = 0; i < 40; i++) sc.frame(i / 10, 100); // collide pushes them apart
+  const bx = b.drawCenter()[0]; sc.tap(bx, 150); sc.frame(5, 16); sc.frame(5.1, 16);
+  AE.pushedPoke = { tappedAt: bx, bTurned: Math.abs(b.anim.rotation[0] - 1) > 0.01, aTurned: Math.abs(a.anim.rotation[0] - 1) > 0.01 }; free(sc); }
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.setAttribute('interaction', 'poke'); sc.style.cssText = 'position:relative;width:400px;height:300px';
+  const first = sc.appendChild(document.createElement(tags[0])), last = sc.appendChild(document.createElement(tags[0]));
+  for (const o of [first, last]) { o.setAttribute('size', '60px'); o.style.cssText = 'position:absolute;left:170px;top:120px'; }
+  const fu = first.update.bind(first); first.update = (dt) => { fu(dt); first.anim.z = 0.5; }; // the first in DOM draws on top
+  await frame(); sc.frame(0, 16); sc.tap(200, 150); sc.frame(0.1, 16); sc.frame(0.2, 16);
+  AE.topPoke = { firstTurned: Math.abs(first.anim.rotation[0] - 1) > 0.01, lastTurned: Math.abs(last.anim.rotation[0] - 1) > 0.01 }; free(sc); }
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.style.cssText = 'position:relative;width:400px;height:300px'; const o = sc.appendChild(document.createElement(tags[0])); o.setAttribute('size', '40px'); o.style.cssText = 'position:absolute;left:260px;top:130px';
+  await frame(); sc.frame(0, 16); sc.tap(100, 150); sc.frame(0.1, 16); sc.setAttribute('interaction', 'shockwave'); let peak = 0; for (let i = 0; i < 60; i++) { sc.frame(1 + i / 60, 16); peak = Math.max(peak, Math.abs(o.anim.offset[0])); } AE.staleTap = peak; free(sc); }
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.style.cssText = 'position:relative;width:700px;height:200px';
+  const o = sc.appendChild(document.createElement('sd-slab')); o.style.cssText = 'position:absolute;left:50px;top:50px;width:600px;height:100px';
+  const ou = o.update.bind(o); ou(16); o.update = (dt) => { ou(dt); o.anim.rotation = new Float32Array([0.5, 0, -0.866, 0, 1, 0, 0.866, 0, 0.5]); }; // 60 degrees about y: one end swings toward the camera
+  await frame(); AE.turnedSlab = { left: colsPainted(sc, 50, 330), right: colsPainted(sc, 370, 650), middle: colsPainted(sc, 330, 370) }; free(sc); } // the ends foreshorten toward the center; the near end (right) must survive the march start
+{ const sc = textScene('<sd-text style="font:700 96px ui-monospace, Menlo, monospace">1</sd-text>'); await frame(); await frame();
+  const b = read(sc), gl = sc.gl, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight; let lo = H, hi = 0; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (b[(y * W + x) * 4 + 3] > 8) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
+  AE.narrowText = { glyphHeight: (hi - lo) / sc.pixelRatio, box: sc.firstElementChild.getBoundingClientRect().height }; free(sc); }
+{ const light = textScene(T1, {}, 'light'); await frame(); await frame();
+  const b = read(light); let sum = 0, n = 0; for (let i = 0; i < b.length; i += 4) { const a = b[i + 3]; if (a > 40 && a < 200) { sum += (0.299 * b[i] + 0.587 * b[i + 1] + 0.114 * b[i + 2]) / a; n++; } }
+  AE.lightEdge = n ? sum / n : NaN; free(light); }
+mark('Case AB');
+// Case AB: tap input. A press and release under 8 px is a tap (a new object each time); a drag, a cancel or a slow press is not;
+// pointer.down tracks the press; scene.tap() taps by hand; a nested scene keeps its tap to itself.
+const AB = result.cases.taps = {};
+{ const ts = mk({}); await frame();
+  ptr(ts, 'pointerdown', 50, 50); AB.downDuring = ts.pointer.down; ptr(ts, 'pointerup', 52, 51);
+  const tap1 = ts.pointer.tap; AB.tap = tap1 ? { x: tap1.x, y: tap1.y, downAfter: ts.pointer.down } : null;
+  ptr(ts, 'pointermove', 120, 80); AB.survivesMove = ts.pointer.tap === tap1;
+  ptr(ts, 'pointerdown', 50, 50); ptr(ts, 'pointermove', 80, 50); ptr(ts, 'pointerup', 80, 50); AB.dragTapped = ts.pointer.tap !== tap1;
+  ptr(ts, 'pointerdown', 50, 50); ptr(ts, 'pointercancel', 50, 50); AB.cancelTapped = ts.pointer.tap !== tap1; AB.downAfterCancel = ts.pointer.down;
+  ptr(ts, 'pointerdown', 60, 60); ptr(ts, 'pointerup', 60, 60); const tap2 = ts.pointer.tap; AB.fresh = tap2 !== tap1 && !!tap2;
+  ptr(ts, 'pointerdown', 70, 70); await new Promise((r) => setTimeout(r, 450)); ptr(ts, 'pointerup', 70, 70); AB.slowTapped = ts.pointer.tap !== tap2;
+  ts.tap(10, 20); AB.manual = ts.pointer.tap ? [ts.pointer.tap.x, ts.pointer.tap.y] : null;
+  free(ts); }
+{ const wrap = document.body.appendChild(document.createElement('div')); wrap.innerHTML = '<sd-scene class="small"><sd-scene class="small"><' + tags[0] + '></' + tags[0] + '></sd-scene></sd-scene>'; const outer = wrap.firstElementChild, inner = outer.firstElementChild; await frame();
+  ptr(inner, 'pointerdown', 20, 20); ptr(inner, 'pointerup', 20, 20); AB.nested = { inner: !!inner.pointer.tap, outer: !!outer.pointer.tap }; free(inner, outer); wrap.remove(); }
+// Tap rules: shockwave shoves a shape as the ring passes and it settles; a pinned shape moves a third; an untouched scene stays at zero;
+// poke turns the tapped shape once and the pop returns; pull holds while down and lets go on release; all three answer under reduced motion.
+const tapScene = (name, extra = {}) => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.setAttribute('interaction', name); for (const [k, v] of Object.entries(extra)) sc.setAttribute(k, v); sc.style.cssText = 'position:relative;width:400px;height:300px';
+  const o = sc.appendChild(document.createElement(tags[0])); o.setAttribute('size', '40px'); o.style.cssText = 'position:absolute;left:260px;top:130px'; return { sc, o }; }; // the shape sits at (280, 150)
+const tapRun = (sc, n, dt = 16) => { for (let i = 0; i < n; i++) sc.frame(i * dt / 1000, dt); };
+{ const w = tapScene('shockwave'); await frame(); tapRun(w.sc, 5); AB.untouched = Math.hypot(...w.o.anim.offset);
+  w.sc.tap(100, 150); let peak = 0; for (let i = 0; i < 60; i++) { w.sc.frame(i / 60, 16); peak = Math.max(peak, w.o.anim.offset[0]); } // the ring travels right toward the shape
+  tapRun(w.sc, 240); AB.shock = { peak, settled: Math.hypot(...w.o.anim.offset) }; free(w.sc); }
+{ const w = tapScene('gravity shockwave'); w.o.setAttribute('gravity', 'center'); await frame(); tapRun(w.sc, 5); w.sc.tap(100, 150); let peak = 0; for (let i = 0; i < 60; i++) { w.sc.frame(i / 60, 16); peak = Math.max(peak, w.o.anim.offset[0]); } AB.pinnedPeak = peak; free(w.sc); }
+{ const w = tapScene('poke'); await frame(); tapRun(w.sc, 5); w.sc.tap(280, 150); let turned = false, popped = 1;
+  for (let i = 0; i < 30; i++) { w.sc.frame(i / 60, 16); const r = w.o.anim.rotation; if (Math.abs(r[0] - 1) > 0.5) turned = true; popped = Math.max(popped, w.o.anim.scale); }
+  tapRun(w.sc, 120); const r = w.o.anim.rotation; AB.poke = { turned, popped, back: Math.max(Math.abs(r[0] - 1), Math.abs(r[4] - 1), Math.abs(r[8] - 1), Math.abs(r[2]), Math.abs(r[6])), scale: w.o.anim.scale }; free(w.sc); }
+{ const w = tapScene('pull'); await frame(); tapRun(w.sc, 5); ptr(w.sc, 'pointerdown', 100, 150); tapRun(w.sc, 60); const held = w.o.anim.offset[0]; ptr(w.sc, 'pointerup', 100, 150); tapRun(w.sc, 240); AB.pull = { held, released: Math.hypot(...w.o.anim.offset) }; free(w.sc); }
+{ window.__SD_REDUCED = true; const a = tapScene('shockwave'), b = tapScene('pull'); await frame(); tapRun(a.sc, 5); tapRun(b.sc, 5);
+  a.sc.tap(100, 150); let peak = 0, scaleMax = 1; for (let i = 0; i < 60; i++) { a.sc.frame(i / 60, 16); peak = Math.max(peak, a.o.anim.offset[0]); scaleMax = Math.max(scaleMax, a.o.anim.scale); }
+  ptr(b.sc, 'pointerdown', 100, 150); tapRun(b.sc, 60); AB.reduced = { shock: peak, noPop: scaleMax, pull: b.o.anim.offset[0] }; ptr(b.sc, 'pointerup', 100, 150); window.__SD_REDUCED = false; free(a.sc, b.sc); }
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
 </script></body></html>`;
+
+const CORE_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>solids core check</title><style>body{margin:0;background:#000}sd-scene{width:200px;height:200px;display:block}</style></head><body>
+<script type="module">
+import { defineObject, registry } from '/dist/core.js';
+defineObject({ name: 'ball', tag: 'sd-ball', description: 'x', uniforms: [] }, 'float map(vec3 p) { return length(p) - 0.6; } void main() { fragColor = sdRender(1.0, 0.5); }');
+const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.appendChild(document.createElement('sd-ball'));
+await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+const gl = sc.gl; sc.frame(1, 16); const buf = new Uint8Array(gl.drawingBufferWidth * gl.drawingBufferHeight * 4); gl.readPixels(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+let n = 0; for (let i = 3; i < buf.length; i += 4) if (buf[i] > 8) n++;
+await fetch('/__result', { method: 'POST', body: JSON.stringify({ pixels: n, interactions: registry.interactions.size, objects: registry.objects.size }) });
+</script></body></html>`;
+
+async function coreSmoke() {
+  const chrome = chromePath();
+  if (!chrome) return;
+  const core = readFileSync('dist/core.js', 'utf8');
+  for (const name of ['pointer-follow', 'hover-lift', 'repel']) if (core.includes(name)) fail(`dist/core.js still bundles the ${name} interaction (the core build should stub src/interactions like objects and effects)`);
+  writeFileSync('scripts/.check-core.html', CORE_PAGE);
+  const { srv, port, result } = await serve('.');
+  try {
+    const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-core.html`, chrome, result, 60000);
+    if (!(r.pixels > 500) || r.interactions !== 0 || r.objects !== 1) fail(`the engine alone (dist/core.js) should draw a runtime-defined object with no interactions bundled: ${JSON.stringify(r)}`);
+    else console.log(`core ok (${r.pixels} px from dist/core.js alone)`);
+  } catch (e) { fail(`core: ${e.message.split('\n')[0]}`); }
+  finally { srv.close(); }
+}
 
 async function smoke() {
   const chrome = chromePath();
@@ -757,7 +890,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 240000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms', 'taps', 'boxes', 'text', 'fixes']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
@@ -879,6 +1012,39 @@ async function smoke() {
       const fl = r.cases.fall ?? {}; if (!(Math.abs(fl.dist - fl.expected) < 3)) fail(`gravity="fall" settled at ${fl.dist?.toFixed(1)} px, expected ${fl.expected}`);
       if (r.dupNames?.length) fail(`layer names collide: ${r.dupNames.join(', ')}`);
       for (const [name, px] of Object.entries(r.shadePixels ?? {})) if (!(px > 1000)) fail(`shade ${name} draws ${px} px on twelve objects (expected > 1000)`); }
+    { const E = r.cases.fixes ?? {}, j = (v) => JSON.stringify(v);
+      if (E.pushedPoke?.bTurned !== true || E.pushedPoke?.aTurned !== false) fail(`poke should hit the shape where it is drawn, after collide moved it: ${j(E.pushedPoke)}`);
+      if (E.topPoke?.firstTurned !== true || E.topPoke?.lastTurned !== false) fail(`poke should hit the shape drawn on top, not the last in DOM order: ${j(E.topPoke)}`);
+      if (!(E.staleTap < 1e-6)) fail(`enabling shockwave after a tap fired on the stale tap (${E.staleTap?.toFixed(1)} px)`);
+      if (!(E.turnedSlab?.left > 500) || !(E.turnedSlab?.right > 500) || !(E.turnedSlab?.middle > 50)) fail(`a wide box turned toward the camera is sliced by the march start: ${j(E.turnedSlab)}`);
+      if (!(E.narrowText?.glyphHeight > 0.55 * E.narrowText?.box)) fail(`a one-glyph text should keep its em: glyph ${E.narrowText?.glyphHeight?.toFixed(0)} px tall in a ${E.narrowText?.box?.toFixed(0)} px box`);
+      if (!(E.lightEdge < 0.7)) fail(`the light-theme word's edge should contrast with the page (edge luminance ${E.lightEdge?.toFixed(2)}, expected under 0.7)`); }
+    { const X = r.cases.text ?? {}, j = (v) => JSON.stringify(v);
+      if (!(X.pixels > 2000) || X.hasField !== true) fail(`<sd-text>Solids</sd-text> should draw its word from a field texture: ${j({ pixels: X.pixels, field: X.hasField })}`);
+      if (X.registry?.inObjects !== false || X.registry?.defined !== true) fail(`sd-text should be defined but not in the objects registry: ${j(X.registry)}`);
+      if (!(X.pixelDiff > 0.02) || !(X.depthDiff > 0.02) || !(X.bevelDiff > 0.005)) fail(`pixel, depth and bevel should change the text: ${j({ pixel: X.pixelDiff, depth: X.depthDiff, bevel: X.bevelDiff })}`);
+      if (X.rebuild?.bumped !== true) fail(`changing the text should rebuild the field: ${j(X.rebuild)}`);
+      if (X.wrapped?.text !== 'Solids' || !/rgba\(.*, 0\)$|transparent/.test(X.wrapped?.color ?? '') || !(X.wrapped?.pixels > 2000) || X.wrapped?.box !== true) fail(`a wrapped h1 should keep its text and box and go transparent under the twin: ${j(X.wrapped)}`);
+      if (!(X.lone > 500)) fail(`a lone <sd-text> should render in its own scene (${X.lone} px)`);
+      if (!(X.theme?.dark > 0.2) || !(X.theme?.light < 0.75)) fail(`the word should read on both themes: mean luminance dark ${X.theme?.dark?.toFixed(2)} (expected > 0.2), light ${X.theme?.light?.toFixed(2)} (expected < 0.75)`); }
+    { const B = r.cases.boxes ?? {}, j = (v) => JSON.stringify(v);
+      if (!(B.tall?.top > 200) || !(B.tall?.bottom > 200) || !(B.tall?.middle > 200)) fail(`a tall object should paint the ends of its rect (non-square quads): ${j(B.tall)}`);
+      if (!(B.wide?.left > 200) || !(B.wide?.right > 200)) fail(`a wide object should paint the ends of its rect: ${j(B.wide)}`);
+      if (B.hoverOutside !== 1 || !(B.hoverInside > 1.05)) fail(`hover-lift should use the rect's half extents: outside ${B.hoverOutside}, inside ${B.hoverInside}`);
+      if (!(B.field?.pixels > 200) || B.field?.uploadsAfterFive !== 1 || B.field?.uploadsAfterBump !== 2) fail(`a field texture should draw and upload once per version: ${j(B.field)}`); }
+    { const T = r.cases.taps ?? {}, j = (v) => JSON.stringify(v);
+      if (!T.tap || Math.abs(T.tap.x - 52) > 1 || Math.abs(T.tap.y - 51) > 1 || T.tap.downAfter !== false || T.downDuring !== true) fail(`a press and release should tap and track pointer.down: ${j({ tap: T.tap, downDuring: T.downDuring })}`);
+      if (T.survivesMove !== true) fail('the tap should survive a pointer move');
+      if (T.dragTapped !== false || T.cancelTapped !== false || T.slowTapped !== false || T.downAfterCancel !== false) fail(`a drag, a cancel or a slow press must not tap: ${j({ drag: T.dragTapped, cancel: T.cancelTapped, slow: T.slowTapped, downAfterCancel: T.downAfterCancel })}`);
+      if (T.fresh !== true) fail('each press should produce a new tap object');
+      if (!T.manual || T.manual[0] !== 10 || T.manual[1] !== 20) fail(`scene.tap(10, 20) should set the tap: ${j(T.manual)}`);
+      if (T.nested?.inner !== true || T.nested?.outer !== false) fail(`a nested scene's tap leaked: ${j(T.nested)}`);
+      if (!(T.untouched < 1e-6)) fail(`shockwave moved a shape with no tap by ${T.untouched} px`);
+      if (!(T.shock?.peak > 4) || !(T.shock?.settled < 0.5)) fail(`shockwave should shove the shape outward and settle: ${j(T.shock)}`);
+      if (!(T.pinnedPeak > 0.5) || !(T.pinnedPeak < T.shock?.peak * 0.5)) fail(`a pinned shape should take about a third of the shove: ${T.pinnedPeak?.toFixed(1)} vs ${T.shock?.peak?.toFixed(1)}`);
+      if (!T.poke?.turned || !(T.poke?.popped > 1.05) || !(T.poke?.back < 1e-3) || !(Math.abs(T.poke?.scale - 1) < 1e-3)) fail(`poke should turn the tapped shape once and pop, then return: ${j(T.poke)}`);
+      if (!(T.pull?.held < -4) || !(T.pull?.released < 0.5)) fail(`pull should hold the shape toward the press and let go on release: ${j(T.pull)}`);
+      if (!(T.reduced?.shock > 4) || !(T.reduced?.noPop < 1.001) || !(T.reduced?.pull < -4)) fail(`tap rules should still answer under reduced motion, without the pop: ${j(T.reduced)}`); }
     { const Z = r.cases.perf2 ?? {}, j = (v) => JSON.stringify(v);
       if (!(Z.march?.patched >= 2) || !(Z.march?.culls >= 2) || Z.march?.bytesDiffer !== 0 || !(Z.march?.pixels > 1000)) fail(`march far limit 4.6 and the bounding-sphere cull must be present and pixel-identical to the old march: ${j(Z.march)} (measures ${Z.measures}, collide ${Z.collideMs?.toFixed(2)} ms)`);
       if (Z.noFx?.buffers !== false || Z.noFx?.bytesDiffer !== 0 || !(Z.noFx?.pixels > 100)) fail(`a scene with no effect should keep no buffers and match the buffer path byte for byte: ${j(Z.noFx)}`);
@@ -950,7 +1116,16 @@ async function site() {
     const groupsOf = (f) => [...new Set(spec(f).map((c) => c.group ?? ''))];
     const expect = { 'objects/orb.html': ['Shape', 'Motion', 'Look'], 'scene.html': ['Scene', 'Interactions', 'Look'], 'universe.html': ['Universe', 'Camera', 'Depth', 'Look'], 'effects/glow.html': ['Scene', 'Effect', 'Look'], 'shades/cel.html': ['Scene', 'Shade', 'Look'], 'interactions/repel.html': ['Scene', 'Interactions', 'Look'] };
     for (const [f, want] of Object.entries(expect)) { const got = groupsOf(f); if (want.some((g) => !got.includes(g)) || got.includes('')) fail(`site/${f}: dock groups ${JSON.stringify(got)}, expected ${JSON.stringify(want)} with every control grouped`); }
-    if (spec('index.html').some((c) => c.group)) fail('site/index: the hero dock keeps one flat row (no groups)');
+    // Hero: presets, a Tweak panel with the grouped controls and Copy prompt, the Solids wordmark as the heading.
+    { const hs = JSON.parse(text('index.html').match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}');
+      const names = (hs.presets ?? []).map((p) => p.name);
+      if (names.join('|') !== 'Orbit|Neon|Ink|Pixel|Storm') fail(`site/index: hero presets ${JSON.stringify(names)}`);
+      const hg = [...new Set((hs.controls ?? []).map((c) => c.group ?? ''))];
+      if (hg.includes('') || !['Scene', 'Rules', 'Look', 'Text'].every((g) => hg.includes(g))) fail(`site/index: hero controls should all sit in the Tweak groups Scene, Rules, Look, Text: ${JSON.stringify(hg)}`);
+      if (!/<form[^>]*class="controls dock"[\s\S]*?<fieldset class="presets"[\s\S]*?<details class="tweak">[\s\S]*?id="copy-prompt"[\s\S]*?<\/details>[\s\S]*?id="copy-code"/.test(index)) fail('site/index: the dock should be presets, a Tweak details holding Copy prompt, then Copy code');
+      if (!/<sd-text id="mark"[^>]*>\s*<h1>Solids<\/h1>\s*<\/sd-text>/.test(index)) fail('site/index: the hero heading should be <sd-text id="mark"><h1>Solids</h1></sd-text>');
+      if (/class="hero-title"><h1>/.test(index)) fail('site/index: the old hero h1 should be gone (the wordmark is the heading)');
+      if (!/interaction="gravity pointer-follow hover-lift shockwave poke"/.test(index)) fail('site/index: the hero default interactions should be gravity pointer-follow hover-lift shockwave poke'); }
     const css = readFileSync('site/src/styles.css', 'utf8');
     if (!/\.codebar pre \{[^}]*overflow-x: auto/.test(css)) fail('site/styles: the live markup should scroll horizontally (.codebar pre overflow-x: auto)');
     if (!/\.fps b \{[^}]*font-size: 20px/.test(css)) fail('site/styles: the fps figure should be 20 px');
@@ -971,7 +1146,12 @@ async function site() {
       const c = spec.controls.find((x) => x.attr === 'shading');
       if (!c || c.kind !== 'select' || !c.options.includes('cel') || !c.options.includes('')) fail(`site/${f}: dock has no Shading select listing auto and every shade`);
     }
+    if (!existsSync('site/dist/text.html')) fail('site/text.html missing');
+    if (!/<h2>Guide<\/h2><ul>[\s\S]*?href="\.\/text\.html"/.test(index)) fail('site/index: the Guide list should link the Text page');
+    if (!text('llms.txt').includes('text.html')) fail('site/llms.txt: text.html unlisted');
+    if (!/<sd-text[^>]*>[\s\S]*?Solids[\s\S]*?<\/sd-text>/.test(text('text.html'))) fail('site/text.html: the stage should hold an <sd-text> with Solids');
     const skill = text('skill.md');
+    if (!skill.includes('## Text and HTML')) fail('site/skill.md: the Text and HTML section is missing');
     if (!/sdShade/.test(skill) || !/sdEdge/.test(skill) || !/sdLightDir/.test(skill)) fail('site/skill.md: the shade contract (sdShade, sdEdge, sdLightDir) is missing');
     for (const stale of ['sdGlass', 'uPointer', 'vec3`', '`color`. Keep', '"tags"', 'bleed', 'npm run build   #']) if (skill.includes(stale)) fail(`site/skill.md: still mentions ${stale}`);
     for (const need of ['## Adding an interaction', '## Adding an animation', 'npm run check']) if (!skill.includes(need)) fail(`site/skill.md: missing ${need}`);
@@ -1012,14 +1192,20 @@ async function site() {
     try {
       const r = await runPage(`http://127.0.0.1:${port}/${f}?__check`, chrome, result, 30000, size);
       if (f === 'index.html') {
-        if (!(r.objects >= 12)) fail(`site/index (${size ?? 'desktop'}): hero has ${r.objects} objects, expected 12`);
+        if (!(r.objects >= 13)) fail(`site/index (${size ?? 'desktop'}): hero has ${r.objects} objects, expected 13 with the wordmark`);
+        if (!r.storm || !/repel.*shockwave.*poke.*pull.*collide/.test(r.storm.interaction ?? '') || r.storm.gravity !== '0' || r.storm.checked !== 'Storm') fail(`site/index (${size ?? 'desktop'}): the Storm preset should drive the controls: ${JSON.stringify(r.storm)}`);
+        if (r.orbitAttr !== 'gravity pointer-follow hover-lift shockwave poke') fail(`site/index (${size ?? 'desktop'}): clicking Orbit should leave the shipped interaction order, got "${r.orbitAttr}"`);
+        if (r.pixelEffect !== 'pixelate') fail(`site/index (${size ?? 'desktop'}): the Pixel mood should set effect="pixelate", got "${r.pixelEffect}"`);
+        if (!(r.radioPills >= 5)) fail(`site/index (${size ?? 'desktop'}): mood pills should be native radio inputs, found ${r.radioPills}`);
+        if (r.manualClears !== 0) fail(`site/index (${size ?? 'desktop'}): a manual change should clear the active preset, ${r.manualClears} still checked`);
+        if (!/<sd-text[^>]*>[\s\S]*Solids[\s\S]*<\/sd-text>/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code should carry the wordmark with its text`);
         if (!r.hasCenter) fail(`site/index (${size ?? 'desktop'}): dock has no Center control`);
         if (r.scrollWidth > r.innerWidth) fail(`site/index (${size ?? 'desktop'}): horizontal overflow ${r.scrollWidth} > ${r.innerWidth}`);
         if (!(r.h1Bottom < r.dockTop)) fail(`site/index (${size ?? 'desktop'}): title bottom ${r.h1Bottom} is not above the dock top ${r.dockTop}`);
         const styled = (r.markup?.match(/style="position:\s*absolute;/g) || []).length;
         if (styled < 12 || !/<sd-scene[^>]*style="[^"]*height/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code markup does not reproduce the layout (${styled} positioned objects)`);
         if (!r.centerOptions || r.centerOptions.length !== 6 || r.centerOptions.includes('cube')) fail(`site/index (${size ?? 'desktop'}): Center options should be the orb and its five orbiters, got ${JSON.stringify(r.centerOptions)}`);
-        if (r.interactionAttr && !/gravity.*collide/.test(r.interactionAttr)) fail(`site/index (${size ?? 'desktop'}): toggling reordered interactions to "${r.interactionAttr}"`);
+        if (r.interactionAttr && !/gravity.*shockwave.*collide/.test(r.interactionAttr)) fail(`site/index (${size ?? 'desktop'}): toggling reordered interactions to "${r.interactionAttr}"`);
         if (!/<section class="band" id="performance">[\s\S]*?href="performance.html"/.test(index)) fail('site/index: the Performance band has no link to performance.html');
         if (!size && !/\d+(\.\d+)? ms/.test(r.liveFrame ?? '')) fail(`site/index: the Performance band's live frame number reads ${JSON.stringify(r.liveFrame)}`);
         if (!(r.contexts <= 6)) fail(`site/index (${size ?? 'desktop'}): ${r.contexts} WebGL scenes, expected at most 6 (one per section row, never one per card)`);
@@ -1054,6 +1240,7 @@ async function site() {
 
 sizes();
 manifests();
+await coreSmoke();
 await smoke();
 await site();
 

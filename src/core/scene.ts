@@ -10,7 +10,8 @@ export class SdScene extends HTMLElement {
   gl: WebGL2RenderingContext | null = null;
   colorSpace: ColorSpace = 'srgb';   // the drawing buffer's space; object colors are parsed into it
   objects = new Set<SdObject>();
-  pointer: Pointer = { x: 0, y: 0, inside: false };
+  pointer: Pointer = { x: 0, y: 0, inside: false, down: false, tap: null };
+  private press: { id: number; x: number; y: number; t: number } | null = null; // the current press, for tap detection
   interactionNames: string[] = [];
   effectNames: string[] = [];
   shadeName = 'auto';                     // `shading` attribute: default shade for children whose own is unset
@@ -33,6 +34,7 @@ export class SdScene extends HTMLElement {
   private failed = new Set<string>();     // effect names whose shader failed on this context: passed through, logged once
   private maxTex = 8192;
   private lose: WEBGL_lose_context | null = null; // cached: getExtension returns null once the context is lost
+  private fields = new Map<SdObject, { tex: WebGLTexture; v: number }>(); // uploaded field textures, by object
   private ro: ResizeObserver | null = null;
   private io: IntersectionObserver | null = null;
   private fbos: { scene: FBO | null; a: FBO | null; b: FBO | null; pool: Map<string, [FBO, FBO, number]>; used: Set<string> } | null = null;
@@ -55,7 +57,7 @@ export class SdScene extends HTMLElement {
       else { this.maxTex = Math.min(8192, this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE)); this.lose = this.gl.getExtension('WEBGL_lose_context'); }
       this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.stop(); this.dataset.fallback = ''; if (this.isConnected) this.lose?.restoreContext(); }); // a release that raced a re-insert comes straight back
       this.canvas.addEventListener('webglcontextrestored', () => {
-        clearCache(this.gl!); this.fbos = null; this.query = null; this.failed.clear(); initState(this.gl!);
+        clearCache(this.gl!); this.fbos = null; this.query = null; this.failed.clear(); this.fields.clear(); initState(this.gl!);
         for (const o of this.objects) o.broken = false;
         delete this.dataset.fallback;
         this.start();
@@ -70,6 +72,9 @@ export class SdScene extends HTMLElement {
     this.io.observe(this);
     this.addEventListener('pointermove', this.onPointer);
     this.addEventListener('pointerleave', this.onLeave);
+    this.addEventListener('pointerdown', this.onPress);
+    this.addEventListener('pointerup', this.onRelease);
+    this.addEventListener('pointercancel', this.onCancelPress);
     document.addEventListener('visibilitychange', this.onVis);
     for (const el of this.querySelectorAll('*')) if (el instanceof SdObject && el.closest('sd-scene, sd-universe') === this) this.attach(el);
     for (const o of this.objects) this.ro.observe(o);
@@ -107,7 +112,10 @@ export class SdScene extends HTMLElement {
     this.objects = new Set([...this.objects].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)));
     this.measure();
   }
-  detach(o: SdObject) { this.objects.delete(o); o.scene = null; this.ro?.unobserve(o); this.dirty = true; } // siblings re-measure at the next frame, once per batch
+  detach(o: SdObject) {
+    this.objects.delete(o); o.scene = null; this.ro?.unobserve(o); this.dirty = true; // siblings re-measure at the next frame, once per batch
+    const f = this.fields.get(o); if (f) { this.gl?.deleteTexture(f.tex); this.fields.delete(o); }
+  }
 
   get themeValue(): number {
     if (this.theme === 'dark') return 0;
@@ -117,9 +125,27 @@ export class SdScene extends HTMLElement {
 
   private onPointer = (e: PointerEvent) => {
     const r = this.getBoundingClientRect();
-    this.pointer = { x: e.clientX - r.left, y: e.clientY - r.top, inside: true };
+    this.pointer.x = e.clientX - r.left; this.pointer.y = e.clientY - r.top; this.pointer.inside = true; // mutate: tap and down survive a move
   };
-  private onLeave = () => { this.pointer.inside = false; };
+  private onLeave = () => { this.pointer.inside = false; this.pointer.down = false; };
+  /** The scene this event belongs to: a nested scene keeps its presses and taps to itself. */
+  private mine = (e: Event) => (e.target as Element).closest?.('sd-scene, sd-universe') === this;
+  private onPress = (e: PointerEvent) => {
+    if (!e.isPrimary || e.button !== 0 || !this.mine(e)) return;
+    this.onPointer(e); // a finger has no move before its press
+    this.pointer.down = true;
+    this.press = { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp };
+  };
+  private onRelease = (e: PointerEvent) => {
+    const p = this.press;
+    if (!p || e.pointerId !== p.id) return;
+    this.press = null; this.pointer.down = false;
+    if (!this.mine(e)) return;
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) < 8 && e.timeStamp - p.t < 400) { const r = this.getBoundingClientRect(); this.tap(e.clientX - r.left, e.clientY - r.top); }
+  };
+  private onCancelPress = () => { this.press = null; this.pointer.down = false; }; // a scroll flick on a phone: never a tap
+  /** Tap the scene by hand at scene px: tap rules answer as if a finger had pressed there. */
+  tap(x: number, y: number) { this.pointer.tap = { x, y }; }
   private onVis = () => { document.hidden ? this.stop() : this.start(); };
 
   measure() {
@@ -251,10 +277,12 @@ export class SdScene extends HTMLElement {
   private draw(gl: WebGL2RenderingContext, o: SdObject, t: number, theme: number, f: NonNullable<typeof this.fbos>, target: FBO | null, W = this.canvas.width, H = this.canvas.height) {
     const r = o.rect!;
     const [cx, cy] = o.drawCenter();
-    // The quad follows the object's scale, in 8 device px steps so the buffer pool keys stay few; uScale keeps the shape at exactly rect × scale.
-    const sz = r.width * o.anim.scale * this.pixelRatio;
-    const w = Math.ceil((sz * BLEED) / 8) * 8, h = w;
-    if (!(sz > 0) || w > this.maxTex) return;
+    o.drawn = [cx, cy];
+    // The quad follows the object's box and scale, in 8 device px steps so the buffer pool keys stay few; unit space is the box's short
+    // side and uScale keeps the shape at exactly rect × scale. Squares render as before; a wide or tall box gets a matching quad.
+    const sw = r.width * o.anim.scale * this.pixelRatio, sh = r.height * o.anim.scale * this.pixelRatio, sz = Math.min(sw, sh);
+    const w = Math.ceil((sw * BLEED) / 8) * 8, h = Math.ceil((sh * BLEED) / 8) * 8;
+    if (!(sz > 0) || w > this.maxTex || h > this.maxTex) return;
     const x = Math.round(cx * this.pixelRatio - w / 2), y = Math.round((this.height - cy) * this.pixelRatio - h / 2);
     if (x >= W || y >= H || x + w <= 0 || y + h <= 0) return; // off the canvas
     // Shade: the object's own `shading`, else the scene's, else auto (glass in dark, the light default in light).
@@ -278,9 +306,18 @@ export class SdScene extends HTMLElement {
     }
     else this.bind(gl, target, x, y, w, h, false);
     gl.useProgram(p.prog);
+    // A field texture (text): uploaded once per version, bound on unit 1; unit 0 stays the effect passes' uScene.
+    if (o.field) {
+      let f = this.fields.get(o);
+      if (!f) { const tex = gl.createTexture()!; gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tex); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); this.fields.set(o, (f = { tex, v: -1 })); }
+      else { gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, f.tex); }
+      if (f.v !== o.field.version) { gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1); gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, o.field.width, o.field.height, 0, gl.RED, gl.UNSIGNED_BYTE, o.field.data); f.v = o.field.version; }
+      gl.activeTexture(gl.TEXTURE0);
+    }
     setUniforms(gl, p, {
       uTime: t, uResolution: [w, h], uRotation: o.anim.rotation,
-      uScale: sz / w, uState: Math.min(1, Math.max(0, o.stateValue + o.anim.state)), uTheme: theme, uColor: o.rgb,
+      uScale: sz / Math.min(w, h), uBound: 1.6 * Math.max(sw, sh) / sz, uState: Math.min(1, Math.max(0, o.stateValue + o.anim.state)), uTheme: theme, uColor: o.rgb,
+      ...(o.field ? { uField: [1], uFieldSize: [o.field.width, o.field.height], uFieldRange: o.field.range } : {}),
       ...shadeUniforms, ...o.uniforms,
     });
     drawQuad(gl);

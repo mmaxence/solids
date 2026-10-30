@@ -12,13 +12,15 @@ export type Manifest = {
   name: string; tag: string; description: string;
   uniforms: UniformDef[];
 };
-export type Meta = { name: string; description: string; params: UniformDef[] };
+export type Meta = { name: string; description: string; params: UniformDef[]; input?: 'tap' };
 
 export type AnimResult = Partial<{ rotation: [number, number, number]; offset: [number, number]; scale: number; state: number }>;
 export type Animation = { meta: Meta; fn: (t: number, speed: number, o: SdObject) => AnimResult };
 export type EffectDef = { manifest: Meta; frag: string };
 export type ShadeDef = { manifest: Meta; frag: string };
-export type Pointer = { x: number; y: number; inside: boolean };
+/** A tap: a press and release that moved under 8 px within 400 ms, in scene px. A new object each time; rules compare by identity. */
+export type Tap = { x: number; y: number };
+export type Pointer = { x: number; y: number; inside: boolean; down: boolean; tap: Tap | null };
 export type Interaction = { meta: Meta; setup?(scene: SdScene): void; frame(scene: SdScene, dt: number, pointer: Pointer): void };
 
 export const objects = new Map<string, { manifest: Manifest; frag: string }>();

@@ -93,7 +93,7 @@ Every object must read as the same family on the site:
 - Shade-agnostic: an object only defines its shape; the shade (glass, matte, cel, clay, metal) decides how the surface takes light. Return `sdRender(rim, glow)` and let it call the shade.
 - High contrast on near-black and on near-white (`uTheme`). No flat gray bodies, no muddy mid-tones.
 - One accent: the object is tinted by `uColor` only. Do not hardcode colors.
-- A soft silhouette: edges are anti-aliased by `sdRender` using the closest-approach distance. Keep the shape inside |p| < 0.8: rays that never enter the r = 1.6 sphere are culled before the march, so a halo or shape reaching past it is cut at the quad corners.
+- A soft silhouette: edges are anti-aliased by `sdRender` using the closest-approach distance. Keep the shape inside |p| < 0.8: rays that never enter the bounding sphere (r = `uBound`, 1.6 for a square box, larger for a wide or tall one) are culled before the march, so a halo or shape reaching past it is cut at the quad corners.
 - Still by default. An object with no `animation` should look at rest, not frozen mid-motion. If it needs an angle to read as 3D, bake that rest rotation into `map` (see the cube).
 
 ### README.md
@@ -151,9 +151,15 @@ It sees `uColor`, `uTheme` (0 dark, 1 light: branch with `mix(dark, light, uThem
 
 Interactions are scene rules in TypeScript under `src/interactions/<name>.ts`, added to the array in `src/interactions/index.ts`. One exports `{ meta: { name, description, params }, frame(scene, dt, pointer) }`; `params` are floats that become `<name>-<param>` attributes on the scene, read with `interactionValue(scene, name, param)`. `frame` runs every frame after animations and before drawing and adds to each object's `anim` (`offset` in px, `scale`, `rotation`, `state`, `z`). Use `o.drawCenter()` and `o.drawRadius()` for where an object is this frame, keep state in a `WeakMap` keyed by object, leave `o.pinned` objects (a gravity center or orbiter) in place if your rule moves things, and keep responding under reduced motion only to the person's own pointer or scroll. An optional `setup(scene)` runs when the scene's `interaction` list changes.
 
+Tap rules: `pointer.down` is true while the primary button or finger is held; `pointer.tap` is the last tap (a press and release that moved under 8 px within 400 ms) in scene px, a new object each time and never cleared. A tap rule keeps the last tap it saw in a `WeakMap` keyed by scene, compares by identity, and counts the tap's age itself with `dt` (frame-rate independent, deterministic, alive under reduced motion, where only the flash and the pop are skipped because the person asked by tapping). Mark the meta with `input: 'tap'` (metadata, nothing reads it yet), register it before `collide` and after `gravity`, shove pinned shapes a third as far, and hit-test against `o.drawn` (where the shape was drawn last frame, after every rule) rather than `drawCenter()`. `reducedMotion()` comes from core/object and `spring(s, tx, ty, dt)` from core/math. `scene.tap(x, y)` taps by hand. `shockwave`, `poke` and `pull` are the templates.
+
 ## Adding an animation
 
 Animations are pure functions of time under `src/animations/`, added to the array in `src/animations/index.ts`: `{ meta: { name, description, params: [] }, fn(t, speed, o) }` returning any of `rotation` (radians, XYZ), `offset` (px), `scale` and `state`. They compose by addition (rotation, offset, state) and multiplication (scale); the core cross-fades over 400 ms when `animation` changes, and `phase` offsets `t` per object. Under reduced motion the core calls them with `t = 0`, so `t = 0` must be the rest pose.
+
+## Text and HTML
+
+`<sd-text>` is the one element whose shader samples a texture. It wraps HTML text (`<sd-text>Solids</sd-text>` or `<sd-text><h1>Solids</h1></sd-text>`), keeps the wrapped element's layout box and accessibility node, makes its text transparent, rasterizes the line with the element's computed CSS font, turns it into a signed distance field and sets `this.field = { data, width, height, range, version }` on itself (R8 bytes: `round(128 + d / range * 127)`, so 128 is the edge and the shader reads `(r - 0.5) * 2 * range` texels; rows top down). The core uploads a field once per `version` and binds it on texture unit 1 as `uField`, `uFieldSize` and `uFieldRange` for any shader that declares them; manifest uniforms stay floats (`depth`, `bevel`). `pixel` (0 to 24, default 0) rasterizes at that cell size for a pixel-font look from any monospace; `size` does nothing, `font-size` rules; one line of text. Unit space is the box's short side (a wide word reaches past 1 along x; `uBound` grows the cull sphere and the far limit for it), so a non-square object maps its own aspect. Another bridge from any raster (an image's alpha, an inline SVG) is a subclass of `SdObject` that fills `field` the same way; the text shader works unchanged.
 
 ## The universe
 

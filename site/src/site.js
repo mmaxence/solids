@@ -32,7 +32,7 @@ function serialize(el, depth = 0) {
   const q = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   const attrs = [...el.attributes].filter((a) => !SKIP.has(a.name) && a.value !== '' && !(a.name === 'style' && depth === 0 && !('keepStyle' in el.dataset))).map((a) => ` ${a.name}="${q(a.value)}"`).join('');
   const kids = [...el.children].filter((c) => c.tagName.startsWith('SD-'));
-  if (!kids.length) return `${pad}<${el.localName}${attrs}></${el.localName}>`;
+  if (!kids.length) return `${pad}<${el.localName}${attrs}>${el.localName === 'sd-text' ? el.innerHTML.trim() : ''}</${el.localName}>`;
   return `${pad}<${el.localName}${attrs}>\n${kids.map((k) => serialize(k, depth + 1)).join('\n')}\n${pad}</${el.localName}>`;
 }
 
@@ -47,7 +47,10 @@ if (specEl) {
   const refresh = () => { if (live) live.textContent = serialize(scene); };
   // Controls with a group render inside a fieldset with that legend, in first-seen order; a group of checkboxes becomes a chip row.
   const groups = new Map();
-  const holder = (c) => { if (!c.group) return form; let g = groups.get(c.group); if (!g) { g = document.createElement('fieldset'); g.append(Object.assign(document.createElement('legend'), { textContent: c.group })); groups.set(c.group, g); form.append(g); } return g; };
+  const tune = $('.tune-body', form); // the hero dock: grouped controls live in the Tweak panel, before Copy prompt
+  const holder = (c) => { if (!c.group) return form; let g = groups.get(c.group); if (!g) { g = document.createElement('fieldset'); g.append(Object.assign(document.createElement('legend'), { textContent: c.group })); groups.set(c.group, g); if (tune) tune.insertBefore(g, $('#copy-prompt', tune)); else form.append(g); } return g; };
+  let applyingPreset = false;
+  const clearPreset = () => { if (!applyingPreset) $$('.presets input', form).forEach((i) => { i.checked = false; }); };
   for (const c of spec.controls) {
     const label = document.createElement('label');
     const head = document.createElement('span');
@@ -63,13 +66,17 @@ if (specEl) {
       input = document.createElement('select');
       for (const o of c.options) input.append(new Option(o || c.empty || 'none', o));
       input.value = c.value ?? '';
+    } else if (c.kind === 'text') {
+      input = Object.assign(document.createElement('input'), { type: 'text', value: c.value ?? '' });
     } else if (c.kind === 'check') {
       label.className = 'check';
       input = Object.assign(document.createElement('input'), { type: 'checkbox', checked: !!c.value });
     }
     c.input = input;
     const apply = () => {
+      clearPreset(); // a manual change leaves the mood pill
       const v = c.kind === 'check' ? (input.checked ? c.on : '') : input.value;
+      if (c.kind === 'text') { for (const t of targets(c)) t.textContent = v; refresh(); return; } // the words of an sd-text
       if (c.attr === 'object') { // swap the demo subject for another object type, keeping its attributes
         const old = $('#demo > *'); const nu = document.createElement(v);
         for (const a of old.attributes) nu.setAttribute(a.name, a.value);
@@ -94,6 +101,22 @@ if (specEl) {
     holder(c).append(label);
   }
   for (const g of groups.values()) if ([...g.children].every((el) => el.tagName === 'LEGEND' || el.classList.contains('check'))) g.classList.add('chips');
+  // Moods: native radios (one tab stop, arrow keys), each applying its record through the controls (checks by membership, the rest by value).
+  const presets = $('.presets', form);
+  if (presets && spec.presets) for (const p of spec.presets) {
+    const label = document.createElement('label'), input = Object.assign(document.createElement('input'), { type: 'radio', name: 'mood', checked: p === spec.presets[0] });
+    label.append(input, document.createTextNode(p.name));
+    input.addEventListener('change', () => {
+      applyingPreset = true;
+      for (const [attr, v] of Object.entries(p.set)) for (const c of spec.controls.filter((x) => x.attr === attr)) {
+        if (c.kind === 'check') c.input.checked = String(v).split(/\s+/).includes(c.on); else c.input.value = v;
+        c.input.dispatchEvent(new Event('input'));
+      }
+      applyingPreset = false;
+      input.checked = true;
+    });
+    presets.append(label);
+  }
   refresh();
 
   $('#copy-code')?.addEventListener('click', async (e) => {
@@ -224,13 +247,21 @@ if (location.search.includes('__check')) {
     for (let i = 0; i < 30 && $('.fps') && !/fps/.test($('.fps').textContent); i++) await new Promise((r) => setTimeout(r, 100)); // the badge fills after the first frames
     const h1 = $('h1')?.getBoundingClientRect(), dock = $('.dock')?.getBoundingClientRect();
     const toggle = (name, on) => { const t = $$('#controls label.check').find((l) => l.textContent.trim() === name)?.querySelector('input'); if (t && t.checked !== on) { t.checked = on; t.dispatchEvent(new Event('input')); } };
-    let interactionAttr;
-    if ($('.dock')) { toggle('collide', true); toggle('gravity', false); toggle('gravity', true); interactionAttr = $('#demo').getAttribute('interaction'); }
+    let interactionAttr, storm, manualClears;
+    if ($('.dock')) {
+      const pill = (n) => $$('.presets label').find((b) => b.textContent.trim() === n)?.querySelector('input');
+      const checked = () => $$('.presets input:checked').map((i) => i.closest('label').textContent.trim()).join('|');
+      pill('Storm')?.click(); storm = { interaction: $('#demo').getAttribute('interaction'), gravity: $('#demo').getAttribute('gravity-strength'), checked: checked() };
+      const sh = $$('#controls label').find((l) => l.querySelector('span')?.textContent === 'Shading')?.querySelector('select'); if (sh) { sh.value = 'cel'; sh.dispatchEvent(new Event('input')); }
+      manualClears = $$('.presets input:checked').length;
+      pill('Pixel')?.click(); var pixelEffect = $('#demo').getAttribute('effect');
+      pill('Orbit')?.click(); var orbitAttr = $('#demo').getAttribute('interaction'); var radioPills = $$('.presets input[type="radio"]').length;
+      toggle('collide', true); toggle('gravity', false); toggle('gravity', true); interactionAttr = $('#demo').getAttribute('interaction'); }
     if ($('sd-universe#demo')) { toggle('Spin', false); toggle('Drag', false); toggle('Pointer', false); }
     const demo = $('#demo');
     fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene, sd-universe').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent,
       objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top,
-      markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr,
+      markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr, storm, manualClears, pixelEffect: typeof pixelEffect === 'undefined' ? undefined : pixelEffect, orbitAttr: typeof orbitAttr === 'undefined' ? undefined : orbitAttr, radioPills: typeof radioPills === 'undefined' ? undefined : radioPills,
 contexts: $$('sd-scene, sd-universe').length + $$('*').filter((e) => e.shadowRoot?.querySelector('sd-scene')).length, sceneObjects: $$('sd-scene, sd-universe').map((s) => s.objects?.size), liveFrame: $('#live-frame')?.textContent,
       badge: $('.fps')?.textContent, legends: $$('#controls legend').map((l) => l.textContent), liveEscaped: (() => { const o = $('#demo > *'); if (!o) return null; o.setAttribute('title', 'a"b&c'); const txt = serialize($('#demo')); o.removeAttribute('title'); return txt.includes('title="a&quot;b&amp;c"'); })(), meter: meter?.textContent, bench, benchRow: benchRowText, noTimerRow, scenesBeforeBench }) });
   };

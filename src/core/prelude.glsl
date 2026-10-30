@@ -5,6 +5,7 @@ uniform float uTime;       // seconds
 uniform vec2  uResolution; // quad size in device px
 uniform mat3  uRotation;   // object rotation from animations and interactions
 uniform float uScale;      // object scale (already divided by bleed)
+uniform float uBound;      // radius of the sphere holding the shape and its halo: 1.6 for a square box, more for a wide or tall one
 uniform float uState;      // 0..1 eased state
 uniform float uTheme;      // 0 dark, 1 light
 uniform vec3  uColor;      // accent, linear-ish 0..1
@@ -18,9 +19,13 @@ float map(vec3 p);
 vec2 sdCoord() {
   return (vUv * 2.0 - 1.0) * uResolution / min(uResolution.x, uResolution.y) / uScale;
 }
+// The march starts at z = 3 for a square box; a wide or tall box (uBound > 3) starts further back along the same ray, so
+// an end turned toward the camera is not sliced by the start plane. Squares keep their exact rays.
+float sdStart() { return max(3.0, uBound); }
 void sdRay(out vec3 ro, out vec3 rd) {
   vec2 p = sdCoord();
-  ro = vec3(p * 0.7, 3.0);
+  float zs = sdStart();
+  ro = vec3(p * (0.7 - 0.1 * (zs - 3.0)), zs); // the same ray line, further back (it converges toward z = 10)
   rd = normalize(vec3(p * 0.1, -1.0));
   mat3 inv = transpose(uRotation);
   ro = inv * ro; rd = inv * rd;
@@ -31,13 +36,13 @@ vec3 sdNormal(vec3 p) {
 }
 // Returns hit distance or -1; minD is the closest approach (for soft edges and halos).
 float sdMarch(vec3 ro, vec3 rd, out float minD) {
-  float t = 0.0; minD = 1e9;
+  float t = 0.0; minD = 1e9; float zs = sdStart();
   for (int i = 0; i < 64; i++) {
     vec3 p = ro + rd * t;
     float d = map(p);
     minD = min(minD, d);
     if (d < 1e-3) return t;
-    if (t > 4.6) break; // every ray has left the r = 1.6 bound (|p| < 0.8 plus the halo's reach) by here; pixel-identical to 7.0
+    if (t > zs + uBound) break; // every ray has left the bound sphere by here (4.6 for a square box); pixel-identical to 7.0
     t += d * 0.9;
   }
   return -1.0;
@@ -54,7 +59,7 @@ vec3 sdView(vec3 v) { return uRotation * v; }
 vec4 sdShade(vec3 p, vec3 n, vec3 rd, float rim);
 vec3 sdEdge();
 // True when the ray never enters the r = 1.6 sphere that holds every shape and halo (the quad corners).
-bool sdMisses(vec3 ro, vec3 rd) { float b = dot(ro, rd); return b * b - dot(ro, ro) + 2.56 <= 0.0; }
+bool sdMisses(vec3 ro, vec3 rd) { float b = dot(ro, rd); return b * b - dot(ro, ro) + uBound * uBound <= 0.0; }
 // Default renderer: march, shade, soft edge, optional halo on miss.
 vec4 sdRender(float rim, float glow) {
   vec3 ro, rd; sdRay(ro, rd);
