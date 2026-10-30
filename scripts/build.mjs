@@ -13,12 +13,12 @@ const common = {
   logLevel: 'warning',
 };
 
-// Core build: everything under src/objects and src/effects becomes an empty module,
-// so the size check can measure the engine without its content.
+// Core build: everything under src/objects, src/effects, src/interactions and src/text becomes an empty module,
+// so the size check measures the engine without its content (objects, effects and interactions are registry content).
 const stubContent = {
   name: 'stub-content',
   setup(b) {
-    b.onResolve({ filter: /src\/(objects|effects)(\/|$)|^\.\.?\/(objects|effects)(\/|$)/ }, (a) => ({ path: a.path, namespace: 'stub' }));
+    b.onResolve({ filter: /src\/(objects|effects|interactions|text)(\/|$)|^\.\.?\/(objects|effects|interactions|text)(\/|$)/ }, (a) => ({ path: a.path, namespace: 'stub' }));
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export default {}; export const all = [];', loader: 'js' }));
   },
 };

@@ -745,10 +745,68 @@ mark('Z start');
   um.setAttribute('seed', '9'); mark('Z regen'); um.frame(0, 16); Z.measures = measures; um.remove(); mark('Z measures done'); } // regenerate from 120 (removal plus attach); frame() by hand: 120 bodies in software GL are slow
 { const uc = uni({ count: '120', seed: '7', collide: '', camera: '', drift: '0.5' }); uc.step(16);
   const t0 = performance.now(); for (let i = 0; i < 60; i++) uc.step(16); Z.collideMs = (performance.now() - t0) / 60; uc.remove(); mark('Z collide done'); }
+mark('Case AB');
+// Case AB: tap input. A press and release under 8 px is a tap (a new object each time); a drag, a cancel or a slow press is not;
+// pointer.down tracks the press; scene.tap() taps by hand; a nested scene keeps its tap to itself.
+const AB = result.cases.taps = {};
+{ const ts = mk({}); await frame();
+  ptr(ts, 'pointerdown', 50, 50); AB.downDuring = ts.pointer.down; ptr(ts, 'pointerup', 52, 51);
+  const tap1 = ts.pointer.tap; AB.tap = tap1 ? { x: tap1.x, y: tap1.y, downAfter: ts.pointer.down } : null;
+  ptr(ts, 'pointermove', 120, 80); AB.survivesMove = ts.pointer.tap === tap1;
+  ptr(ts, 'pointerdown', 50, 50); ptr(ts, 'pointermove', 80, 50); ptr(ts, 'pointerup', 80, 50); AB.dragTapped = ts.pointer.tap !== tap1;
+  ptr(ts, 'pointerdown', 50, 50); ptr(ts, 'pointercancel', 50, 50); AB.cancelTapped = ts.pointer.tap !== tap1; AB.downAfterCancel = ts.pointer.down;
+  ptr(ts, 'pointerdown', 60, 60); ptr(ts, 'pointerup', 60, 60); const tap2 = ts.pointer.tap; AB.fresh = tap2 !== tap1 && !!tap2;
+  ptr(ts, 'pointerdown', 70, 70); await new Promise((r) => setTimeout(r, 450)); ptr(ts, 'pointerup', 70, 70); AB.slowTapped = ts.pointer.tap !== tap2;
+  ts.tap(10, 20); AB.manual = ts.pointer.tap ? [ts.pointer.tap.x, ts.pointer.tap.y] : null;
+  free(ts); }
+{ const wrap = document.body.appendChild(document.createElement('div')); wrap.innerHTML = '<sd-scene class="small"><sd-scene class="small"><' + tags[0] + '></' + tags[0] + '></sd-scene></sd-scene>'; const outer = wrap.firstElementChild, inner = outer.firstElementChild; await frame();
+  ptr(inner, 'pointerdown', 20, 20); ptr(inner, 'pointerup', 20, 20); AB.nested = { inner: !!inner.pointer.tap, outer: !!outer.pointer.tap }; free(inner, outer); wrap.remove(); }
+// Tap rules: shockwave shoves a shape as the ring passes and it settles; a pinned shape moves a third; an untouched scene stays at zero;
+// poke turns the tapped shape once and the pop returns; pull holds while down and lets go on release; all three answer under reduced motion.
+const tapScene = (name, extra = {}) => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.setAttribute('interaction', name); for (const [k, v] of Object.entries(extra)) sc.setAttribute(k, v); sc.style.cssText = 'position:relative;width:400px;height:300px';
+  const o = sc.appendChild(document.createElement(tags[0])); o.setAttribute('size', '40px'); o.style.cssText = 'position:absolute;left:260px;top:130px'; return { sc, o }; }; // the shape sits at (280, 150)
+const tapRun = (sc, n, dt = 16) => { for (let i = 0; i < n; i++) sc.frame(i * dt / 1000, dt); };
+{ const w = tapScene('shockwave'); await frame(); tapRun(w.sc, 5); AB.untouched = Math.hypot(...w.o.anim.offset);
+  w.sc.tap(100, 150); let peak = 0; for (let i = 0; i < 60; i++) { w.sc.frame(i / 60, 16); peak = Math.max(peak, w.o.anim.offset[0]); } // the ring travels right toward the shape
+  tapRun(w.sc, 240); AB.shock = { peak, settled: Math.hypot(...w.o.anim.offset) }; free(w.sc); }
+{ const w = tapScene('gravity shockwave'); w.o.setAttribute('gravity', 'center'); await frame(); tapRun(w.sc, 5); w.sc.tap(100, 150); let peak = 0; for (let i = 0; i < 60; i++) { w.sc.frame(i / 60, 16); peak = Math.max(peak, w.o.anim.offset[0]); } AB.pinnedPeak = peak; free(w.sc); }
+{ const w = tapScene('poke'); await frame(); tapRun(w.sc, 5); w.sc.tap(280, 150); let turned = false, popped = 1;
+  for (let i = 0; i < 30; i++) { w.sc.frame(i / 60, 16); const r = w.o.anim.rotation; if (Math.abs(r[0] - 1) > 0.5) turned = true; popped = Math.max(popped, w.o.anim.scale); }
+  tapRun(w.sc, 120); const r = w.o.anim.rotation; AB.poke = { turned, popped, back: Math.max(Math.abs(r[0] - 1), Math.abs(r[4] - 1), Math.abs(r[8] - 1), Math.abs(r[2]), Math.abs(r[6])), scale: w.o.anim.scale }; free(w.sc); }
+{ const w = tapScene('pull'); await frame(); tapRun(w.sc, 5); ptr(w.sc, 'pointerdown', 100, 150); tapRun(w.sc, 60); const held = w.o.anim.offset[0]; ptr(w.sc, 'pointerup', 100, 150); tapRun(w.sc, 240); AB.pull = { held, released: Math.hypot(...w.o.anim.offset) }; free(w.sc); }
+{ window.__SD_REDUCED = true; const a = tapScene('shockwave'), b = tapScene('pull'); await frame(); tapRun(a.sc, 5); tapRun(b.sc, 5);
+  a.sc.tap(100, 150); let peak = 0, scaleMax = 1; for (let i = 0; i < 60; i++) { a.sc.frame(i / 60, 16); peak = Math.max(peak, a.o.anim.offset[0]); scaleMax = Math.max(scaleMax, a.o.anim.scale); }
+  ptr(b.sc, 'pointerdown', 100, 150); tapRun(b.sc, 60); AB.reduced = { shock: peak, noPop: scaleMax, pull: b.o.anim.offset[0] }; ptr(b.sc, 'pointerup', 100, 150); window.__SD_REDUCED = false; free(a.sc, b.sc); }
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
 </script></body></html>`;
+
+const CORE_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>solids core check</title><style>body{margin:0;background:#000}sd-scene{width:200px;height:200px;display:block}</style></head><body>
+<script type="module">
+import { defineObject, registry } from '/dist/core.js';
+defineObject({ name: 'ball', tag: 'sd-ball', description: 'x', uniforms: [] }, 'float map(vec3 p) { return length(p) - 0.6; } void main() { fragColor = sdRender(1.0, 0.5); }');
+const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.appendChild(document.createElement('sd-ball'));
+await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+const gl = sc.gl; sc.frame(1, 16); const buf = new Uint8Array(gl.drawingBufferWidth * gl.drawingBufferHeight * 4); gl.readPixels(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+let n = 0; for (let i = 3; i < buf.length; i += 4) if (buf[i] > 8) n++;
+await fetch('/__result', { method: 'POST', body: JSON.stringify({ pixels: n, interactions: registry.interactions.size, objects: registry.objects.size }) });
+</script></body></html>`;
+
+async function coreSmoke() {
+  const chrome = chromePath();
+  if (!chrome) return;
+  const core = readFileSync('dist/core.js', 'utf8');
+  for (const name of ['pointer-follow', 'hover-lift', 'repel']) if (core.includes(name)) fail(`dist/core.js still bundles the ${name} interaction (the core build should stub src/interactions like objects and effects)`);
+  writeFileSync('scripts/.check-core.html', CORE_PAGE);
+  const { srv, port, result } = await serve('.');
+  try {
+    const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-core.html`, chrome, result, 60000);
+    if (!(r.pixels > 500) || r.interactions !== 0 || r.objects !== 1) fail(`the engine alone (dist/core.js) should draw a runtime-defined object with no interactions bundled: ${JSON.stringify(r)}`);
+    else console.log(`core ok (${r.pixels} px from dist/core.js alone)`);
+  } catch (e) { fail(`core: ${e.message.split('\n')[0]}`); }
+  finally { srv.close(); }
+}
 
 async function smoke() {
   const chrome = chromePath();
@@ -757,7 +815,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 240000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms', 'taps']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
@@ -879,6 +937,19 @@ async function smoke() {
       const fl = r.cases.fall ?? {}; if (!(Math.abs(fl.dist - fl.expected) < 3)) fail(`gravity="fall" settled at ${fl.dist?.toFixed(1)} px, expected ${fl.expected}`);
       if (r.dupNames?.length) fail(`layer names collide: ${r.dupNames.join(', ')}`);
       for (const [name, px] of Object.entries(r.shadePixels ?? {})) if (!(px > 1000)) fail(`shade ${name} draws ${px} px on twelve objects (expected > 1000)`); }
+    { const T = r.cases.taps ?? {}, j = (v) => JSON.stringify(v);
+      if (!T.tap || Math.abs(T.tap.x - 52) > 1 || Math.abs(T.tap.y - 51) > 1 || T.tap.downAfter !== false || T.downDuring !== true) fail(`a press and release should tap and track pointer.down: ${j({ tap: T.tap, downDuring: T.downDuring })}`);
+      if (T.survivesMove !== true) fail('the tap should survive a pointer move');
+      if (T.dragTapped !== false || T.cancelTapped !== false || T.slowTapped !== false || T.downAfterCancel !== false) fail(`a drag, a cancel or a slow press must not tap: ${j({ drag: T.dragTapped, cancel: T.cancelTapped, slow: T.slowTapped, downAfterCancel: T.downAfterCancel })}`);
+      if (T.fresh !== true) fail('each press should produce a new tap object');
+      if (!T.manual || T.manual[0] !== 10 || T.manual[1] !== 20) fail(`scene.tap(10, 20) should set the tap: ${j(T.manual)}`);
+      if (T.nested?.inner !== true || T.nested?.outer !== false) fail(`a nested scene's tap leaked: ${j(T.nested)}`);
+      if (!(T.untouched < 1e-6)) fail(`shockwave moved a shape with no tap by ${T.untouched} px`);
+      if (!(T.shock?.peak > 4) || !(T.shock?.settled < 0.5)) fail(`shockwave should shove the shape outward and settle: ${j(T.shock)}`);
+      if (!(T.pinnedPeak > 0.5) || !(T.pinnedPeak < T.shock?.peak * 0.5)) fail(`a pinned shape should take about a third of the shove: ${T.pinnedPeak?.toFixed(1)} vs ${T.shock?.peak?.toFixed(1)}`);
+      if (!T.poke?.turned || !(T.poke?.popped > 1.05) || !(T.poke?.back < 1e-3) || !(Math.abs(T.poke?.scale - 1) < 1e-3)) fail(`poke should turn the tapped shape once and pop, then return: ${j(T.poke)}`);
+      if (!(T.pull?.held < -4) || !(T.pull?.released < 0.5)) fail(`pull should hold the shape toward the press and let go on release: ${j(T.pull)}`);
+      if (!(T.reduced?.shock > 4) || !(T.reduced?.noPop < 1.001) || !(T.reduced?.pull < -4)) fail(`tap rules should still answer under reduced motion, without the pop: ${j(T.reduced)}`); }
     { const Z = r.cases.perf2 ?? {}, j = (v) => JSON.stringify(v);
       if (!(Z.march?.patched >= 2) || !(Z.march?.culls >= 2) || Z.march?.bytesDiffer !== 0 || !(Z.march?.pixels > 1000)) fail(`march far limit 4.6 and the bounding-sphere cull must be present and pixel-identical to the old march: ${j(Z.march)} (measures ${Z.measures}, collide ${Z.collideMs?.toFixed(2)} ms)`);
       if (Z.noFx?.buffers !== false || Z.noFx?.bytesDiffer !== 0 || !(Z.noFx?.pixels > 100)) fail(`a scene with no effect should keep no buffers and match the buffer path byte for byte: ${j(Z.noFx)}`);
@@ -1054,6 +1125,7 @@ async function site() {
 
 sizes();
 manifests();
+await coreSmoke();
 await smoke();
 await site();
 

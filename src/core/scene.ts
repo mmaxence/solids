@@ -10,7 +10,8 @@ export class SdScene extends HTMLElement {
   gl: WebGL2RenderingContext | null = null;
   colorSpace: ColorSpace = 'srgb';   // the drawing buffer's space; object colors are parsed into it
   objects = new Set<SdObject>();
-  pointer: Pointer = { x: 0, y: 0, inside: false };
+  pointer: Pointer = { x: 0, y: 0, inside: false, down: false, tap: null };
+  private press: { id: number; x: number; y: number; t: number } | null = null; // the current press, for tap detection
   interactionNames: string[] = [];
   effectNames: string[] = [];
   shadeName = 'auto';                     // `shading` attribute: default shade for children whose own is unset
@@ -70,6 +71,9 @@ export class SdScene extends HTMLElement {
     this.io.observe(this);
     this.addEventListener('pointermove', this.onPointer);
     this.addEventListener('pointerleave', this.onLeave);
+    this.addEventListener('pointerdown', this.onPress);
+    this.addEventListener('pointerup', this.onRelease);
+    this.addEventListener('pointercancel', this.onCancelPress);
     document.addEventListener('visibilitychange', this.onVis);
     for (const el of this.querySelectorAll('*')) if (el instanceof SdObject && el.closest('sd-scene, sd-universe') === this) this.attach(el);
     for (const o of this.objects) this.ro.observe(o);
@@ -117,9 +121,27 @@ export class SdScene extends HTMLElement {
 
   private onPointer = (e: PointerEvent) => {
     const r = this.getBoundingClientRect();
-    this.pointer = { x: e.clientX - r.left, y: e.clientY - r.top, inside: true };
+    this.pointer.x = e.clientX - r.left; this.pointer.y = e.clientY - r.top; this.pointer.inside = true; // mutate: tap and down survive a move
   };
-  private onLeave = () => { this.pointer.inside = false; };
+  private onLeave = () => { this.pointer.inside = false; this.pointer.down = false; };
+  /** The scene this event belongs to: a nested scene keeps its presses and taps to itself. */
+  private mine = (e: Event) => (e.target as Element).closest?.('sd-scene, sd-universe') === this;
+  private onPress = (e: PointerEvent) => {
+    if (!e.isPrimary || e.button !== 0 || !this.mine(e)) return;
+    this.onPointer(e); // a finger has no move before its press
+    this.pointer.down = true;
+    this.press = { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp };
+  };
+  private onRelease = (e: PointerEvent) => {
+    const p = this.press;
+    if (!p || e.pointerId !== p.id) return;
+    this.press = null; this.pointer.down = false;
+    if (!this.mine(e)) return;
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) < 8 && e.timeStamp - p.t < 400) { const r = this.getBoundingClientRect(); this.tap(e.clientX - r.left, e.clientY - r.top); }
+  };
+  private onCancelPress = () => { this.press = null; this.pointer.down = false; }; // a scroll flick on a phone: never a tap
+  /** Tap the scene by hand at scene px: tap rules answer as if a finger had pressed there. */
+  tap(x: number, y: number) { this.pointer.tap = { x, y }; }
   private onVis = () => { document.hidden ? this.stop() : this.start(); };
 
   measure() {
