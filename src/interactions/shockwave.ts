@@ -24,7 +24,7 @@ export const shockwave: Interaction = {
   frame(scene, dt, pointer) {
     const radius = interactionValue(scene, 'shockwave', 'radius'), strength = interactionValue(scene, 'shockwave', 'strength'), speed = interactionValue(scene, 'shockwave', 'speed');
     let w = waves.get(scene);
-    if (!w) waves.set(scene, (w = { tap: null, x: 0, y: 0, age: 1e9 }));
+    if (!w) waves.set(scene, (w = { tap: pointer.tap, x: 0, y: 0, age: 1e9 })); // a tap from before the rule was listed is not ours
     if (pointer.tap && pointer.tap !== w.tap) { w.tap = pointer.tap; w.x = pointer.tap.x; w.y = pointer.tap.y; w.age = 0; }
     w.age += dt / 1000;
     const front = w.age * speed, reach = radius + 120, still = reducedMotion();
@@ -33,7 +33,7 @@ export const shockwave: Interaction = {
       const s = springs.get(o) ?? springs.set(o, { x: 0, y: 0, vx: 0, vy: 0 }).get(o)!;
       let tx = 0, ty = 0, k = 0;
       if (front < reach) {
-        const [cx, cy] = o.drawCenter(), dx = cx - w.x, dy = cy - w.y, d = Math.hypot(dx, dy);
+        const [cx, cy] = o.drawn ?? o.drawCenter(), dx = cx - w.x, dy = cy - w.y, d = Math.hypot(dx, dy);
         if (d > 1e-3) {
           // A 60 px wide band around the front, fading as it travels; pinned shapes (a gravity center, an orbiter) take a third.
           k = Math.exp(-((d - front) ** 2) / 7200) * (1 - front / reach) * strength * (o.pinned ? 1 / 3 : 1);

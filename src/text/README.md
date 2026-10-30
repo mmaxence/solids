@@ -1,6 +1,6 @@
 # text
 
-Your HTML text as a solid. `<sd-text>` reads the text it wraps (its own text, or an element inside it such as an `<h1>`), rasterizes it with that element's computed CSS font, turns the raster into a signed distance field, and draws an extruded, shaded twin exactly over the HTML. The HTML stays in the page for layout, selection, screen readers and search; only its color is made transparent. Every shade, effect, animation and interaction applies to the word like to any object.
+Your HTML text as a solid. `<sd-text>` reads the text it wraps (its own text, or an element inside it such as an `<h1>`), rasterizes it with that element's computed CSS font, turns the raster into a signed distance field, and draws an extruded, shaded twin exactly over the HTML. The HTML stays in the page for layout, screen readers and search; only its color is made transparent. Every shade, effect, animation and interaction applies to the word like to any object.
 
 - `depth` (0.02 to 1, default 0.35): half the thickness of the extrusion.
 - `bevel` (0 to 1, default 0.25): rounding of the edges.

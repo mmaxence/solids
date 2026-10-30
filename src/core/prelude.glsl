@@ -19,9 +19,13 @@ float map(vec3 p);
 vec2 sdCoord() {
   return (vUv * 2.0 - 1.0) * uResolution / min(uResolution.x, uResolution.y) / uScale;
 }
+// The march starts at z = 3 for a square box; a wide or tall box (uBound > 3) starts further back along the same ray, so
+// an end turned toward the camera is not sliced by the start plane. Squares keep their exact rays.
+float sdStart() { return max(3.0, uBound); }
 void sdRay(out vec3 ro, out vec3 rd) {
   vec2 p = sdCoord();
-  ro = vec3(p * 0.7, 3.0);
+  float zs = sdStart();
+  ro = vec3(p * (0.7 - 0.1 * (zs - 3.0)), zs); // the same ray line, further back (it converges toward z = 10)
   rd = normalize(vec3(p * 0.1, -1.0));
   mat3 inv = transpose(uRotation);
   ro = inv * ro; rd = inv * rd;
@@ -32,13 +36,13 @@ vec3 sdNormal(vec3 p) {
 }
 // Returns hit distance or -1; minD is the closest approach (for soft edges and halos).
 float sdMarch(vec3 ro, vec3 rd, out float minD) {
-  float t = 0.0; minD = 1e9;
+  float t = 0.0; minD = 1e9; float zs = sdStart();
   for (int i = 0; i < 64; i++) {
     vec3 p = ro + rd * t;
     float d = map(p);
     minD = min(minD, d);
     if (d < 1e-3) return t;
-    if (t > 3.0 + uBound) break; // every ray has left the bound sphere by here (4.6 for a square box); pixel-identical to 7.0
+    if (t > zs + uBound) break; // every ray has left the bound sphere by here (4.6 for a square box); pixel-identical to 7.0
     t += d * 0.9;
   }
   return -1.0;

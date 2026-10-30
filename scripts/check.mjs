@@ -729,7 +729,7 @@ mark('Z start');
   const a = mkAll(); await frame(); await frame(); const bufA = dump(a);
   const orig = WebGL2RenderingContext.prototype.shaderSource; let patched = 0;
   let culls = 0;
-  WebGL2RenderingContext.prototype.shaderSource = function (sh, src) { const n1 = src.replace('if (t > 3.0 + uBound) break;', 'if (t > 7.0) break;').replace('uBound * uBound <= 0.0', '2.56 <= 0.0'); const n = n1.replace('if (sdMisses(ro, rd)) return vec4(0.0); // cull', ''); if (n1 !== src) patched++; if (n !== n1) culls++; return orig.call(this, sh, n); };
+  WebGL2RenderingContext.prototype.shaderSource = function (sh, src) { const n1 = src.replace('if (t > zs + uBound) break;', 'if (t > 7.0) break;').replace('uBound * uBound <= 0.0', '2.56 <= 0.0'); const n = n1.replace('if (sdMisses(ro, rd)) return vec4(0.0); // cull', ''); if (n1 !== src) patched++; if (n !== n1) culls++; return orig.call(this, sh, n); };
   const b = mkAll(); await frame(); await frame(); const bufB = dump(b);
   WebGL2RenderingContext.prototype.shaderSource = orig;
   let diff = 0; for (let i = 0; i < bufA.length; i++) if (bufA[i] !== bufB[i]) diff++;
@@ -791,6 +791,35 @@ const T1 = '<sd-text style="font:700 64px ui-monospace, Menlo, monospace">Solids
 { const dark = textScene(T1, {}, 'dark'), light = textScene(T1, {}, 'light'); await frame(); await frame();
   const lum = (sc) => { const b = read(sc); let sum = 0, n = 0; for (let i = 0; i < b.length; i += 4) { const a = b[i + 3]; if (a > 200) { sum += (0.299 * b[i] + 0.587 * b[i + 1] + 0.114 * b[i + 2]) / a; n++; } } return n ? sum / n : NaN; };
   AD.theme = { dark: lum(dark), light: lum(light) }; free(dark, light); }
+mark('Case AE');
+// Case AE: review fixes. Poke hits the drawn spot (after collide's push) and the shape drawn on top; enabling a tap rule after a tap
+// does not fire on the stale tap; a wide box turned toward the camera is not sliced by the march start; a narrow text keeps its em;
+// the light-theme word has a contrasting edge.
+const AE = result.cases.fixes = {};
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.setAttribute('interaction', 'poke collide'); sc.setAttribute('collide-gap', '60'); sc.style.cssText = 'position:relative;width:400px;height:300px';
+  const a = sc.appendChild(document.createElement(tags[0])), b = sc.appendChild(document.createElement(tags[0]));
+  for (const o of [a, b]) o.setAttribute('size', '40px'); a.style.cssText = 'position:absolute;left:170px;top:130px'; b.style.cssText = 'position:absolute;left:180px;top:130px';
+  await frame(); for (let i = 0; i < 40; i++) sc.frame(i / 10, 100); // collide pushes them apart
+  const bx = b.drawCenter()[0]; sc.tap(bx, 150); sc.frame(5, 16); sc.frame(5.1, 16);
+  AE.pushedPoke = { tappedAt: bx, bTurned: Math.abs(b.anim.rotation[0] - 1) > 0.01, aTurned: Math.abs(a.anim.rotation[0] - 1) > 0.01 }; free(sc); }
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.setAttribute('interaction', 'poke'); sc.style.cssText = 'position:relative;width:400px;height:300px';
+  const first = sc.appendChild(document.createElement(tags[0])), last = sc.appendChild(document.createElement(tags[0]));
+  for (const o of [first, last]) { o.setAttribute('size', '60px'); o.style.cssText = 'position:absolute;left:170px;top:120px'; }
+  const fu = first.update.bind(first); first.update = (dt) => { fu(dt); first.anim.z = 0.5; }; // the first in DOM draws on top
+  await frame(); sc.frame(0, 16); sc.tap(200, 150); sc.frame(0.1, 16); sc.frame(0.2, 16);
+  AE.topPoke = { firstTurned: Math.abs(first.anim.rotation[0] - 1) > 0.01, lastTurned: Math.abs(last.anim.rotation[0] - 1) > 0.01 }; free(sc); }
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.style.cssText = 'position:relative;width:400px;height:300px'; const o = sc.appendChild(document.createElement(tags[0])); o.setAttribute('size', '40px'); o.style.cssText = 'position:absolute;left:260px;top:130px';
+  await frame(); sc.frame(0, 16); sc.tap(100, 150); sc.frame(0.1, 16); sc.setAttribute('interaction', 'shockwave'); let peak = 0; for (let i = 0; i < 60; i++) { sc.frame(1 + i / 60, 16); peak = Math.max(peak, Math.abs(o.anim.offset[0])); } AE.staleTap = peak; free(sc); }
+{ const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.style.cssText = 'position:relative;width:700px;height:200px';
+  const o = sc.appendChild(document.createElement('sd-slab')); o.style.cssText = 'position:absolute;left:50px;top:50px;width:600px;height:100px';
+  const ou = o.update.bind(o); ou(16); o.update = (dt) => { ou(dt); o.anim.rotation = new Float32Array([0.5, 0, -0.866, 0, 1, 0, 0.866, 0, 0.5]); }; // 60 degrees about y: one end swings toward the camera
+  await frame(); AE.turnedSlab = { left: colsPainted(sc, 50, 330), right: colsPainted(sc, 370, 650), middle: colsPainted(sc, 330, 370) }; free(sc); } // the ends foreshorten toward the center; the near end (right) must survive the march start
+{ const sc = textScene('<sd-text style="font:700 96px ui-monospace, Menlo, monospace">1</sd-text>'); await frame(); await frame();
+  const b = read(sc), gl = sc.gl, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight; let lo = H, hi = 0; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (b[(y * W + x) * 4 + 3] > 8) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
+  AE.narrowText = { glyphHeight: (hi - lo) / sc.pixelRatio, box: sc.firstElementChild.getBoundingClientRect().height }; free(sc); }
+{ const light = textScene(T1, {}, 'light'); await frame(); await frame();
+  const b = read(light); let sum = 0, n = 0; for (let i = 0; i < b.length; i += 4) { const a = b[i + 3]; if (a > 40 && a < 200) { sum += (0.299 * b[i] + 0.587 * b[i + 1] + 0.114 * b[i + 2]) / a; n++; } }
+  AE.lightEdge = n ? sum / n : NaN; free(light); }
 mark('Case AB');
 // Case AB: tap input. A press and release under 8 px is a tap (a new object each time); a drag, a cancel or a slow press is not;
 // pointer.down tracks the press; scene.tap() taps by hand; a nested scene keeps its tap to itself.
@@ -861,7 +890,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 240000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms', 'taps', 'boxes', 'text']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms', 'taps', 'boxes', 'text', 'fixes']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
@@ -983,6 +1012,13 @@ async function smoke() {
       const fl = r.cases.fall ?? {}; if (!(Math.abs(fl.dist - fl.expected) < 3)) fail(`gravity="fall" settled at ${fl.dist?.toFixed(1)} px, expected ${fl.expected}`);
       if (r.dupNames?.length) fail(`layer names collide: ${r.dupNames.join(', ')}`);
       for (const [name, px] of Object.entries(r.shadePixels ?? {})) if (!(px > 1000)) fail(`shade ${name} draws ${px} px on twelve objects (expected > 1000)`); }
+    { const E = r.cases.fixes ?? {}, j = (v) => JSON.stringify(v);
+      if (E.pushedPoke?.bTurned !== true || E.pushedPoke?.aTurned !== false) fail(`poke should hit the shape where it is drawn, after collide moved it: ${j(E.pushedPoke)}`);
+      if (E.topPoke?.firstTurned !== true || E.topPoke?.lastTurned !== false) fail(`poke should hit the shape drawn on top, not the last in DOM order: ${j(E.topPoke)}`);
+      if (!(E.staleTap < 1e-6)) fail(`enabling shockwave after a tap fired on the stale tap (${E.staleTap?.toFixed(1)} px)`);
+      if (!(E.turnedSlab?.left > 500) || !(E.turnedSlab?.right > 500) || !(E.turnedSlab?.middle > 50)) fail(`a wide box turned toward the camera is sliced by the march start: ${j(E.turnedSlab)}`);
+      if (!(E.narrowText?.glyphHeight > 0.55 * E.narrowText?.box)) fail(`a one-glyph text should keep its em: glyph ${E.narrowText?.glyphHeight?.toFixed(0)} px tall in a ${E.narrowText?.box?.toFixed(0)} px box`);
+      if (!(E.lightEdge < 0.7)) fail(`the light-theme word's edge should contrast with the page (edge luminance ${E.lightEdge?.toFixed(2)}, expected under 0.7)`); }
     { const X = r.cases.text ?? {}, j = (v) => JSON.stringify(v);
       if (!(X.pixels > 2000) || X.hasField !== true) fail(`<sd-text>Solids</sd-text> should draw its word from a field texture: ${j({ pixels: X.pixels, field: X.hasField })}`);
       if (X.registry?.inObjects !== false || X.registry?.defined !== true) fail(`sd-text should be defined but not in the objects registry: ${j(X.registry)}`);
@@ -1086,7 +1122,7 @@ async function site() {
       if (names.join('|') !== 'Orbit|Neon|Ink|Pixel|Storm') fail(`site/index: hero presets ${JSON.stringify(names)}`);
       const hg = [...new Set((hs.controls ?? []).map((c) => c.group ?? ''))];
       if (hg.includes('') || !['Scene', 'Rules', 'Look', 'Text'].every((g) => hg.includes(g))) fail(`site/index: hero controls should all sit in the Tweak groups Scene, Rules, Look, Text: ${JSON.stringify(hg)}`);
-      if (!/<form[^>]*class="controls dock"[\s\S]*?<div class="presets"[\s\S]*?<details class="tweak">[\s\S]*?id="copy-prompt"[\s\S]*?<\/details>[\s\S]*?id="copy-code"/.test(index)) fail('site/index: the dock should be presets, a Tweak details holding Copy prompt, then Copy code');
+      if (!/<form[^>]*class="controls dock"[\s\S]*?<fieldset class="presets"[\s\S]*?<details class="tweak">[\s\S]*?id="copy-prompt"[\s\S]*?<\/details>[\s\S]*?id="copy-code"/.test(index)) fail('site/index: the dock should be presets, a Tweak details holding Copy prompt, then Copy code');
       if (!/<sd-text id="mark"[^>]*>\s*<h1>Solids<\/h1>\s*<\/sd-text>/.test(index)) fail('site/index: the hero heading should be <sd-text id="mark"><h1>Solids</h1></sd-text>');
       if (/class="hero-title"><h1>/.test(index)) fail('site/index: the old hero h1 should be gone (the wordmark is the heading)');
       if (!/interaction="gravity pointer-follow hover-lift shockwave poke"/.test(index)) fail('site/index: the hero default interactions should be gravity pointer-follow hover-lift shockwave poke'); }
@@ -1158,6 +1194,9 @@ async function site() {
       if (f === 'index.html') {
         if (!(r.objects >= 13)) fail(`site/index (${size ?? 'desktop'}): hero has ${r.objects} objects, expected 13 with the wordmark`);
         if (!r.storm || !/repel.*shockwave.*poke.*pull.*collide/.test(r.storm.interaction ?? '') || r.storm.gravity !== '0' || r.storm.checked !== 'Storm') fail(`site/index (${size ?? 'desktop'}): the Storm preset should drive the controls: ${JSON.stringify(r.storm)}`);
+        if (r.orbitAttr !== 'gravity pointer-follow hover-lift shockwave poke') fail(`site/index (${size ?? 'desktop'}): clicking Orbit should leave the shipped interaction order, got "${r.orbitAttr}"`);
+        if (r.pixelEffect !== 'pixelate') fail(`site/index (${size ?? 'desktop'}): the Pixel mood should set effect="pixelate", got "${r.pixelEffect}"`);
+        if (!(r.radioPills >= 5)) fail(`site/index (${size ?? 'desktop'}): mood pills should be native radio inputs, found ${r.radioPills}`);
         if (r.manualClears !== 0) fail(`site/index (${size ?? 'desktop'}): a manual change should clear the active preset, ${r.manualClears} still checked`);
         if (!/<sd-text[^>]*>[\s\S]*Solids[\s\S]*<\/sd-text>/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code should carry the wordmark with its text`);
         if (!r.hasCenter) fail(`site/index (${size ?? 'desktop'}): dock has no Center control`);

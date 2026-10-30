@@ -87,7 +87,7 @@ function hero({ sceneAttrs, inner, controls, presets, pitch, prompt }) {
   return `<section class="hero-full">
   <div class="stage scatter hero-stage">${badge()}<sd-scene id="demo" data-keep-style style="position:relative;height:100%;min-height:560px" ${sceneAttrs}>${inner}</sd-scene></div>
   <div class="hero-lede"><p>${esc(pitch)}</p></div>
-  <form id="controls" class="controls dock" onsubmit="return false"><div class="presets" role="radiogroup" aria-label="Mood"></div><details class="tweak"><summary>Tweak</summary><div class="tune-body"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button></div></details><button type="button" class="btn" id="copy-code">Copy code</button></form>
+  <form id="controls" class="controls dock" onsubmit="return false"><fieldset class="presets"><legend class="sr">Mood</legend></fieldset><details class="tweak"><summary>Tweak</summary><div class="tune-body"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button></div></details><button type="button" class="btn" id="copy-code">Copy code</button></form>
   <script type="application/json" id="spec">${spec}</script>
 </section>`;
 }
@@ -174,8 +174,8 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
     { name: 'Orbit', set: { center: 'orb', effect: '', shading: '', 'gravity-strength': '0.35', interaction: HERO_RULES } },
     { name: 'Neon', set: { center: 'orb', effect: 'glow', shading: 'glass', 'gravity-strength': '0.5', interaction: HERO_RULES } },
     { name: 'Ink', set: { center: 'orb', effect: 'outline', shading: 'cel', 'gravity-strength': '0.35', interaction: 'gravity pointer-follow hover-lift poke' } },
-    { name: 'Pixel', set: { center: 'orb', effect: 'pixelate dither', shading: 'matte', 'gravity-strength': '0.35', interaction: 'gravity pointer-follow shockwave' } },
-    { name: 'Storm', set: { center: 'orb', effect: '', shading: 'metal', 'gravity-strength': '0', interaction: 'repel shockwave pull poke collide' } },
+    { name: 'Pixel', set: { center: 'orb', effect: 'pixelate', shading: 'matte', 'gravity-strength': '0.35', interaction: 'gravity pointer-follow shockwave' } },
+    { name: 'Storm', set: { center: 'orb', effect: '', shading: 'metal', 'gravity-strength': '0', interaction: 'repel shockwave poke pull collide' } },
   ];
   const heroHtml = hero({
     sceneAttrs: `interaction="${HERO_RULES}" gravity-strength="0.35" dpr="1.5"`,
@@ -271,7 +271,7 @@ effects.forEach((e) => {
     ...coreControls('object'),
   ];
   const prompt = `A solids text is HTML lifted into 3D: <sd-text> wraps the text (or an element such as an h1), keeps it in the page for layout and accessibility, and draws an extruded, shaded twin over it from a distance field made with the element's CSS font. depth and bevel shape the extrusion; pixel="6" gives a pixel font from any monospace; font-size rules (size does nothing). Every shade, effect, animation and interaction applies.\n\n${optionsMd(rows)}\n\n\`\`\`html\n{{markup}}\n\`\`\``;
-  page('text.html', { title: 'Text', description: 'Your HTML text as a solid: wrap a word or a heading and it gets depth, a shade, animations and interactions.', main: `<h1>Text</h1><p class="lede">Wrap a word or a heading in <code>&lt;sd-text&gt;</code> and it becomes a solid: extruded letters in your own font, drawn exactly over the HTML, which stays in the page for layout, selection and screen readers.</p>${preview({ sceneAttrs: 'interaction="pointer-follow hover-lift poke"', inner: `<sd-text pixel="6" depth="0.5" color="${colorOf(0)}" style="font:700 clamp(48px, 12vw, 120px)/1 ui-monospace, Menlo, monospace">Solids</sd-text>`, controls, prompt, stageClass: 'text' })}
+  page('text.html', { title: 'Text', description: 'Your HTML text as a solid: wrap a word or a heading and it gets depth, a shade, animations and interactions.', main: `<h1>Text</h1><p class="lede">Wrap a word or a heading in <code>&lt;sd-text&gt;</code> and it becomes a solid: extruded letters in your own font, drawn exactly over the HTML, which stays in the page for layout and screen readers.</p>${preview({ sceneAttrs: 'interaction="pointer-follow hover-lift poke"', inner: `<sd-text pixel="6" depth="0.5" color="${colorOf(0)}" style="font:700 clamp(48px, 12vw, 120px)/1 ui-monospace, Menlo, monospace">Solids</sd-text>`, controls, prompt, stageClass: 'text' })}
 <h2>How text works</h2><p>The element reads the text it wraps and the computed CSS font of that element, rasterizes the line on a canvas, turns the raster into a signed distance field and uploads it as a texture. The shader extrudes that field with a rounded edge and marches it like any object, so the letters take every shade, effect and animation, and every interaction moves them. Tap a letter with <code>poke</code> and the word turns to show its sides. With <code>pixel</code> the raster is sampled at that cell size, which gives a pixel font from any monospace; the distance field keeps the blocks sharp.</p>
 <p>On a light background the word reads through its shade like any object: <code>auto</code> is glass in the dark theme and matte in the light one, with a darker edge; no effect is needed.</p>
 <h2>Options</h2>${optionsTable(rows)}${license}` });

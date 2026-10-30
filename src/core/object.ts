@@ -36,6 +36,7 @@ export class SdObject extends HTMLElement {
   pinned = false;                         // held in place this frame (a gravity center or orbiter); collide treats it as a wall
   blurPx = 0;                             // depth-of-field blur for this frame (a universe sets it); draw adds a defocus pass. Not `blur`: HTMLElement has one
   field: Field | null = null;             // an optional distance-field texture for the shader (text uses it)
+  drawn: [number, number] | null = null;  // where the object was drawn last frame, after every rule (tap hit-tests use it)
   broken = false;                         // shader failed to compile; skip drawing
   private clock = 0;                      // animation time, advanced by dt × speed
   phaseOffset = 0;                        // `phase` attribute: seconds added to the animation clock, so siblings never line up

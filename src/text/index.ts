@@ -40,7 +40,7 @@ export class SdText extends SdObject {
     super.connectedCallback();
     this.mo ??= new MutationObserver(() => this.rebuild());
     this.mo.observe(this, { childList: true, characterData: true, subtree: true });
-    this.sizeWatch ??= new ResizeObserver(() => { if (this.cell) this.rebuild(); }); // pixel cells follow the CSS size
+    this.sizeWatch ??= new ResizeObserver(() => this.rebuild()); // pixel cells and late font swaps follow the box
     this.sizeWatch.observe(this);
     (document as any).fonts?.ready.then(() => this.rebuild());
     this.rebuild();
@@ -51,7 +51,14 @@ export class SdText extends SdObject {
     if (name === 'pixel') { this.cell = clampTo(num(v, 0), { min: 0, max: 24 }); this.rebuild(); return; }
     super.attributeChangedCallback(name, old, v);
   }
-  /** Re-rasterize at the next frame (coalesced): on text, font, `pixel` or, in pixel mode, size changes. */
+  /** Each frame: the em in unit space, from the font size against the box's short side (unit space is that short side). */
+  update(dt: number) {
+    super.update(dt);
+    const r = this.rect; if (!r) return;
+    const fontPx = parseFloat(getComputedStyle(this.firstElementChild ?? this).fontSize) || 16;
+    this.uniforms.emUnits = (2 * fontPx) / Math.max(1, Math.min(r.width, r.height));
+  }
+  /** Re-rasterize at the next frame (coalesced): on text, font, `pixel` or size changes. */
   rebuild() {
     if (this.queued || !this.isConnected) return;
     this.queued = true;
@@ -74,7 +81,7 @@ export class SdText extends SdObject {
     const w = Math.min(2048, Math.ceil(m.width) + 2 * range), h = em + 2 * range;
     c.width = w; c.height = h; setFont();
     ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#fff'; ctx.textBaseline = 'alphabetic';
-    ctx.fillText(text, range, range + (asc / (asc + desc)) * em); // the em box holds the glyphs; descenders dip into the padding
+    ctx.fillText(text, range, range + (em - asc - desc) / 2 + asc); // the CSS line box centers the font's content area in the em
     const img = ctx.getImageData(0, 0, w, h).data;
     const inside = new Uint8Array(w * h);
     for (let i = 0; i < w * h; i++) inside[i] = img[i * 4 + 3] >= 102 ? 1 : 0;

@@ -20,16 +20,17 @@ export const poke: Interaction = {
   },
   frame(scene, dt, pointer) {
     const turns = interactionValue(scene, 'poke', 'turns'), pop = interactionValue(scene, 'poke', 'pop'), still = reducedMotion();
+    if (!seen.has(scene)) seen.set(scene, pointer.tap); // a tap from before the rule was listed is not ours
     if (pointer.tap && pointer.tap !== seen.get(scene)) {
       seen.set(scene, pointer.tap);
-      // The topmost shape under the tap (last in draw order wins, so iterate and keep the last hit).
+      // The shape drawn on top under the tap: test where each was drawn last frame (after every rule), in draw order, last hit wins.
       let hit: SdObject | null = null;
-      for (const o of scene.objects) {
+      for (const o of [...scene.objects].sort((a, b) => (a.anim.z || 0) - (b.anim.z || 0))) {
         if (!o.rect) continue;
-        const [cx, cy] = o.drawCenter(), hw = (o.rect.width / 2) * o.anim.scale, hh = (o.rect.height / 2) * o.anim.scale;
+        const [cx, cy] = o.drawn ?? o.drawCenter(), hw = (o.rect.width / 2) * o.anim.scale, hh = (o.rect.height / 2) * o.anim.scale;
         if (Math.abs(pointer.tap.x - cx) <= hw && Math.abs(pointer.tap.y - cy) <= hh) hit = o;
       }
-      if (hit) poked.set(hit, 0);
+      if (hit && !poked.has(hit)) poked.set(hit, 0); // a second tap on a turning shape lets it finish
     }
     for (const o of scene.objects) {
       const age = poked.get(o);

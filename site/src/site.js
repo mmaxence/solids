@@ -50,7 +50,7 @@ if (specEl) {
   const tune = $('.tune-body', form); // the hero dock: grouped controls live in the Tweak panel, before Copy prompt
   const holder = (c) => { if (!c.group) return form; let g = groups.get(c.group); if (!g) { g = document.createElement('fieldset'); g.append(Object.assign(document.createElement('legend'), { textContent: c.group })); groups.set(c.group, g); if (tune) tune.insertBefore(g, $('#copy-prompt', tune)); else form.append(g); } return g; };
   let applyingPreset = false;
-  const clearPreset = () => { if (!applyingPreset) $$('.presets button', form).forEach((b) => b.setAttribute('aria-checked', 'false')); };
+  const clearPreset = () => { if (!applyingPreset) $$('.presets input', form).forEach((i) => { i.checked = false; }); };
   for (const c of spec.controls) {
     const label = document.createElement('label');
     const head = document.createElement('span');
@@ -101,21 +101,21 @@ if (specEl) {
     holder(c).append(label);
   }
   for (const g of groups.values()) if ([...g.children].every((el) => el.tagName === 'LEGEND' || el.classList.contains('check'))) g.classList.add('chips');
-  // Moods: each pill applies its record through the controls (checks by membership, the rest by value), then marks itself.
+  // Moods: native radios (one tab stop, arrow keys), each applying its record through the controls (checks by membership, the rest by value).
   const presets = $('.presets', form);
   if (presets && spec.presets) for (const p of spec.presets) {
-    const b = Object.assign(document.createElement('button'), { type: 'button', textContent: p.name });
-    b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(p === spec.presets[0]));
-    b.addEventListener('click', () => {
+    const label = document.createElement('label'), input = Object.assign(document.createElement('input'), { type: 'radio', name: 'mood', checked: p === spec.presets[0] });
+    label.append(input, document.createTextNode(p.name));
+    input.addEventListener('change', () => {
       applyingPreset = true;
       for (const [attr, v] of Object.entries(p.set)) for (const c of spec.controls.filter((x) => x.attr === attr)) {
         if (c.kind === 'check') c.input.checked = String(v).split(/\s+/).includes(c.on); else c.input.value = v;
         c.input.dispatchEvent(new Event('input'));
       }
       applyingPreset = false;
-      $$('button', presets).forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+      input.checked = true;
     });
-    presets.append(b);
+    presets.append(label);
   }
   refresh();
 
@@ -249,17 +249,19 @@ if (location.search.includes('__check')) {
     const toggle = (name, on) => { const t = $$('#controls label.check').find((l) => l.textContent.trim() === name)?.querySelector('input'); if (t && t.checked !== on) { t.checked = on; t.dispatchEvent(new Event('input')); } };
     let interactionAttr, storm, manualClears;
     if ($('.dock')) {
-      const pill = (n) => $$('.presets button').find((b) => b.textContent.trim() === n);
-      pill('Storm')?.click(); storm = { interaction: $('#demo').getAttribute('interaction'), gravity: $('#demo').getAttribute('gravity-strength'), checked: $$('.presets button[aria-checked="true"]').map((b) => b.textContent.trim()).join('|') };
+      const pill = (n) => $$('.presets label').find((b) => b.textContent.trim() === n)?.querySelector('input');
+      const checked = () => $$('.presets input:checked').map((i) => i.closest('label').textContent.trim()).join('|');
+      pill('Storm')?.click(); storm = { interaction: $('#demo').getAttribute('interaction'), gravity: $('#demo').getAttribute('gravity-strength'), checked: checked() };
       const sh = $$('#controls label').find((l) => l.querySelector('span')?.textContent === 'Shading')?.querySelector('select'); if (sh) { sh.value = 'cel'; sh.dispatchEvent(new Event('input')); }
-      manualClears = $$('.presets button[aria-checked="true"]').length;
-      pill('Orbit')?.click();
+      manualClears = $$('.presets input:checked').length;
+      pill('Pixel')?.click(); var pixelEffect = $('#demo').getAttribute('effect');
+      pill('Orbit')?.click(); var orbitAttr = $('#demo').getAttribute('interaction'); var radioPills = $$('.presets input[type="radio"]').length;
       toggle('collide', true); toggle('gravity', false); toggle('gravity', true); interactionAttr = $('#demo').getAttribute('interaction'); }
     if ($('sd-universe#demo')) { toggle('Spin', false); toggle('Drag', false); toggle('Pointer', false); }
     const demo = $('#demo');
     fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene, sd-universe').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent,
       objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top,
-      markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr, storm, manualClears,
+      markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr, storm, manualClears, pixelEffect: typeof pixelEffect === 'undefined' ? undefined : pixelEffect, orbitAttr: typeof orbitAttr === 'undefined' ? undefined : orbitAttr, radioPills: typeof radioPills === 'undefined' ? undefined : radioPills,
 contexts: $$('sd-scene, sd-universe').length + $$('*').filter((e) => e.shadowRoot?.querySelector('sd-scene')).length, sceneObjects: $$('sd-scene, sd-universe').map((s) => s.objects?.size), liveFrame: $('#live-frame')?.textContent,
       badge: $('.fps')?.textContent, legends: $$('#controls legend').map((l) => l.textContent), liveEscaped: (() => { const o = $('#demo > *'); if (!o) return null; o.setAttribute('title', 'a"b&c'); const txt = serialize($('#demo')); o.removeAttribute('title'); return txt.includes('title="a&quot;b&amp;c"'); })(), meter: meter?.textContent, bench, benchRow: benchRowText, noTimerRow, scenesBeforeBench }) });
   };

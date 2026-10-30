@@ -10,6 +10,7 @@ import { shockwave } from './shockwave';
 import { poke } from './poke';
 import { pull } from './pull';
 
-// Tap rules sit before collide so collide sees where a tap moved things.
-export const interactions: Interaction[] = [pointerFollow, hoverLift, gravity, repel, magnet, shockwave, poke, pull, collide, scroll];
+// Registry order is the chip order on the site, which rebuilds a scene's interaction attribute (the frame order) in this order:
+// gravity first (it sets depth the others read), tap rules before collide (collide sees where a tap moved things).
+export const interactions: Interaction[] = [gravity, pointerFollow, hoverLift, repel, magnet, shockwave, poke, pull, collide, scroll];
 for (const i of interactions) registry.set(i.meta.name, i);

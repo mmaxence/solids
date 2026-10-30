@@ -9,4 +9,4 @@ Objects, effects, shades, animations and interactions are all welcome. The short
 
 What gets a PR merged: it compiles everywhere, it reads as part of the family under every shade (high contrast, one accent), it stays inside the size budget, and its README says what the parameters do in plain words.
 
-Core changes (renderer, scene, interactions) are better discussed in an issue first.
+Core changes (renderer, scene, the text element) are better discussed in an issue first.

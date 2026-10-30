@@ -40,7 +40,9 @@ Each object is a web component drawn by a fragment shader. Add one script tag, t
 | Animations | idle, spin, pulse, breathe, float | `animation="spin breathe"` |
 | Effects | glow, beam, rgb-split, pixelate, dither, scanlines, halftone, outline, grain, vignette, chroma, ripple, defocus | `effect="glow"` on an object or a scene |
 | Shades | glass, matte, cel, clay, metal | `shading="cel"` on an object or a scene |
-| Interactions | pointer-follow, hover-lift, gravity, repel, magnet, collide, scroll | `interaction="gravity"` on a scene |
+| Interactions | gravity, pointer-follow, hover-lift, repel, magnet, shockwave, poke, pull, collide, scroll | `interaction="gravity shockwave"` on a scene |
+
+`<sd-text><h1>Solids</h1></sd-text>` lifts an HTML heading into 3D in its own font, with depth, a pixel mode and every shade and interaction (see the [Text page](https://mmaxence.github.io/solids/text.html)). Tap or click a scene with `shockwave`, `poke` or `pull` listed and the shapes answer.
 
 Objects outside a scene work on their own. Inside a scene they share one canvas and can react to each other: mark one `gravity="center"` and the rest orbit it on rings, farther rings turning slower.
 

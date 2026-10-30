@@ -277,6 +277,7 @@ export class SdScene extends HTMLElement {
   private draw(gl: WebGL2RenderingContext, o: SdObject, t: number, theme: number, f: NonNullable<typeof this.fbos>, target: FBO | null, W = this.canvas.width, H = this.canvas.height) {
     const r = o.rect!;
     const [cx, cy] = o.drawCenter();
+    o.drawn = [cx, cy];
     // The quad follows the object's box and scale, in 8 device px steps so the buffer pool keys stay few; unit space is the box's short
     // side and uScale keeps the shape at exactly rect × scale. Squares render as before; a wide or tall box gets a matching quad.
     const sw = r.width * o.anim.scale * this.pixelRatio, sh = r.height * o.anim.scale * this.pixelRatio, sz = Math.min(sw, sh);

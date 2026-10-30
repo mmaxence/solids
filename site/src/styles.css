@@ -158,11 +158,13 @@ td:first-child code { white-space: nowrap; }
 .hero-lede p { font-size: 17px; line-height: 1.45; color: var(--muted); margin: 0; max-width: 40ch; }
 .hero-full sd-text h1 { font: inherit; margin: 0; letter-spacing: inherit; }
 /* Moods: radio pills; the first is the page default */
-.presets { display: flex; gap: 6px; }
-.presets button { font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 999px; border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer; white-space: nowrap; }
-.presets button:hover { color: var(--fg); }
-.presets button[aria-checked="true"] { background: var(--fg); color: var(--bg); }
-.presets button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.presets { display: flex; gap: 6px; margin: 0; padding: 0; border: 0; }
+.presets .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.presets label { position: relative; font-size: 13px; padding: 6px 14px; border-radius: 999px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.presets label:hover { color: var(--fg); }
+.presets input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.presets label:has(input:checked) { background: var(--fg); color: var(--bg); }
+.presets label:has(input:focus-visible) { outline: 2px solid var(--fg); outline-offset: 2px; }
 /* Tweak: a native disclosure whose panel opens above the dock with the grouped controls */
 .tweak { position: static; }
 .tweak summary { list-style: none; cursor: pointer; font-size: 13px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); user-select: none; }
@@ -185,6 +187,7 @@ td:first-child code { white-space: nowrap; }
   .presets::-webkit-scrollbar { display: none; }
   .dock > .btn { margin-left: auto; }
   .hero-full #disc { display: none; }
+  .hero-full #mark { font-size: 13vmin !important; top: 44% !important; } /* clear of the two-row dock */
 }
 
 /* Landing under the hero: one band per job. Inside a live row the canvas sits above
