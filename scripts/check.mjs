@@ -771,6 +771,26 @@ const colsPainted = (sc, fromX, toX) => { const b = read(sc), gl = sc.gl, W = gl
   o.field = { data: disc, width: 16, height: 16, range: 4, version: 1 }; await frame(); for (let i = 0; i < 5; i++) sc.frame(i / 10, 16);
   const px1 = pixels(sc), u1 = uploads; o.field = { ...o.field, version: 2 }; sc.frame(1, 16); AC.field = { pixels: px1, uploadsAfterFive: u1, uploadsAfterBump: uploads };
   WebGL2RenderingContext.prototype.texImage2D = ti; free(sc); }
+mark('Case AD');
+// Case AD: <sd-text>. The light DOM is the text; the 3D twin draws over it; pixel, depth and bevel change the image; a wrapped h1 keeps
+// its text and goes transparent; a lone text renders; a text change rebuilds; the word reads on both themes.
+const AD = result.cases.text = {};
+const textScene = (inner, attrs = {}, theme = 'dark') => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', theme); for (const [k, v] of Object.entries(attrs)) sc.setAttribute(k, v); sc.style.cssText = 'position:relative;width:420px;height:160px;display:grid;place-items:center'; sc.innerHTML = inner; return sc; };
+const T1 = '<sd-text style="font:700 64px ui-monospace, Menlo, monospace">Solids</sd-text>';
+{ const a = textScene(T1), b = textScene(T1.replace('<sd-text ', '<sd-text pixel="8" ')), c = textScene(T1.replace('<sd-text ', '<sd-text depth="0.02" ')), d = textScene(T1.replace('<sd-text ', '<sd-text depth="1" ')), e = textScene(T1.replace('<sd-text ', '<sd-text bevel="0" ')), f = textScene(T1.replace('<sd-text ', '<sd-text bevel="1" '));
+  await frame(); await frame();
+  const t = a.firstElementChild;
+  AD.pixels = pixels(a); AD.hasField = !!t.field; AD.pixelDiff = differ(a, b); AD.depthDiff = differ(c, d); AD.bevelDiff = differ(e, f);
+  AD.registry = { inObjects: registry.objects.has('text'), defined: !!customElements.get('sd-text') };
+  const v0 = t.field?.version; t.textContent = 'Hello'; await frame(); await frame(); AD.rebuild = { bumped: t.field?.version > v0, differs: differ(a, b) };
+  free(a, b, c, d, e, f); }
+{ const w = textScene('<sd-text style="font:700 64px ui-monospace, Menlo, monospace"><h1 style="margin:0;font:inherit">Solids</h1></sd-text>'); await frame(); await frame();
+  const h1 = w.querySelector('h1'); AD.wrapped = { text: h1.textContent, color: getComputedStyle(h1).color, pixels: pixels(w), box: h1.getBoundingClientRect().width > 100 }; free(w); }
+{ const lone = document.body.appendChild(document.createElement('sd-text')); lone.style.cssText = 'font:700 48px ui-monospace, monospace'; lone.textContent = 'Lone'; await frame(); await frame();
+  const ls = lone.shadowRoot.querySelector('sd-scene'); AD.lone = ls ? pixels(ls) : -1; lone.remove(); }
+{ const dark = textScene(T1, {}, 'dark'), light = textScene(T1, {}, 'light'); await frame(); await frame();
+  const lum = (sc) => { const b = read(sc); let sum = 0, n = 0; for (let i = 0; i < b.length; i += 4) { const a = b[i + 3]; if (a > 200) { sum += (0.299 * b[i] + 0.587 * b[i + 1] + 0.114 * b[i + 2]) / a; n++; } } return n ? sum / n : NaN; };
+  AD.theme = { dark: lum(dark), light: lum(light) }; free(dark, light); }
 mark('Case AB');
 // Case AB: tap input. A press and release under 8 px is a tap (a new object each time); a drag, a cancel or a slow press is not;
 // pointer.down tracks the press; scene.tap() taps by hand; a nested scene keeps its tap to itself.
@@ -841,7 +861,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 240000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms', 'taps', 'boxes']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms', 'taps', 'boxes', 'text']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
@@ -963,6 +983,14 @@ async function smoke() {
       const fl = r.cases.fall ?? {}; if (!(Math.abs(fl.dist - fl.expected) < 3)) fail(`gravity="fall" settled at ${fl.dist?.toFixed(1)} px, expected ${fl.expected}`);
       if (r.dupNames?.length) fail(`layer names collide: ${r.dupNames.join(', ')}`);
       for (const [name, px] of Object.entries(r.shadePixels ?? {})) if (!(px > 1000)) fail(`shade ${name} draws ${px} px on twelve objects (expected > 1000)`); }
+    { const X = r.cases.text ?? {}, j = (v) => JSON.stringify(v);
+      if (!(X.pixels > 2000) || X.hasField !== true) fail(`<sd-text>Solids</sd-text> should draw its word from a field texture: ${j({ pixels: X.pixels, field: X.hasField })}`);
+      if (X.registry?.inObjects !== false || X.registry?.defined !== true) fail(`sd-text should be defined but not in the objects registry: ${j(X.registry)}`);
+      if (!(X.pixelDiff > 0.02) || !(X.depthDiff > 0.02) || !(X.bevelDiff > 0.005)) fail(`pixel, depth and bevel should change the text: ${j({ pixel: X.pixelDiff, depth: X.depthDiff, bevel: X.bevelDiff })}`);
+      if (X.rebuild?.bumped !== true) fail(`changing the text should rebuild the field: ${j(X.rebuild)}`);
+      if (X.wrapped?.text !== 'Solids' || !/rgba\(.*, 0\)$|transparent/.test(X.wrapped?.color ?? '') || !(X.wrapped?.pixels > 2000) || X.wrapped?.box !== true) fail(`a wrapped h1 should keep its text and box and go transparent under the twin: ${j(X.wrapped)}`);
+      if (!(X.lone > 500)) fail(`a lone <sd-text> should render in its own scene (${X.lone} px)`);
+      if (!(X.theme?.dark > 0.2) || !(X.theme?.light < 0.75)) fail(`the word should read on both themes: mean luminance dark ${X.theme?.dark?.toFixed(2)} (expected > 0.2), light ${X.theme?.light?.toFixed(2)} (expected < 0.75)`); }
     { const B = r.cases.boxes ?? {}, j = (v) => JSON.stringify(v);
       if (!(B.tall?.top > 200) || !(B.tall?.bottom > 200) || !(B.tall?.middle > 200)) fail(`a tall object should paint the ends of its rect (non-square quads): ${j(B.tall)}`);
       if (!(B.wide?.left > 200) || !(B.wide?.right > 200)) fail(`a wide object should paint the ends of its rect: ${j(B.wide)}`);
@@ -1073,7 +1101,12 @@ async function site() {
       const c = spec.controls.find((x) => x.attr === 'shading');
       if (!c || c.kind !== 'select' || !c.options.includes('cel') || !c.options.includes('')) fail(`site/${f}: dock has no Shading select listing auto and every shade`);
     }
+    if (!existsSync('site/dist/text.html')) fail('site/text.html missing');
+    if (!/<h2>Guide<\/h2><ul>[\s\S]*?href="\.\/text\.html"/.test(index)) fail('site/index: the Guide list should link the Text page');
+    if (!text('llms.txt').includes('text.html')) fail('site/llms.txt: text.html unlisted');
+    if (!/<sd-text[^>]*>[\s\S]*?Solids[\s\S]*?<\/sd-text>/.test(text('text.html'))) fail('site/text.html: the stage should hold an <sd-text> with Solids');
     const skill = text('skill.md');
+    if (!skill.includes('## Text and HTML')) fail('site/skill.md: the Text and HTML section is missing');
     if (!/sdShade/.test(skill) || !/sdEdge/.test(skill) || !/sdLightDir/.test(skill)) fail('site/skill.md: the shade contract (sdShade, sdEdge, sdLightDir) is missing');
     for (const stale of ['sdGlass', 'uPointer', 'vec3`', '`color`. Keep', '"tags"', 'bleed', 'npm run build   #']) if (skill.includes(stale)) fail(`site/skill.md: still mentions ${stale}`);
     for (const need of ['## Adding an interaction', '## Adding an animation', 'npm run check']) if (!skill.includes(need)) fail(`site/skill.md: missing ${need}`);

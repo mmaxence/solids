@@ -32,7 +32,7 @@ function serialize(el, depth = 0) {
   const q = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   const attrs = [...el.attributes].filter((a) => !SKIP.has(a.name) && a.value !== '' && !(a.name === 'style' && depth === 0 && !('keepStyle' in el.dataset))).map((a) => ` ${a.name}="${q(a.value)}"`).join('');
   const kids = [...el.children].filter((c) => c.tagName.startsWith('SD-'));
-  if (!kids.length) return `${pad}<${el.localName}${attrs}></${el.localName}>`;
+  if (!kids.length) return `${pad}<${el.localName}${attrs}>${el.localName === 'sd-text' ? el.innerHTML.trim() : ''}</${el.localName}>`;
   return `${pad}<${el.localName}${attrs}>\n${kids.map((k) => serialize(k, depth + 1)).join('\n')}\n${pad}</${el.localName}>`;
 }
 
@@ -63,6 +63,8 @@ if (specEl) {
       input = document.createElement('select');
       for (const o of c.options) input.append(new Option(o || c.empty || 'none', o));
       input.value = c.value ?? '';
+    } else if (c.kind === 'text') {
+      input = Object.assign(document.createElement('input'), { type: 'text', value: c.value ?? '' });
     } else if (c.kind === 'check') {
       label.className = 'check';
       input = Object.assign(document.createElement('input'), { type: 'checkbox', checked: !!c.value });
@@ -70,6 +72,7 @@ if (specEl) {
     c.input = input;
     const apply = () => {
       const v = c.kind === 'check' ? (input.checked ? c.on : '') : input.value;
+      if (c.kind === 'text') { for (const t of targets(c)) t.textContent = v; refresh(); return; } // the words of an sd-text
       if (c.attr === 'object') { // swap the demo subject for another object type, keeping its attributes
         const old = $('#demo > *'); const nu = document.createElement(v);
         for (const a of old.attributes) nu.setAttribute(a.name, a.value);

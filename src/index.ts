@@ -6,6 +6,7 @@ import './animations';
 import './effects';
 import './shades';
 import './interactions';
+import './text'; // <sd-text> defines itself; the core build stubs it out
 
 import orbManifest from './objects/orb/manifest.json';
 import orbFrag from './objects/orb/frag.glsl';

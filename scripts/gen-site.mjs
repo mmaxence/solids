@@ -63,7 +63,7 @@ function nav(root, current) {
   const item = (href, label) => `<li><a href="${root}${href}"${href === current ? ' aria-current="page"' : ''}>${esc(label)}</a></li>`;
   // Two tiers: the guide, always open, then the catalogue as four collapsible groups. Only the current page's group starts open.
   const group = (label, dir, list) => { const open = current.startsWith(dir + '/'); return `<details${open ? ' open' : ''}><summary>${label} <span>${list.length}</span></summary><ul>${list.map((x) => item(`${dir}/${x.name}.html`, x.name)).join('')}</ul></details>`; };
-  return `<h2>Guide</h2><ul>${item('index.html', 'Introduction')}${item('accessibility.html', 'Accessibility')}${item('scene.html', 'Scene and gravity')}${item('universe.html', 'Universe')}${item('shades.html', 'Shades')}${item('performance.html', 'Performance')}</ul>
+  return `<h2>Guide</h2><ul>${item('index.html', 'Introduction')}${item('accessibility.html', 'Accessibility')}${item('scene.html', 'Scene and gravity')}${item('universe.html', 'Universe')}${item('text.html', 'Text')}${item('shades.html', 'Shades')}${item('performance.html', 'Performance')}</ul>
 <h2>Catalogue</h2>${group('Objects', 'objects', objects)}${group('Animations', 'animations', animations)}${group('Effects', 'effects', effects)}${group('Shades', 'shades', shades)}${group('Interactions', 'interactions', interactions)}`;
 }
 
@@ -241,6 +241,28 @@ effects.forEach((e) => {
   page(`effects/${e.name}.html`, { title: e.name, description: e.description, main: `<h1>${esc(e.name)}</h1><p class="lede">${esc(e.description)}</p>${preview({ sceneAttrs: `effect="${e.name}"`, inner: `<sd-orb size="220px" color="${colorOf(0)}" animation="idle"></sd-orb>`, controls, prompt })}<h2>Options</h2>${optionsTable(rows)}<p>Put <code>effect="${e.name}"</code> on a scene to process the whole canvas, or on a single object to process only that object. Chain several with spaces; they run in the order written.</p>${license}` });
 });
 
+// --- Text page ---
+{
+  const rows = [
+    ['depth', 'number', '0.35', '0.02 to 1', 'Half the thickness of the extrusion.'],
+    ['bevel', 'number', '0.25', '0 to 1', 'Rounding of the edges.'],
+    ['pixel', 'number', '0', '0 to 24', 'Raster cell in px for a pixel-font look from any monospace; 0 keeps the glyphs smooth.'],
+    ...CORE_ROWS.filter((r) => r[0] !== 'size'),
+  ];
+  const controls = [
+    { kind: 'text', attr: 'text', label: 'Text', value: 'Solids', target: 'object', group: 'Text' },
+    { kind: 'range', attr: 'pixel', label: 'Pixel', min: 0, max: 24, step: 1, value: 6, default: 0, target: 'object', group: 'Text' },
+    { kind: 'range', attr: 'depth', label: 'Thickness', min: 0.02, max: 1, step: 0.01, value: 0.5, default: 0.35, target: 'object', group: 'Text' },
+    { kind: 'range', attr: 'bevel', label: 'Edge rounding', min: 0, max: 1, step: 0.01, value: 0.25, default: 0.25, target: 'object', group: 'Text' },
+    ...coreControls('object'),
+  ];
+  const prompt = `A solids text is HTML lifted into 3D: <sd-text> wraps the text (or an element such as an h1), keeps it in the page for layout and accessibility, and draws an extruded, shaded twin over it from a distance field made with the element's CSS font. depth and bevel shape the extrusion; pixel="6" gives a pixel font from any monospace; font-size rules (size does nothing). Every shade, effect, animation and interaction applies.\n\n${optionsMd(rows)}\n\n\`\`\`html\n{{markup}}\n\`\`\``;
+  page('text.html', { title: 'Text', description: 'Your HTML text as a solid: wrap a word or a heading and it gets depth, a shade, animations and interactions.', main: `<h1>Text</h1><p class="lede">Wrap a word or a heading in <code>&lt;sd-text&gt;</code> and it becomes a solid: extruded letters in your own font, drawn exactly over the HTML, which stays in the page for layout, selection and screen readers.</p>${preview({ sceneAttrs: 'interaction="pointer-follow hover-lift poke"', inner: `<sd-text pixel="6" depth="0.5" color="${colorOf(0)}" style="font:700 clamp(48px, 12vw, 120px)/1 ui-monospace, Menlo, monospace">Solids</sd-text>`, controls, prompt, stageClass: 'text' })}
+<h2>How text works</h2><p>The element reads the text it wraps and the computed CSS font of that element, rasterizes the line on a canvas, turns the raster into a signed distance field and uploads it as a texture. The shader extrudes that field with a rounded edge and marches it like any object, so the letters take every shade, effect and animation, and every interaction moves them. Tap a letter with <code>poke</code> and the word turns to show its sides. With <code>pixel</code> the raster is sampled at that cell size, which gives a pixel font from any monospace; the distance field keeps the blocks sharp.</p>
+<p>On a light background the word reads through its shade like any object: <code>auto</code> is glass in the dark theme and matte in the light one, with a darker edge; no effect is needed.</p>
+<h2>Options</h2>${optionsTable(rows)}${license}` });
+}
+
 // --- Shade pages and the comparison page ---
 shades.forEach((sh) => {
   const rows = sh.params.map((p) => [`${sh.name}-${kebab(p.name)}`, 'number', String(p.default), `${p.min} to ${p.max}`, p.label]);
@@ -388,6 +410,7 @@ ${entries('interactions', interactions)}
 - [Introduction](${BASE}index.html): install, the five layers, the catalogue.
 - [Scene and gravity](${BASE}scene.html): objects in one scene and the center of gravity.
 - [Universe](${BASE}universe.html): a scene that fills its box with seeded shapes in 3D, with a camera that spins and drags, a depth of field and optional collisions.
+- [Text](${BASE}text.html): HTML text lifted into 3D with sd-text, in your own font, with depth, a pixel mode and every shade and interaction.
 - [Performance](${BASE}performance.html): bundle sizes, a live frame meter, and a benchmark that runs in the browser.
 - [Accessibility](${BASE}accessibility.html): reduced motion, focus, contrast, the context limit.
 - [GitHub](${REPO}): source, README and the contribution flow.

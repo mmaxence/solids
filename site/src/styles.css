@@ -91,7 +91,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .controls label span { display: flex; justify-content: space-between; }
 .controls label span output { color: var(--fg); font-variant-numeric: tabular-nums; }
 .controls input[type="range"] { width: 100%; accent-color: var(--accent); }
-.controls select, .controls input[type="color"] { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 13px; height: 34px; }
+.controls select, .controls input[type="color"], .controls input[type="text"] { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 13px; height: 34px; }
 .controls input[type="color"] { padding: 2px 4px; width: 100%; }
 .controls .check input { accent-color: var(--accent); }
 .codebar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--line); }
