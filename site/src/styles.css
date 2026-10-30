@@ -118,9 +118,10 @@ td:first-child code { white-space: nowrap; }
 .fps span { font-size: 12px; color: var(--muted); }
 .fps.warn b { color: #e7b53b; }
 .fps.bad b { color: #ff6b6b; }
-.band-stage { position: relative; }
-.band-stage > .fps { top: -8px; right: 0; transform: translateY(-100%); } /* above the row, clear of the cards */
-.band-stage:has(> sd-universe) > .fps { top: 12px; right: 12px; transform: none; } /* the universe fills its band; keep the badge inside */
+.band-stage { position: relative; padding-top: 44px; } /* a strip above the row holds the badge, clear of prose and cards */
+.band-stage > .fps { top: 0; right: 0; }
+.band-stage:has(> sd-universe) { padding-top: 0; } /* the universe fills its band; the badge sits inside */
+.band-stage:has(> sd-universe) > .fps { top: 12px; right: 12px; }
 .foot { display: flex; justify-content: space-between; gap: 16px; padding: 18px 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 .foot a { color: var(--fg); }
 
