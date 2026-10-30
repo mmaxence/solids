@@ -102,12 +102,26 @@ if (specEl) {
 }
 function flash(btn, text) { const t = btn.textContent; btn.textContent = text; setTimeout(() => (btn.textContent = t), 1200); }
 
-// Live numbers from the demo scene: the hero dock readout, and the meter on the Performance page.
-const demo = $('#demo'), readout = $('#readout'), meter = $('#meter'), liveFrame = $('#live-frame');
-if (demo && (readout || meter || liveFrame)) {
+// fps badge on every stage, fed by that stage's own scene. A dash until the scene has drawn a frame.
+$$('.fps').forEach((badge) => {
+  const scene = badge.parentElement.querySelector('sd-scene, sd-universe');
+  if (!scene) return;
+  const tick = () => {
+    if (!(scene.fps > 0)) return;
+    const fps = Math.round(scene.fps);
+    badge.firstElementChild.textContent = `${fps} fps`;
+    badge.lastElementChild.textContent = ` ${scene.frameTime.toFixed(2)} ms`;
+    badge.classList.toggle('warn', fps < 50 && fps >= 30);
+    badge.classList.toggle('bad', fps < 30);
+  };
+  tick(); setInterval(tick, 250);
+});
+
+// Live numbers from the demo scene: the Performance page's meter and the landing's frame number.
+const demo = $('#demo'), meter = $('#meter'), liveFrame = $('#live-frame');
+if (demo && (meter || liveFrame)) {
   const show = () => {
     const fps = Math.round(demo.fps);
-    if (readout) readout.textContent = `${fps} fps, ${demo.frameTime.toFixed(2)} ms`;
     if (liveFrame) liveFrame.textContent = `${demo.frameTime.toFixed(2)} ms`;
     if (!meter) return;
     const gpu = demo.gpuTime;   // reading it turns the GPU timer on for this scene
@@ -212,7 +226,7 @@ if (location.search.includes('__check')) {
       objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top,
       markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr,
 contexts: $$('sd-scene, sd-universe').length + $$('*').filter((e) => e.shadowRoot?.querySelector('sd-scene')).length, sceneObjects: $$('sd-scene, sd-universe').map((s) => s.objects?.size), liveFrame: $('#live-frame')?.textContent,
-      readout: readout && (getComputedStyle(readout).display === 'none' ? 'hidden' : readout.textContent), meter: meter?.textContent, bench, benchRow: benchRowText, noTimerRow, scenesBeforeBench }) });
+      badge: $('.fps')?.textContent, meter: meter?.textContent, bench, benchRow: benchRowText, noTimerRow, scenesBeforeBench }) });
   };
   const tick = () => (++n < 6 ? requestAnimationFrame(tick) : report());
   requestAnimationFrame(tick);

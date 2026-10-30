@@ -752,6 +752,11 @@ async function site() {
   const h2s = [...index.slice(index.indexOf('<main')).matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
   const ORDER = ['Built for agents', 'Install', 'Five layers', 'Universe', 'Catalogue', 'Performance', 'Details'];
   { const band = index.match(/<sd-universe class="band-universe"[^>]*>/)?.[0] ?? ''; if (!/\bcollide\b/.test(band) || /\bgravity\b/.test(band)) fail(`site/index: the universe band should run with collide and no gravity: ${band}`); }
+  // fps badge: one per stage on every page (stages and the landing's band stages); the hero's old readout is gone.
+  for (const f of pages) { const h = text(f); const stages = (h.match(/class="(stage|band-stage)[ "]/g) ?? []).length, badges = (h.match(/class="fps"/g) ?? []).length;
+    if (stages !== badges) { fail(`site/${f}: ${stages} stage(s) but ${badges} fps badge(s)`); break; } }
+  if (/id="readout"/.test(index)) fail('site/index: the old dock readout should be gone');
+  if (!/class="band-stage"[^>]*>\s*<output class="fps"/.test(index) || (index.match(/class="band-stage"/g) ?? []).length < 3) fail('site/index: the landing rows and the universe band need a band-stage with its fps badge');
   // Shades on the site: a page per shade, a comparison page, a catalogue row, a Shading select in every dock, docs.
   { const shadeDirs = readdirSync('src/shades', { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
     for (const n of shadeDirs) if (!existsSync(`site/dist/shades/${n}.html`)) fail(`site/shades/${n}.html missing`);
@@ -811,7 +816,7 @@ async function site() {
         if (!size && !/\d+(\.\d+)? ms/.test(r.liveFrame ?? '')) fail(`site/index: the Performance band's live frame number reads ${JSON.stringify(r.liveFrame)}`);
         if (!(r.contexts <= 6)) fail(`site/index (${size ?? 'desktop'}): ${r.contexts} WebGL scenes, expected at most 6 (one per section row, never one per card)`);
         if (!r.sceneObjects?.length || r.sceneObjects.some((n) => !(n > 0))) fail(`site/index (${size ?? 'desktop'}): a scene holds no objects: ${JSON.stringify(r.sceneObjects)}`);
-        if (size ? r.readout !== 'hidden' : !/\d+ fps/.test(r.readout ?? '')) fail(`site/index (${size ?? 'desktop'}): dock readout should be ${size ? 'hidden' : 'visible with fps'}, got ${JSON.stringify(r.readout)}`);
+        if (!/^[0-9]+ fps/.test(r.badge ?? '') || !/[0-9.]+ ms/.test(r.badge ?? '')) fail(`site/index (${size ?? 'desktop'}): hero fps badge reads ${JSON.stringify(r.badge)}`);
       }
       if (f === 'performance.html') {
         const b = r.bench;
@@ -821,6 +826,7 @@ async function site() {
         if (r.scenesBeforeBench !== r.scenes) fail(`site/performance: the benchmark left ${r.scenes - r.scenesBeforeBench} scene(s) behind`);
         if (!/fps/.test(r.meter ?? '') || !/(srgb|display-p3)/.test(r.meter ?? '')) fail(`site/performance: live meter reads ${JSON.stringify(r.meter)}`);
       }
+      if (f === 'objects/orb.html' && !/^[0-9]+ fps/.test(r.badge ?? '')) fail(`site/${f}: fps badge reads ${JSON.stringify(r.badge)}`);
       if (r.errors.length) fail(`site/${f}: console errors: ${r.errors.join(' | ').slice(0, 600)}`);
       if (!(r.scenes >= 1)) fail(`site/${f}: no scene mounted`);
       if (r.theme !== 'light') fail(`site/${f}: one click on Theme gave "${r.theme}", expected light`);

@@ -74,13 +74,18 @@ function page(path, { title, description, main, hero = '' }) {
   writeFileSync(`${OUT}/${path}`, html);
 }
 
+/** The fps badge every stage carries; site.js feeds it from the stage's own scene. */
+const badge = () => `<output class="fps" title="Frames per second and CPU ms per frame of this scene, measured live"><b>&ndash;</b><span></span></output>`;
+/** A landing or comparison row: a relative box around a scene so the badge has a corner. */
+const bandStage = (html) => `<div class="band-stage">${badge()}${html}</div>`;
+
 /** Full-viewport hero: the scene fills the first screen; title top-left, control dock at the bottom. */
 function hero({ sceneAttrs, inner, controls, title, pitch, prompt }) {
   const spec = JSON.stringify({ controls, prompt }).replace(/</g, '\\u003c');
   return `<section class="hero-full">
-  <div class="stage scatter hero-stage"><sd-scene id="demo" data-keep-style style="position:relative;height:100%;min-height:560px" ${sceneAttrs}>${inner}</sd-scene></div>
+  <div class="stage scatter hero-stage">${badge()}<sd-scene id="demo" data-keep-style style="position:relative;height:100%;min-height:560px" ${sceneAttrs}>${inner}</sd-scene></div>
   <div class="hero-title"><h1>${esc(title)}</h1><p>${esc(pitch)}</p></div>
-  <form id="controls" class="controls dock" onsubmit="return false"><span id="readout" class="readout" title="Frames per second and CPU ms per frame, measured live"></span><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button><button type="button" class="btn" id="copy-code">Copy code</button></form>
+  <form id="controls" class="controls dock" onsubmit="return false"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button><button type="button" class="btn" id="copy-code">Copy code</button></form>
   <script type="application/json" id="spec">${spec}</script>
 </section>`;
 }
@@ -90,7 +95,7 @@ function preview({ sceneAttrs = '', inner, controls, prompt, stageClass = '', ta
   const spec = JSON.stringify({ controls, prompt }).replace(/</g, '\\u003c');
   return `<div class="tabs" role="tablist"><button role="tab" aria-selected="true" data-panel="preview">Preview</button><button role="tab" aria-selected="false" data-panel="install">Install</button></div>
 <section id="preview" class="panel">
-  <div class="stage ${stageClass}"><${tag} id="demo"${stageClass.includes('scatter') ? ' data-keep-style style="position:relative;height:100%;min-height:340px"' : ''} ${sceneAttrs}>${inner}</${tag}></div>
+  <div class="stage ${stageClass}">${badge()}<${tag} id="demo"${stageClass.includes('scatter') ? ' data-keep-style style="position:relative;height:100%;min-height:340px"' : ''} ${sceneAttrs}>${inner}</${tag}></div>
   <form id="controls" class="controls" onsubmit="return false"></form>
   <div class="codebar"><pre><code id="live"></code></pre><div class="actions"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button><button type="button" class="btn" id="copy-code">Copy code</button></div></div>
 </section>
@@ -189,7 +194,7 @@ ${layer('Interactions', 'Scene rules that react to the pointer and to each other
   const inTok = (4 * reads + 2 * 2048) / 4, outTok = writes / 4;
   const usd = inTok * 4e-6 + outTok * 20e-6;
   const cost = `<p class="cost">The files an agent reads and writes to add a shape come to about ${Math.round((inTok + outTok) / 1000)} K tokens: the contract, one reference object, and the three small files it writes, with two check runs. That is around $${usd.toFixed(2)} at Claude Opus 5.5 list prices (2026-10-06), before the agent's own system prompt and reasoning, which a full session adds on top. Codex reads the same files.</p>`;
-  const live = { 'Four layers': layers, Universe: universe, Catalogue: catalogue + cost, Performance: numbers };
+  const live = { 'Five layers': bandStage(layers), Universe: bandStage(universe), Catalogue: bandStage(catalogue) + cost, Performance: numbers };
   const main = `<div class="landing">${readFileSync('site/src/intro.md', 'utf8').split(/^(?=## )/m).map((s) => {
     const h = s.match(/^## (.*)/)[1];
     return `<section class="band" id="${h.toLowerCase().replace(/\s+/g, '-')}">${md(s)}${live[h] ?? ''}</section>`;
@@ -246,7 +251,7 @@ shades.forEach((sh) => {
   page(`shades/${sh.name}.html`, { title: sh.name, description: sh.description, main: `<h1>${esc(sh.name)}</h1><p class="lede">${esc(sh.description)}</p>${preview({ sceneAttrs: `shading="${sh.name}"`, inner: `<sd-orb size="220px" color="${colorOf(0)}" animation="idle"></sd-orb>`, controls, prompt })}${rows.length ? `<h2>Options</h2>${optionsTable(rows)}` : ''}<h2>Notes</h2>${md(sh.readme.replace(/^# .*\n/, ''))}<p>Put <code>shading="${sh.name}"</code> on a scene to shade every object in it, or on one object. Compare all shades on the <a href="../shades.html">Shades page</a>.</p>${license}` });
 });
 {
-  const row = (sh, i) => `<li><h2><a href="shades/${sh.name}.html">${esc(sh.name)}</a></h2><p>${esc(sh.description)}</p><sd-scene class="row" dpr="1.5" shading="${sh.name}" interaction="hover-lift"><ul class="catalogue compare">${objects.map((o, k) => `<li><${o.tag} size="96px" animation="idle" color="${colorOf(k)}"></${o.tag}></li>`).join('')}</ul></sd-scene></li>`;
+  const row = (sh, i) => `<li><h2><a href="shades/${sh.name}.html">${esc(sh.name)}</a></h2><p>${esc(sh.description)}</p>${bandStage(`<sd-scene class="row" dpr="1.5" shading="${sh.name}" interaction="hover-lift"><ul class="catalogue compare">${objects.map((o, k) => `<li><${o.tag} size="96px" animation="idle" color="${colorOf(k)}"></${o.tag}></li>`).join('')}</ul></sd-scene>`)}</li>`;
   page('shades.html', { title: 'Shades', description: 'Every shade on every object, in both themes. Pick the one that reads best on your background.', main: `<h1>Shades</h1><p class="lede">Every shade on every object. Use the Theme button to compare them on dark and on light. <code>shading="auto"</code> is <code>glass</code> in the dark theme and <code>${LIGHT_SHADE}</code> is the light default today.</p><ul class="compare-rows">${shades.map(row).join('')}</ul><p>Set <code>shading</code> on a scene to shade everything in it, or on one object. Each shade page has its parameters and the markup to copy; the contract for adding a shade is in <a href="skill.md">skill.md</a>.</p>${license}` });
 }
 
@@ -284,7 +289,7 @@ interactions.forEach((i) => {
   const spec = JSON.stringify({ controls: [{ kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' }], prompt: '' });
   const stat = (k, label) => `<div><dt>${label}</dt><dd data-k="${k}"></dd></div>`;
   const meter = `<section class="panel">
-  <div class="stage scatter"><sd-scene id="demo" data-keep-style style="position:relative;height:100%;min-height:340px" interaction="gravity hover-lift" gravity-strength="0.6">${sceneInner}</sd-scene></div>
+  <div class="stage scatter">${badge()}<sd-scene id="demo" data-keep-style style="position:relative;height:100%;min-height:340px" interaction="gravity hover-lift" gravity-strength="0.6">${sceneInner}</sd-scene></div>
   <form id="controls" class="controls" onsubmit="return false"></form>
   <dl class="meter" id="meter">${stat('cpu', 'Frame (CPU)')}${stat('gpu', 'Frame (GPU)')}${stat('fps', 'fps')}${stat('dpr', 'Pixel ratio')}${stat('space', 'Color space')}</dl>
 </section>

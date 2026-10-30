@@ -112,7 +112,14 @@ td:first-child code { white-space: nowrap; }
 .bench td.bar { width: 40%; vertical-align: middle; }
 .bench td.bar span { display: block; width: 0; height: 6px; border-radius: 3px; background: var(--accent); transition: width 0.3s; }
 /* Out of the flow, just above the dock's right edge, so it never changes how the dock wraps. */
-.dock .readout { position: absolute; right: 16px; bottom: calc(100% + 8px); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+/* fps badge: top-right of every stage, big figures, color says when a scene struggles */
+.fps { position: absolute; top: 12px; right: 12px; z-index: 2; display: inline-flex; align-items: baseline; gap: 4px; padding: 6px 12px; border-radius: 999px; background: color-mix(in srgb, var(--bg) 70%, transparent); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: var(--fg); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; line-height: 1; }
+.fps b { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+.fps span { font-size: 12px; color: var(--muted); }
+.fps.warn b { color: #e7b53b; }
+.fps.bad b { color: #ff6b6b; }
+.band-stage { position: relative; }
+.band-stage > .fps { top: 8px; right: 8px; }
 .foot { display: flex; justify-content: space-between; gap: 16px; padding: 18px 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 .foot a { color: var(--fg); }
 
@@ -161,7 +168,6 @@ td:first-child code { white-space: nowrap; }
   .dock .btn { margin-left: 0; }
   .dock label, .dock .btn { flex: 1 1 40%; }
   .hero-full #disc { display: none; }
-  .dock .readout { display: none; }
 }
 
 /* Landing under the hero: one band per job. Inside a live row the canvas sits above
