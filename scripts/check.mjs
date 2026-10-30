@@ -666,6 +666,16 @@ async function site() {
   const h2s = [...index.slice(index.indexOf('<main')).matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
   const ORDER = ['Built for agents', 'Install', 'Four layers', 'Universe', 'Catalogue', 'Performance', 'Details'];
   { const band = index.match(/<sd-universe class="band-universe"[^>]*>/)?.[0] ?? ''; if (!/\bcollide\b/.test(band) || /\bgravity\b/.test(band)) fail(`site/index: the universe band should run with collide and no gravity: ${band}`); }
+  // Side menu: two tiers, four collapsible catalogue groups with counts; only the current page's group is open.
+  { const side = (f) => text(f).match(/<nav class="side"[\s\S]*?<\/nav>/)?.[0] ?? '';
+    const groups = (h) => [...h.matchAll(/<details[^>]*>\s*<summary>([^<]*)<span>([0-9]+)<\/span>/g)].map((m) => m[1].trim() + ' ' + m[2]);
+    const idx = side('index.html'), orb = side('objects/orb.html'), glow = side('effects/glow.html');
+    if (groups(idx).join('|') !== 'Objects 12|Animations 5|Effects 13|Interactions 7') fail(`site/index: side menu groups ${JSON.stringify(groups(idx))}`);
+    if ((idx.match(/<details open/g) ?? []).length !== 0) fail('site/index: a catalogue group is open on the Introduction');
+    const openOrb = orb.match(/<details open[\s\S]*?<\/details>/g) ?? [];
+    if (openOrb.length !== 1 || !/aria-current="page"/.test(openOrb[0]) || !/>Objects\s*</.test(openOrb[0])) fail(`site/objects/orb: expected only the Objects group open with the current link inside, got ${openOrb.length} open`);
+    if (!/<details open[^>]*>\s*<summary>Effects/.test(glow)) fail('site/effects/glow: the Effects group should be open');
+    if (!/<h2>Guide<\/h2>/.test(idx) || !/<h2>Catalogue<\/h2>/.test(idx)) fail('site/index: side menu tiers Guide and Catalogue missing'); }
   { const band = index.slice(index.indexOf('id="catalogue"'), index.indexOf('id="performance"'));
     if (!/about [0-9]+ K tokens/.test(band) || !/\$[0-9]+\.[0-9]{2}/.test(band) || !band.includes('2026-10-06')) fail('site/index: the catalogue band should say what a shape costs an agent (K tokens, dollars, price date)'); }
   if (h2s.join('|') !== ORDER.join('|')) fail(`site/index: sections ${JSON.stringify(h2s)}, expected ${JSON.stringify(ORDER)}`);

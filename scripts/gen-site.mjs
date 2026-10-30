@@ -59,11 +59,10 @@ function md(src) {
 
 function nav(root, current) {
   const item = (href, label) => `<li><a href="${root}${href}"${href === current ? ' aria-current="page"' : ''}>${esc(label)}</a></li>`;
-  return `<h2>Getting started</h2><ul>${item('index.html', 'Introduction')}${item('accessibility.html', 'Accessibility')}${item('scene.html', 'Scene and gravity')}${item('universe.html', 'Universe')}${item('performance.html', 'Performance')}</ul>
-<h2>Objects</h2><ul>${objects.map((o) => item(`objects/${o.name}.html`, o.name)).join('')}</ul>
-<h2>Animations</h2><ul>${animations.map((a) => item(`animations/${a.name}.html`, a.name)).join('')}</ul>
-<h2>Effects</h2><ul>${effects.map((e) => item(`effects/${e.name}.html`, e.name)).join('')}</ul>
-<h2>Interactions</h2><ul>${interactions.map((i) => item(`interactions/${i.name}.html`, i.name)).join('')}</ul>`;
+  // Two tiers: the guide, always open, then the catalogue as four collapsible groups. Only the current page's group starts open.
+  const group = (label, dir, list) => { const open = current.startsWith(dir + '/'); return `<details${open ? ' open' : ''}><summary>${label} <span>${list.length}</span></summary><ul>${list.map((x) => item(`${dir}/${x.name}.html`, x.name)).join('')}</ul></details>`; };
+  return `<h2>Guide</h2><ul>${item('index.html', 'Introduction')}${item('accessibility.html', 'Accessibility')}${item('scene.html', 'Scene and gravity')}${item('universe.html', 'Universe')}${item('performance.html', 'Performance')}</ul>
+<h2>Catalogue</h2>${group('Objects', 'objects', objects)}${group('Animations', 'animations', animations)}${group('Effects', 'effects', effects)}${group('Interactions', 'interactions', interactions)}`;
 }
 
 function page(path, { title, description, main, hero = '' }) {
