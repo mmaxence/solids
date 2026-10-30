@@ -112,6 +112,7 @@ function serve(root) {
   let resolveResult;
   const result = new Promise((r) => (resolveResult = r));
   const srv = createServer((req, res) => {
+    if (req.method === 'POST' && req.url === '/__progress') { let b = ''; req.on('data', (d) => (b += d)); req.on('end', () => { res.end('ok'); if (process.env.SD_TRACE) console.error('progress:', b); }); return; }
     if (req.method === 'POST' && req.url === '/__result') {
       let body = ''; req.on('data', (d) => (body += d)); req.on('end', () => { res.end('ok'); resolveResult(JSON.parse(body)); });
       return;
@@ -689,6 +690,32 @@ const Y = result.cases.hard = {};
   Y.loneTheme = light === 1 && dark === 0 ? 1 : [light, dark]; lt.remove(); }
 { const bad = []; for (const t of tags) { const e = document.createElement(t); for (const a of e.constructor.observedAttributes) { const k = a.replace(/-([a-z])/g, (_, c) => c.toUpperCase()); if (Object.hasOwn(e, k) || k in HTMLElement.prototype) bad.push(t + '.' + k); } }
   Y.reflect = bad; }
+// Case Z: performance changes that must not change pixels. The march far limit and the bounding-sphere cull are undone through a
+// shaderSource wrapper and every object must render byte for byte the same; a scene with no effect keeps no buffers and matches the
+// buffer path; an offscreen scene compiles nothing; regenerating 120 bodies measures once; collide at 120 bodies stays under budget.
+const Z = result.cases.perf2 = {};
+const mark = (l) => fetch('/__progress', { method: 'POST', body: l }).catch(() => {});
+mark('Z start');
+{ const dump = (sc) => { const b = read(sc); return b; };
+  const mkAll = () => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); for (const t of tags) { const o = sc.appendChild(document.createElement(t)); o.setAttribute('state', 'active'); o.setAttribute('size', '96px'); } return sc; };
+  const a = mkAll(); await frame(); await frame(); const bufA = dump(a);
+  const orig = WebGL2RenderingContext.prototype.shaderSource; let patched = 0;
+  WebGL2RenderingContext.prototype.shaderSource = function (sh, src) { const n = src.replace('if (t > 4.6) break;', 'if (t > 7.0) break;').replace('if (sdMisses(ro, rd)) return vec4(0.0); // cull', ''); if (n !== src) patched++; return orig.call(this, sh, n); };
+  const b = mkAll(); await frame(); await frame(); const bufB = dump(b);
+  WebGL2RenderingContext.prototype.shaderSource = orig;
+  let diff = 0; for (let i = 0; i < bufA.length; i++) if (bufA[i] !== bufB[i]) diff++;
+  Z.march = { patched, bytesDiffer: diff, pixels: pixels(a) }; free(a, b); mark('Z march done'); }
+{ const plain = mk({}), buffered = mk({ effect: 'grain', 'grain-mix': '0' }); await frame(); await frame();
+  const x = read(plain), y = read(buffered); let diff = 0; for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) diff++;
+  Z.noFx = { buffers: !!plain.fbos?.scene, bytesDiffer: diff, pixels: pixels(plain) }; free(plain, buffered); mark('Z nofx done'); }
+{ let links = 0; const lp = WebGL2RenderingContext.prototype.linkProgram; WebGL2RenderingContext.prototype.linkProgram = function (p) { links++; return lp.call(this, p); };
+  const far = document.createElement('sd-scene'); far.setAttribute('theme', 'dark'); far.style.cssText = 'position:absolute;top:300vh;left:0;width:200px;height:200px'; far.appendChild(document.createElement(tags[0])); document.body.appendChild(far);
+  for (let i = 0; i < 10; i++) await frame();
+  Z.offscreen = { fps: far.fps, links }; WebGL2RenderingContext.prototype.linkProgram = lp; free(far); mark('Z offscreen done'); }
+{ const um = uni({ count: '0', camera: '', drift: '0' }); let measures = 0; const m0 = um.measure.bind(um); um.measure = () => { measures++; m0(); };
+  um.setAttribute('count', '120'); mark('Z regen'); um.frame(0, 16); Z.measures = measures; um.remove(); mark('Z measures done'); } // frame() by hand: 120 bodies in software GL are slow
+{ const uc = uni({ count: '120', seed: '7', collide: '', camera: '', drift: '0.5' }); uc.step(16);
+  const t0 = performance.now(); for (let i = 0; i < 60; i++) uc.step(16); Z.collideMs = (performance.now() - t0) / 60; uc.remove(); mark('Z collide done'); }
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
@@ -701,8 +728,8 @@ async function smoke() {
   writeFileSync('scripts/.check-page.html', CHECK_PAGE);
   const { srv, port, result } = await serve('.');
   try {
-    const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 90000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard']) r.cases[k] ??= {};
+    const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 150000);
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
@@ -816,6 +843,12 @@ async function smoke() {
     if (!(uv.tiltDir?.right > 0) || !(uv.tiltDir?.down > 0)) fail(`universe pointer tilt should move front shapes toward the pointer: ${js(uv.tiltDir)}`);
     if (!(r.cases.quad?.outside > 50)) fail(`quad does not follow scale: ${r.cases.quad?.outside} px painted beyond 1.5x the rect at scale 2 (expected > 50)`);
     if (!r.cases.phase?.differ) fail('phase="2" should offset the spin against a sibling without one');
+    { const Z = r.cases.perf2 ?? {}, j = (v) => JSON.stringify(v);
+      if (!(Z.march?.patched >= 2) || Z.march?.bytesDiffer !== 0 || !(Z.march?.pixels > 1000)) fail(`march far limit 4.6 and the bounding-sphere cull must be present and pixel-identical to the old march: ${j(Z.march)} (measures ${Z.measures}, collide ${Z.collideMs?.toFixed(2)} ms)`);
+      if (Z.noFx?.buffers !== false || Z.noFx?.bytesDiffer !== 0 || !(Z.noFx?.pixels > 100)) fail(`a scene with no effect should keep no buffers and match the buffer path byte for byte: ${j(Z.noFx)}`);
+      if (!(Z.offscreen?.fps === 0) || !(Z.offscreen?.links === 0)) fail(`an offscreen scene should not run or compile before it is seen: ${j(Z.offscreen)}`);
+      if (!(Z.measures <= 2)) fail(`regenerating 120 bodies measured the scene ${Z.measures} times (expected at most 2)`);
+      if (!(Z.collideMs < 0.4)) fail(`universe collide at 120 bodies takes ${Z.collideMs?.toFixed(2)} ms per step (expected under 0.8)`); }
     { const Y = r.cases.hard ?? {}, j = (v) => JSON.stringify(v);
       if (!(Y.clamp?.effect === Y.clamp?.effectMin) || Y.clamp?.uniform !== 0 || Y.clamp?.speed !== 1 || Y.clamp?.state !== 0.25) fail(`params should clamp and stay finite: ${j(Y.clamp)}`);
       if (!(Y.fall?.dist < 300)) fail(`gravity-strength 100 flung a faller ${Y.fall?.dist?.toFixed(0)} px away (expected under 300)`);

@@ -38,7 +38,7 @@ float sdMarch(vec3 ro, vec3 rd, out float minD) {
     float d = map(p);
     minD = min(minD, d);
     if (d < 1e-3) return t;
-    if (t > 7.0) break;
+    if (t > 4.6) break; // every ray has left the r = 1.6 bound (|p| < 0.8 plus the halo's reach) by here; pixel-identical to 7.0
     t += d * 0.9;
   }
   return -1.0;
@@ -54,9 +54,12 @@ vec3 sdView(vec3 v) { return uRotation * v; }
 // A shade (src/shades/<name>/frag.glsl) defines these two: the color of a surface hit and the tint of the soft edge on a miss.
 vec4 sdShade(vec3 p, vec3 n, vec3 rd, float rim);
 vec3 sdEdge();
+// True when the ray never enters the r = 1.6 sphere that holds every shape and halo (the quad corners).
+bool sdMisses(vec3 ro, vec3 rd) { float b = dot(ro, rd); return b * b - dot(ro, ro) + 2.56 <= 0.0; }
 // Default renderer: march, shade, soft edge, optional halo on miss.
 vec4 sdRender(float rim, float glow) {
   vec3 ro, rd; sdRay(ro, rd);
+  if (sdMisses(ro, rd)) return vec4(0.0); // cull
   float minD; float t = sdMarch(ro, rd, minD);
   float px = 2.5 / min(uResolution.x, uResolution.y) / uScale;
   if (t < 0.0) {

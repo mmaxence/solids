@@ -203,7 +203,8 @@ export class SdUniverse extends SdScene {
       if (drift > 0) for (let k = 0; k < 3; k++) q[k] += Math.sin(2 * Math.PI * w[k * 3] * this.simTime + w[k * 3 + 1]) * w[k * 3 + 2] * drift;
       const x1 = q[0] * cy + q[2] * sy, z1 = -q[0] * sy + q[2] * cy;
       const y2 = q[1] * cp - z1 * sp, z2 = q[1] * sp + z1 * cp;
-      const s = clamp(D / (D - z2), 0.3, 3), rc = b.el.rect!;
+      const rc = b.el.rect; if (!rc) continue; // not measured yet (a step before the first frame)
+      const s = clamp(D / (D - z2), 0.3, 3);
       // From the box center, whatever the child's own layout puts it (author CSS, a framework's wrapper).
       o.offset[0] += W / 2 - (rc.x + rc.width / 2) + x1 * s * Ux; o.offset[1] += H / 2 - (rc.y + rc.height / 2) - y2 * s * Uy;
       o.scale *= s; o.z = z2;
@@ -214,23 +215,25 @@ export class SdUniverse extends SdScene {
     }
   }
 
-  /** Elastic sphere collisions: separate overlapping pairs and swap the normal velocity, four passes. Mass is the cubed radius. */
+  /** Elastic sphere collisions: separate overlapping pairs and swap the normal velocity, four passes. Mass is the cubed radius. Scalar math, no allocation per pair. */
   private collide(bodies: Body[]) {
     for (let pass = 0; pass < 4; pass++) {
       for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
         const a = bodies[i], b = bodies[j];
-        const d = sub(b.p, a.p); let l = len(d);
-        const min = a.r + b.r;
-        if (l >= min) continue;
-        const nrm: V3 = l < 1e-6 ? [1, 0, 0] : [d[0] / l, d[1] / l, d[2] / l]; l = l || 0;
-        const wi = 1 / (a.r * a.r * a.r), wj = 1 / (b.r * b.r * b.r), sum = wi + wj;
-        for (let k = 0; k < 3; k++) { a.p[k] -= nrm[k] * (min - l) * (wi / sum); b.p[k] += nrm[k] * (min - l) * (wj / sum); }
+        const dx = b.p[0] - a.p[0], dy = b.p[1] - a.p[1], dz = b.p[2] - a.p[2];
+        const min = a.r + b.r, l2 = dx * dx + dy * dy + dz * dz;
+        if (l2 >= min * min) continue;
+        const l = Math.sqrt(l2);
+        const nx = l < 1e-6 ? 1 : dx / l, ny = l < 1e-6 ? 0 : dy / l, nz = l < 1e-6 ? 0 : dz / l;
+        const wi = 1 / (a.r * a.r * a.r), wj = 1 / (b.r * b.r * b.r), sum = wi + wj, push = min - l;
+        a.p[0] -= nx * push * (wi / sum); a.p[1] -= ny * push * (wi / sum); a.p[2] -= nz * push * (wi / sum);
+        b.p[0] += nx * push * (wj / sum); b.p[1] += ny * push * (wj / sum); b.p[2] += nz * push * (wj / sum);
         // Normal velocity exchange, only when approaching.
-        const av = a.v, bv = b.v;
-        const rel = (bv[0] - av[0]) * nrm[0] + (bv[1] - av[1]) * nrm[1] + (bv[2] - av[2]) * nrm[2];
+        const rel = (b.v[0] - a.v[0]) * nx + (b.v[1] - a.v[1]) * ny + (b.v[2] - a.v[2]) * nz;
         if (rel >= 0) continue;
         const jmp = (-2 * rel) / sum;
-        for (let k = 0; k < 3; k++) { a.v[k] -= nrm[k] * jmp * wi; b.v[k] += nrm[k] * jmp * wj; }
+        a.v[0] -= nx * jmp * wi; a.v[1] -= ny * jmp * wi; a.v[2] -= nz * jmp * wi;
+        b.v[0] += nx * jmp * wj; b.v[1] += ny * jmp * wj; b.v[2] += nz * jmp * wj;
       }
     }
   }

@@ -27,12 +27,14 @@ export class SdScene extends HTMLElement {
   private gpuOn = false;
   private query: WebGLQuery | null = null;   // one timer query in flight at a time
   private raf = 0; private last = 0;
-  private visible = true; private paused = false;
+  private visible = false; private paused = false;   // unseen until the IntersectionObserver says otherwise, so offscreen scenes compile nothing
+  private dirty = false;                   // objects attached since the last sort and measure
+  private frames = 0;
   private failed = new Set<string>();     // effect names whose shader failed on this context: passed through, logged once
   private maxTex = 8192;
   private ro: ResizeObserver | null = null;
   private io: IntersectionObserver | null = null;
-  private fbos: { scene: FBO; a: FBO; b: FBO; pool: Map<string, [FBO, FBO, number]>; used: Set<string> } | null = null;
+  private fbos: { scene: FBO | null; a: FBO | null; b: FBO | null; pool: Map<string, [FBO, FBO, number]>; used: Set<string> } | null = null;
   private clock = 0;   // shader time; stops advancing under reduced motion
   /** The scene clock in seconds: shader time, paused with the scene. */
   get time() { return this.clock; }
@@ -60,6 +62,9 @@ export class SdScene extends HTMLElement {
     } else if (this.gl.isContextLost()) this.gl.getExtension('WEBGL_lose_context')?.restoreContext(); // released on disconnect, see below
     this.ro = new ResizeObserver(() => this.measure());
     this.ro.observe(this);
+    // Start only if on screen now; the observer takes over from its first report (offscreen scenes then compile nothing on load).
+    const r = this.getBoundingClientRect();
+    this.visible = r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
     this.io = new IntersectionObserver((es) => { this.visible = es[es.length - 1].isIntersecting; this.visible ? this.start() : this.stop(); });
     this.io.observe(this);
     this.addEventListener('pointermove', this.onPointer);
@@ -91,10 +96,14 @@ export class SdScene extends HTMLElement {
   attach(o: SdObject) {
     if (this.objects.has(o)) return;
     this.objects.add(o); o.scene = this; o.recolor();
-    // Keep DOM order: "first center wins" and draw-order ties follow the markup.
-    this.objects = new Set([...this.objects].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)));
     if (this.isConnected && !this.gl) o.dataset.fallback = '';
     this.ro?.observe(o);
+    this.dirty = true; // sorted and measured once, at the next frame: a universe appends 120 at a time
+  }
+  /** Keep DOM order ("first center wins", draw-order ties follow the markup) and measure, once per batch of attaches. */
+  private settle() {
+    this.dirty = false;
+    this.objects = new Set([...this.objects].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)));
     this.measure();
   }
   detach(o: SdObject) { this.objects.delete(o); o.scene = null; this.ro?.unobserve(o); if (this.isConnected) this.measure(); }
@@ -150,7 +159,7 @@ export class SdScene extends HTMLElement {
     try { this.render(gl, W, H, t, dt); }
     finally {
       if (timer) gl.endQuery(timer.TIME_ELAPSED_EXT);
-      this.frameTime = ema(this.frameTime, performance.now() - start);
+      if (this.frames++ > 0) this.frameTime = ema(this.frameTime, performance.now() - start); // the first frame compiles every program
     }
   }
 
@@ -173,29 +182,35 @@ export class SdScene extends HTMLElement {
   private render(gl: WebGL2RenderingContext, W: number, H: number, t: number, dt: number) {
     if (!reducedMotion()) this.clock = t;
     t = this.clock;
+    if (this.dirty) this.settle();
     for (const o of this.objects) o.update(dt);
     this.step(dt);
     for (const n of this.interactionNames) interactions.get(n)?.frame(this, dt, this.pointer);
-    const f = this.fbos ??= { scene: createFBO(gl, W, H), a: createFBO(gl, W, H), b: createFBO(gl, W, H), pool: new Map(), used: new Set() };
-    resizeFBO(gl, f.scene, W, H); resizeFBO(gl, f.a, W, H); resizeFBO(gl, f.b, W, H);
+    const f = this.fbos ??= { scene: null, a: null, b: null, pool: new Map(), used: new Set() };
     const theme = this.themeValue;
+    const chain = this.effectNames.filter((n) => effects.has(n));
+    // Full-size buffers only when a scene effect needs them; otherwise objects go straight to the canvas (bit-identical, no copy).
+    if (chain.length) { f.scene ??= createFBO(gl, W, H); f.a ??= createFBO(gl, W, H); f.b ??= createFBO(gl, W, H); resizeFBO(gl, f.scene, W, H); resizeFBO(gl, f.a, W, H); resizeFBO(gl, f.b, W, H); }
+    else if (f.scene) { deleteFBO(gl, f.scene); deleteFBO(gl, f.a!); deleteFBO(gl, f.b!); f.scene = f.a = f.b = null; }
+    const target = chain.length ? f.scene : null;
 
-    // 1. Objects into the scene buffer.
-    this.bind(gl, f.scene, 0, 0, W, H, true);
+    // 1. Objects into the scene buffer, or the canvas.
+    this.bind(gl, target, 0, 0, W, H, true);
     const sorted = [...this.objects].filter((o) => o.rect && !o.broken).sort((a, b) => (a.anim.z || 0) - (b.anim.z || 0));
-    for (const o of sorted) this.draw(gl, o, t, theme, f);
+    for (const o of sorted) this.draw(gl, o, t, theme, f, target);
 
     // 2. Scene effect chain, ping-pong, then blit to the canvas.
-    let src = f.scene;
-    const chain = this.effectNames.filter((n) => effects.has(n));
-    for (const name of chain) {
-      const dst = src === f.a ? f.b : f.a;
-      this.bind(gl, dst, 0, 0, W, H, true);
-      this.pass(gl, name, src, this.effectParams[name], [W, H], t, theme);
-      src = dst;
+    if (chain.length) {
+      let src = f.scene!;
+      for (const name of chain) {
+        const dst = src === f.a ? f.b! : f.a!;
+        this.bind(gl, dst, 0, 0, W, H, true);
+        this.pass(gl, name, src, this.effectParams[name], [W, H], t, theme);
+        src = dst;
+      }
+      this.bind(gl, null, 0, 0, W, H, true);
+      this.blit(gl, src);
     }
-    this.bind(gl, null, 0, 0, W, H, true);
-    this.blit(gl, src);
     // Drop per-object buffers for sizes unused for 60 frames: quads change size as objects scale, so a size that
     // skipped a few frames usually comes back, and reallocating it every time would stall the GPU.
     for (const [key, p] of f.pool) { if (f.used.has(key)) p[2] = 0; else if (++p[2] > 60) { deleteFBO(gl, p[0]); deleteFBO(gl, p[1]); f.pool.delete(key); } }
@@ -208,14 +223,13 @@ export class SdScene extends HTMLElement {
   private bind(gl: WebGL2RenderingContext, fbo: FBO | null, x: number, y: number, w: number, h: number, clear: boolean) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo?.fb ?? null);
     gl.viewport(x, y, w, h);
-    gl.scissor(x, y, w, h);
-    gl.enable(gl.SCISSOR_TEST);
-    if (clear) { gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
+    gl.scissor(x, y, w, h); // scissor test and clear color are set once in initState
+    if (clear) gl.clear(gl.COLOR_BUFFER_BIT);
   }
   private blit(gl: WebGL2RenderingContext, src: FBO) {
     const p = program(gl, copyFrag, 'effect');
     gl.useProgram(p.prog);
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.tex);
+    gl.bindTexture(gl.TEXTURE_2D, src.tex); // texture unit 0 is active for good
     setUniforms(gl, p, { uScene: [0] });
     drawQuad(gl);
   }
@@ -226,14 +240,14 @@ export class SdScene extends HTMLElement {
     try { p = program(gl, e.frag, 'effect'); }
     catch (err) { this.failed.add(name); console.error(`[solids] effect "${name}" shader failed:\n${(err as Error).message}`); this.blit(gl, src); return; }
     gl.useProgram(p.prog);
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.tex);
+    gl.bindTexture(gl.TEXTURE_2D, src.tex);
     const defaults: Record<string, number> = {};
     for (const d of e.manifest.params) defaults[d.name] = d.default as number;
     setUniforms(gl, p, { uScene: [0], uResolution: res, uTime: t, uTheme: theme, uMix: params?.mix ?? 1, ...defaults, ...params });
     drawQuad(gl);
   }
 
-  private draw(gl: WebGL2RenderingContext, o: SdObject, t: number, theme: number, f: NonNullable<typeof this.fbos>, W = this.canvas.width, H = this.canvas.height) {
+  private draw(gl: WebGL2RenderingContext, o: SdObject, t: number, theme: number, f: NonNullable<typeof this.fbos>, target: FBO | null, W = this.canvas.width, H = this.canvas.height) {
     const r = o.rect!;
     const bleed = o.manifest.bleed ?? 1.5;
     const [cx, cy] = o.drawCenter();
@@ -263,7 +277,7 @@ export class SdScene extends HTMLElement {
       f.used.add(key);
       this.bind(gl, pair[0], 0, 0, w, h, true);
     }
-    else this.bind(gl, f.scene, x, y, w, h, false);
+    else this.bind(gl, target, x, y, w, h, false);
     gl.useProgram(p.prog);
     const px = this.pointer.inside ? [((this.pointer.x - cx) / qw) * 2, -((this.pointer.y - cy) / qh) * 2] : [0, 0];
     setUniforms(gl, p, {
@@ -280,7 +294,7 @@ export class SdScene extends HTMLElement {
       this.pass(gl, name, src, name === 'defocus' && o.blurPx >= 0.5 ? { ...o.effectParams[name], radius: o.blurPx } : o.effectParams[name], [w, h], t, theme);
       src = dst;
     }
-    this.bind(gl, f.scene, x, y, w, h, false);
+    this.bind(gl, target, x, y, w, h, false);
     this.blit(gl, src);
   }
 }

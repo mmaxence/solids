@@ -4,7 +4,7 @@ import prelude from './prelude.glsl';
 import effectPrelude from './effect.glsl';
 
 export type Program = { prog: WebGLProgram; loc: Map<string, WebGLUniformLocation>; };
-const cache = new WeakMap<WebGL2RenderingContext, Map<string, Program>>();
+const cache = new WeakMap<WebGL2RenderingContext, Map<string, Map<string, Program>>>();
 
 export type ColorSpace = 'display-p3' | 'srgb';
 
@@ -23,6 +23,9 @@ export function initState(gl: WebGL2RenderingContext) {
   gl.bindVertexArray(gl.createVertexArray());
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  gl.enable(gl.SCISSOR_TEST);
+  gl.clearColor(0, 0, 0, 0);
+  gl.activeTexture(gl.TEXTURE0);
 }
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string) {
@@ -35,10 +38,13 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string) {
 
 /** 'object' fragments get the raymarch prelude plus a shade; 'effect' fragments get the post-pass prelude. One program per object and shade pair. */
 export function program(gl: WebGL2RenderingContext, frag: string, kind: 'object' | 'effect' = 'object', shade?: { name: string; frag: string }): Program {
+  // Keyed by the fragment string itself (one instance per object, its hash is cached) then by kind and shade: no per-draw concatenation.
   let m = cache.get(gl);
   if (!m) cache.set(gl, (m = new Map()));
-  const key = kind[0] + (shade?.name ?? '') + '\n' + frag;
-  const hit = m.get(key);
+  let byFrag = m.get(frag);
+  if (!byFrag) m.set(frag, (byFrag = new Map()));
+  const key = kind[0] + (shade?.name ?? '');
+  const hit = byFrag.get(key);
   if (hit) return hit;
   const src = (kind === 'object' ? prelude + '\n' + (shade?.frag ?? '') : effectPrelude) + '\n' + frag;
   const prog = gl.createProgram()!;
@@ -50,7 +56,7 @@ export function program(gl: WebGL2RenderingContext, frag: string, kind: 'object'
   const n = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS);
   for (let i = 0; i < n; i++) { const info = gl.getActiveUniform(prog, i)!; loc.set(info.name, gl.getUniformLocation(prog, info.name)!); }
   const p = { prog, loc };
-  m.set(key, p);
+  byFrag.set(key, p);
   return p;
 }
 

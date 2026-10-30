@@ -296,7 +296,7 @@ interactions.forEach((i) => {
 <script type="application/json" id="spec">${spec}</script>`;
   const row = (attr, label) => `<tr ${attr}><td>${label}</td><td></td><td class="bar"><span></span></td><td></td></tr>`;
   const bench = `<div class="bench-run"><button type="button" class="btn" id="bench-run">Run benchmark</button><span id="bench-status" aria-live="polite"></span></div>
-<table class="bench" id="bench"><thead><tr><th>Subject</th><th>CPU ms</th><th>Relative</th><th>GPU ms</th></tr></thead><tbody>
+<table class="bench" id="bench"><thead><tr><th>Subject</th><th>ms per frame (GPU included)</th><th>Relative</th><th>GPU ms</th></tr></thead><tbody>
 ${objects.map((o) => row(`data-tag="${o.tag}"`, `<a href="objects/${o.name}.html">${o.name}</a>`)).join('\n')}
 ${effects.map((e) => row(`data-effect="${e.name}"`, `<a href="effects/${e.name}.html">${e.name}</a> on an orb`)).join('\n')}
 </tbody></table>`;
