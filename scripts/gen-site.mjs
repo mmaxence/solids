@@ -123,17 +123,17 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
 
 // --- Introduction ---
 {
-  // Hand-placed hero. Orbiters sit at five distances from 22 to 42 vmin, one ring each (inner rings turn faster); the others float at the edges.
+  // Hand-placed hero. Orbiters sit at five distances from 20 to 32 vmin, one ring each (inner rings turn faster); the others float at the edges.
   const sz = (px) => `clamp(${Math.round(px * 0.6)}px, ${(px / 6.5).toFixed(1)}vmin, ${Math.round(px * 1.3)}px)`;
   const orbit = (tag, id, size, dx, dy, color, anim) => `<${tag} id="${id}" size="${sz(size)}" color="${color}" animation="${anim}" style="position:absolute;left:calc(50% + ${dx}vmin - ${sz(size)} / 2);top:calc(50% + ${dy}vmin - ${sz(size)} / 2)"></${tag}>`;
   const edge = (tag, id, size, left, top, color, anim) => `<${tag} id="${id}" gravity="none" size="${sz(size)}" color="${color}" animation="${anim}" style="position:absolute;left:${left}%;top:${top}%"></${tag}>`;
   const heroInner = [
     `<sd-orb id="orb" gravity="center" size="${sz(200)}" color="${colorOf(0)}" animation="breathe" glow="0.8" style="position:absolute;left:calc(50% - ${sz(200)} / 2);top:calc(50% - ${sz(200)} / 2)"></sd-orb>`,
-    orbit('sd-ring', 'ring', 90, 26.1, -7, colorOf(1), 'spin'),
-    orbit('sd-crystal', 'crystal', 80, -29.4, 12.6, colorOf(2), 'idle'),
-    orbit('sd-knot', 'knot', 84, 25.6, 26.8, colorOf(3), 'spin'),
-    orbit('sd-capsule', 'capsule', 70, -33.1, -25.9, colorOf(4), 'idle'),
-    orbit('sd-star', 'star', 72, 4.3, -21.6, colorOf(5), 'spin'),
+    orbit('sd-ring', 'ring', 90, 22.2, -5.9, colorOf(1), 'spin'),
+    orbit('sd-crystal', 'crystal', 80, -23.9, 10.2, colorOf(2), 'idle'),
+    orbit('sd-knot', 'knot', 84, 20, 21, colorOf(3), 'spin'),
+    orbit('sd-capsule', 'capsule', 70, -25.2, -19.7, colorOf(4), 'idle'),
+    orbit('sd-star', 'star', 72, 3.9, -19.6, colorOf(5), 'spin'),
     edge('sd-cube', 'cube', 64, 9, 60, colorOf(5), 'idle'),
     edge('sd-coil', 'coil', 80, 84, 12, colorOf(3), 'spin'),
     edge('sd-blob', 'blob', 76, 86, 56, colorOf(4), 'float'),
