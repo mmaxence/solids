@@ -7,22 +7,23 @@ const pushes = new WeakMap<SdObject, [number, number]>();
 export const collide: Interaction = {
   meta: {
     name: 'collide',
-    description: 'Objects keep their distance: overlapping neighbors ease apart. List it last so it sees where the other interactions moved things.',
+    description: 'Objects keep their distance: overlapping neighbors ease apart; a gravity center and its orbiters hold still. List it last so it sees where the other interactions moved things.',
     params: [{ name: 'gap', type: 'float', default: 8, min: 0, max: 80, step: 1, label: 'Space kept between objects (px)' }],
   },
   frame(scene, dt) {
     const gap = interactionValue(scene, 'collide', 'gap');
     const objs = [...scene.objects].filter((o) => o.rect);
     // Where each object is drawn this frame, before collide.
-    const start = objs.map((o) => [o.rect!.x + o.rect!.width / 2 + o.anim.offset[0], o.rect!.y + o.rect!.height / 2 + o.anim.offset[1]]);
+    const start = objs.map((o) => o.drawCenter());
     const pos = start.map((p) => [...p]);
-    // A gravity center holds still; its neighbors take the whole push.
-    const free = objs.map((o) => (o.getAttribute('gravity') === 'center' ? 0 : 1));
+    // Pinned objects (a gravity center, its orbiters) hold still; their neighbors take the whole push.
+    const free = objs.map((o) => (o.pinned ? 0 : 1));
+    const rad = objs.map((o) => o.drawRadius());
     // ponytail: four relaxation passes over all pairs, O(n²); fine for a scene's dozen objects.
     for (let pass = 0; pass < 4; pass++) {
       for (let i = 0; i < objs.length; i++) for (let j = i + 1; j < objs.length; j++) {
         let dx = pos[j][0] - pos[i][0], dy = pos[j][1] - pos[i][1];
-        const d = Math.hypot(dx, dy), min = (objs[i].rect!.width + objs[j].rect!.width) / 2 + gap, w = free[i] + free[j];
+        const d = Math.hypot(dx, dy), min = rad[i] + rad[j] + gap, w = free[i] + free[j];
         if (d >= min || !w) continue;
         if (d < 1e-3) { dx = 1; dy = 0; } else { dx /= d; dy /= d; }
         const a = ((min - d) * free[i]) / w, b = ((min - d) * free[j]) / w;

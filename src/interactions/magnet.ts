@@ -22,8 +22,9 @@ export const magnet: Interaction = {
       const cur = pulls.get(o) ?? [0, 0];
       let tx = 0, ty = 0;
       if (pointer.inside) {
-        tx = (pointer.x - o.rect.x - o.rect.width / 2 - o.anim.offset[0]) * strength;
-        ty = (pointer.y - o.rect.y - o.rect.height / 2 - o.anim.offset[1]) * strength;
+        const [cx, cy] = o.drawCenter();
+        tx = (pointer.x - cx) * strength;
+        ty = (pointer.y - cy) * strength;
         const m = Math.hypot(tx, ty);
         if (m > reach) { tx *= reach / m; ty *= reach / m; }
       }

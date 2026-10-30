@@ -4,4 +4,3 @@ site/dist/
 scripts/.check-page.html
 *.log
 scratch/
-dist/sizes.json

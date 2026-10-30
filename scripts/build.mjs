@@ -1,5 +1,5 @@
 import * as esbuild from 'esbuild';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
 const common = {
@@ -27,7 +27,5 @@ await Promise.all([
   esbuild.build({ ...common, outfile: 'dist/solids.js' }),
   esbuild.build({ ...common, outfile: 'dist/core.js', plugins: [stubContent] }),
 ]);
-// Gzipped bytes, read by the site (hero pitch, Performance page) and verified by the check.
-const gz = (f) => gzipSync(readFileSync(f)).length;
-writeFileSync('dist/sizes.json', JSON.stringify({ core: gz('dist/core.js'), full: gz('dist/solids.js') }) + '\n');
-console.log('built dist/solids.js, dist/core.js, dist/sizes.json');
+const gz = (f) => (gzipSync(readFileSync(f)).length / 1024).toFixed(1) + ' KB';
+console.log(`built dist/solids.js (${gz('dist/solids.js')} gzipped), dist/core.js (${gz('dist/core.js')})`);

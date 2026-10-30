@@ -8,7 +8,7 @@ type V3 = [number, number, number];
 export type Body = { el: SdObject; p: V3; v: V3; r: number; tilt: Mat3; wob: number[] };
 
 // The site's six Display P3 picks; browsers without P3 clip them to sRGB.
-const PALETTE = ['color(display-p3 0.55 0.85 1)', 'color(display-p3 0.78 0.66 1)', 'color(display-p3 1 0.55 0.8)', 'color(display-p3 0.5 1 0.85)', 'color(display-p3 1 0.8 0.5)', 'color(display-p3 0.55 1 0.6)'];
+export const PALETTE = ['color(display-p3 0.55 0.85 1)', 'color(display-p3 0.78 0.66 1)', 'color(display-p3 1 0.55 0.8)', 'color(display-p3 0.5 1 0.85)', 'color(display-p3 1 0.8 0.5)', 'color(display-p3 0.55 1 0.6)'];
 const ANIMS = ['idle', 'float', 'spin'];
 const OWN = ['count', 'seed', 'collide', 'camera', 'speed', 'drift', 'perspective', 'depth', 'focus', 'shapes', 'palette'];
 const REGEN = ['count', 'seed', 'shapes', 'palette'];
@@ -37,9 +37,12 @@ export class SdUniverse extends SdScene {
   static get observedAttributes() { return [...SdScene.observedAttributes, ...OWN]; }
   /** Camera angles in radians: yaw around the vertical axis, pitch around the horizontal one. */
   yaw = 0; pitch = 0;
-  bodies: Body[] = [];
+  private body = new WeakMap<SdObject, Body>();   // one per child, made on first sight from the seeded stream
+  private rnd = mulberry32(1);
+  /** The bodies made so far, in DOM order (reading this creates none; step() does, in sorted order). */
+  get bodies(): Body[] { return [...this.objects].map((o) => this.body.get(o)).filter((b): b is Body => !!b); }
   private ready = false;
-  private time = 0;                       // sim clock for the wobble (frozen under reduced motion)
+  private simTime = 0;                       // sim clock for the wobble (frozen under reduced motion)
   private drag: { id: number; x: number; y: number; t: number } | null = null;
   private vel = [0, 0];                   // drag inertia, rad per ms
   private spinGain = 1;                   // eases out while dragging and back in after
@@ -114,18 +117,24 @@ export class SdUniverse extends SdScene {
     this.adopt();
   }
 
-  /** Build the bodies from the current children: `data-pos` (or a seeded spot), size, seeded motion. */
+  /** Reset the seeded motion stream; bodies are made per child on first sight (`bodyOf`), so late children get one too. */
   adopt() {
-    const rnd = mulberry32(num(this.getAttribute('seed'), 1) * 7919 + 17);
-    const kids = this.kids();
-    const sizes = kids.map((el) => num((el.getAttribute('size') ?? '').replace('px', ''), 80));
-    this.bodies = kids.map((el, i) => {
-      const parts = (el.dataset.pos ?? '').split(/\s+/).map(Number);
-      const p: V3 = parts.length === 3 && parts.every((v) => !isNaN(v)) ? [parts[0], parts[1], parts[2]] : norm([rnd() - 0.5, rnd() - 0.5, rnd() - 0.5]).map((v) => v * rnd()) as V3;
-      const v = norm([rnd() - 0.5, rnd() - 0.5, rnd() - 0.5]).map((x) => x * (0.02 + rnd() * 0.04)) as V3;
-      const wob: number[] = []; for (let k = 0; k < 3; k++) wob.push(0.05 + rnd() * 0.1, rnd() * 2 * Math.PI, 0.02 + rnd() * 0.03);
-      return { el, p, v, r: sizes[i] / REF, tilt: rotXYZ((rnd() - 0.5) * 70 * DEG, 0, (rnd() - 0.5) * 70 * DEG), wob };
-    });
+    this.rnd = mulberry32(num(this.getAttribute('seed'), 1) * 7919 + 17);
+    this.body = new WeakMap();
+  }
+  /** The body of a child: `data-pos` (or a seeded spot), size, and seeded drift, wobble and tilt. */
+  private bodyOf(el: SdObject): Body {
+    let b = this.body.get(el);
+    if (b) return b;
+    const rnd = this.rnd;
+    const parts = (el.dataset.pos ?? '').split(/\s+/).map(Number);
+    const p: V3 = parts.length === 3 && parts.every((v) => !isNaN(v)) ? [parts[0], parts[1], parts[2]] : norm([rnd() - 0.5, rnd() - 0.5, rnd() - 0.5]).map((v) => v * rnd()) as V3;
+    const v = norm([rnd() - 0.5, rnd() - 0.5, rnd() - 0.5]).map((x) => x * (0.02 + rnd() * 0.04)) as V3;
+    const wob: number[] = []; for (let k = 0; k < 3; k++) wob.push(0.05 + rnd() * 0.1, rnd() * 2 * Math.PI, 0.02 + rnd() * 0.03);
+    const size = Math.max(num((el.getAttribute('size') ?? '').replace('px', ''), 80), 1);
+    b = { el, p, v, r: size / REF, tilt: rotXYZ((rnd() - 0.5) * 70 * DEG, 0, (rnd() - 0.5) * 70 * DEG), wob };
+    this.body.set(el, b);
+    return b;
   }
 
   private onDown = (e: PointerEvent) => {
@@ -168,15 +177,15 @@ export class SdUniverse extends SdScene {
       const k = Math.exp(-dt / 600); this.vel[0] *= k; this.vel[1] *= k;
     }
     const on = cam.has('pointer') && this.pointer.inside;
-    this.tilt[0] = ease(this.tilt[0], on ? ((this.pointer.x / W) * 2 - 1) * 12 * DEG : 0, dt, 150); // front shapes move toward the pointer
-    this.tilt[1] = ease(this.tilt[1], on ? ((this.pointer.y / H) * 2 - 1) * 8 * DEG : 0, dt, 150);
+    this.tilt[0] = ease(this.tilt[0], on ? (clamp(this.pointer.x / W, 0, 1) * 2 - 1) * 12 * DEG : 0, dt, 150); // front shapes move toward the pointer; a captured drag can leave the box
+    this.tilt[1] = ease(this.tilt[1], on ? (clamp(this.pointer.y / H, 0, 1) * 2 - 1) * 8 * DEG : 0, dt, 150);
     const yaw = this.yaw + this.tilt[0], pitch = this.pitch + this.tilt[1];
     const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
     // Sideways the cloud uses the whole half width (rim shapes may pass partly out, the spin brings them back); vertically it stays inside.
     const Ux = (W / 2) * 0.95, Uy = (H / 2) * 0.95 * (D - 0.6) / D;
-    if (!still) this.time += dt / 1000;
+    if (!still) this.simTime += dt / 1000;
     // Bodies drift and turn back at the edge of the ball.
-    const bodies = this.bodies.filter((b) => b.el.scene === this);
+    const bodies = [...this.objects].map((o) => this.bodyOf(o));
     if (drift > 0) for (const b of bodies) {
       for (let k = 0; k < 3; k++) b.p[k] += b.v[k] * (dt / 1000) * drift;
       const l = len(b.p);
@@ -191,39 +200,40 @@ export class SdUniverse extends SdScene {
     for (const b of bodies) {
       const o = b.el.anim, w = b.wob;
       const q: V3 = [b.p[0], b.p[1], b.p[2]];
-      if (drift > 0) for (let k = 0; k < 3; k++) q[k] += Math.sin(2 * Math.PI * w[k * 3] * this.time + w[k * 3 + 1]) * w[k * 3 + 2] * drift;
+      if (drift > 0) for (let k = 0; k < 3; k++) q[k] += Math.sin(2 * Math.PI * w[k * 3] * this.simTime + w[k * 3 + 1]) * w[k * 3 + 2] * drift;
       const x1 = q[0] * cy + q[2] * sy, z1 = -q[0] * sy + q[2] * cy;
       const y2 = q[1] * cp - z1 * sp, z2 = q[1] * sp + z1 * cp;
+      const rc = b.el.rect; if (!rc) continue; // not measured yet (a step before the first frame)
       const s = clamp(D / (D - z2), 0.3, 3);
-      o.offset[0] += x1 * s * Ux; o.offset[1] -= y2 * s * Uy;
+      // From the box center, whatever the child's own layout puts it (author CSS, a framework's wrapper).
+      o.offset[0] += W / 2 - (rc.x + rc.width / 2) + x1 * s * Ux; o.offset[1] += H / 2 - (rc.y + rc.height / 2) - y2 * s * Uy;
       o.scale *= s; o.z = z2;
       o.rotation = mul3(b.tilt, o.rotation);
-      // Depth of field: blur away from the focal plane, dim behind it. Under 0.5 px there is no pass at all.
-      const r = Math.min(24, depth * Math.abs(z2 - focus) * 14);
-      const base = b.el.effectNames.filter((n) => n !== 'defocus');
-      if (r >= 0.5) { b.el.effectNames = [...base, 'defocus']; (b.el.effectParams.defocus ??= {}).radius = r; }
-      else if (base.length !== b.el.effectNames.length) b.el.effectNames = base;
+      // Depth of field: blur away from the focal plane, dim behind it. The object field is read by draw(); under 0.5 px there is no pass.
+      b.el.blurPx = Math.min(24, depth * Math.abs(z2 - focus) * 14);
       o.state -= 0.75 * depth * Math.max(0, focus - z2);
     }
   }
 
-  /** Elastic sphere collisions: separate overlapping pairs and swap the normal velocity, four passes. Mass is the cubed radius. */
+  /** Elastic sphere collisions: separate overlapping pairs and swap the normal velocity, four passes. Mass is the cubed radius. Scalar math, no allocation per pair. */
   private collide(bodies: Body[]) {
     for (let pass = 0; pass < 4; pass++) {
       for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
         const a = bodies[i], b = bodies[j];
-        const d = sub(b.p, a.p); let l = len(d);
-        const min = a.r + b.r;
-        if (l >= min) continue;
-        const nrm: V3 = l < 1e-6 ? [1, 0, 0] : [d[0] / l, d[1] / l, d[2] / l]; l = l || 0;
-        const wi = 1 / (a.r * a.r * a.r), wj = 1 / (b.r * b.r * b.r), sum = wi + wj;
-        for (let k = 0; k < 3; k++) { a.p[k] -= nrm[k] * (min - l) * (wi / sum); b.p[k] += nrm[k] * (min - l) * (wj / sum); }
+        const dx = b.p[0] - a.p[0], dy = b.p[1] - a.p[1], dz = b.p[2] - a.p[2];
+        const min = a.r + b.r, l2 = dx * dx + dy * dy + dz * dz;
+        if (l2 >= min * min) continue;
+        const l = Math.sqrt(l2);
+        const nx = l < 1e-6 ? 1 : dx / l, ny = l < 1e-6 ? 0 : dy / l, nz = l < 1e-6 ? 0 : dz / l;
+        const wi = 1 / (a.r * a.r * a.r), wj = 1 / (b.r * b.r * b.r), sum = wi + wj, push = min - l;
+        a.p[0] -= nx * push * (wi / sum); a.p[1] -= ny * push * (wi / sum); a.p[2] -= nz * push * (wi / sum);
+        b.p[0] += nx * push * (wj / sum); b.p[1] += ny * push * (wj / sum); b.p[2] += nz * push * (wj / sum);
         // Normal velocity exchange, only when approaching.
-        const av = a.v, bv = b.v;
-        const rel = (bv[0] - av[0]) * nrm[0] + (bv[1] - av[1]) * nrm[1] + (bv[2] - av[2]) * nrm[2];
+        const rel = (b.v[0] - a.v[0]) * nx + (b.v[1] - a.v[1]) * ny + (b.v[2] - a.v[2]) * nz;
         if (rel >= 0) continue;
         const jmp = (-2 * rel) / sum;
-        for (let k = 0; k < 3; k++) { a.v[k] -= nrm[k] * jmp * wi; b.v[k] += nrm[k] * jmp * wj; }
+        a.v[0] -= nx * jmp * wi; a.v[1] -= ny * jmp * wi; a.v[2] -= nz * jmp * wi;
+        b.v[0] += nx * jmp * wj; b.v[1] += ny * jmp * wj; b.v[2] += nz * jmp * wj;
       }
     }
   }

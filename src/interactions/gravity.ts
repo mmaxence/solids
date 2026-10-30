@@ -1,13 +1,13 @@
 import type { Interaction } from '../core/registry';
-import { num } from '../core/registry';
+import { num, interactionValue } from '../core/registry';
 import type { SdObject } from '../core/object';
 import { reducedMotion } from '../core/object';
 import type { SdScene } from '../core/scene';
 import { lerp, ease } from '../core/math';
 
-type Body = { angle: number; r: number; center: SdObject | null; offset: [number, number]; from: [number, number]; k: number };
+type Body = { angle: number; r: number; center: SdObject | null; offset: [number, number]; from: [number, number]; k: number; at: number };
 const bodies = new WeakMap<SdObject, Body>();
-const mid = (o: SdObject): [number, number] => [o.rect!.x + o.rect!.width / 2, o.rect!.y + o.rect!.height / 2];
+const mid = (o: SdObject): [number, number] => [o.rect!.x + o.rect!.width / 2, o.rect!.y + o.rect!.height / 2]; // rest position, before offsets
 const smooth = (k: number) => k * k * (3 - 2 * k);
 
 export const gravity: Interaction = {
@@ -16,13 +16,15 @@ export const gravity: Interaction = {
     description: 'One object is the center. The others orbit it on rings, farther rings turning slower like real orbits, or fall toward it and settle, in the plane of the page.',
     params: [
       { name: 'strength', type: 'float', default: 0.6, min: 0, max: 1, step: 0.01, label: 'Strength (scene attribute gravity-strength)' },
-      { name: 'gap', type: 'float', default: 24, min: 0, max: 200, step: 1, label: 'Fall gap in px (object attribute gravity-gap)' },
+      { name: 'gap', type: 'float', default: 24, min: 0, max: 200, step: 1, label: 'Clearance from the center in px (an object\'s gravity-gap overrides)' },
     ],
   },
+  /** Runs when the scene\'s interaction list changes: a body the interaction has not touched for a while restarts its ease from home. */
+  setup(scene) { for (const o of scene.objects) { const b = bodies.get(o); if (b && scene.time - b.at > 0.2) bodies.delete(o); } },
   frame(scene: SdScene, dt) {
     const objs = [...scene.objects].filter((o) => o.rect);
     const center = objs.find((o) => o.getAttribute('gravity') === 'center') ?? null;
-    const strength = num(scene.getAttribute('gravity-strength'), 0.6);
+    const strength = interactionValue(scene, 'gravity', 'strength'), gapDefault = interactionValue(scene, 'gravity', 'gap');
     const c = center ? mid(center) : null;
     const frozen = reducedMotion();
     // Roles: the center and opted-out objects are 'none'; 'fall' falls; anything else (orbit, an extra center, a typo) orbits.
@@ -30,15 +32,18 @@ export const gravity: Interaction = {
     // Rings: orbiters sorted by rest distance share evenly spaced radii from a clearance ring (the shapes do not touch)
     // out to the farthest rest distance. Angular speed follows Kepler: the outer ring sets the pace, w ~ r^-1.5.
     const orbiters = objs.filter((o) => role(o) === 'orbit').map((o) => { const m = mid(o); return { o, d: Math.hypot(m[0] - c![0], m[1] - c![1]) }; }).sort((a, b) => a.d - b.d);
-    const inner = orbiters.length ? Math.max(orbiters[0].d, (center!.rect!.width + orbiters[0].o.rect!.width) / 4 + 24) : 0;
+    const inner = orbiters.length ? Math.max(orbiters[0].d, (center!.rect!.width + orbiters[0].o.rect!.width) / 4 + gapDefault) : 0;
     const outer = orbiters.length ? Math.max(orbiters[orbiters.length - 1].d, inner) : 0;
     const ring = (o: SdObject) => { const i = orbiters.findIndex((e) => e.o === o), n = orbiters.length; return n > 1 ? inner + ((outer - inner) * i) / (n - 1) : inner; };
+    if (center) center.pinned = true;
     for (const o of objs) {
       const mode = role(o);
       const active = mode !== 'none';
       let b = bodies.get(o);
       if (!b && !active) continue;
-      if (!b) bodies.set(o, (b = { angle: 0, r: 0, center: null, offset: [0, 0], from: [0, 0], k: 1 }));
+      if (!b) bodies.set(o, (b = { angle: 0, r: 0, center: null, offset: [0, 0], from: [0, 0], k: 1, at: 0 }));
+      b.at = scene.time;
+      if (mode === 'orbit') o.pinned = true; // held on its ring: collide treats it as a wall (fallers stay free so collide keeps them apart)
       let target: [number, number] = [0, 0];
       let z = 0;
       if (active) {
@@ -50,7 +55,7 @@ export const gravity: Interaction = {
           b.r = Math.hypot(rest[0] - c![0], rest[1] - c![1]);
         }
         if (mode === 'fall') {
-          const stop = num(o.getAttribute('gravity-gap'), 24) + (center!.rect!.width + o.rect!.width) / 4;
+          const stop = num(o.getAttribute('gravity-gap'), gapDefault) + (center!.rect!.width + o.rect!.width) / 4;
           if (!frozen) b.r += (stop - b.r) * (1 - Math.exp(-dt / 700)) * (0.3 + strength);
         } else {
           // Rings move when the layout or the set of orbiters changes; ease onto the new radius rather than jump.

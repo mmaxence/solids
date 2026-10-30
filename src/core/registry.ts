@@ -3,20 +3,18 @@ import type { SdScene } from './scene';
 
 export type UniformDef = {
   name: string;
-  type: 'float' | 'vec3' | 'color';
-  default: number | number[] | string;
+  type: 'float';
+  default: number;
   min?: number; max?: number; step?: number;
   label: string;
 };
 export type Manifest = {
   name: string; tag: string; description: string;
-  bleed?: number;
   uniforms: UniformDef[];
-  tags?: string[];
 };
 export type Meta = { name: string; description: string; params: UniformDef[] };
 
-export type AnimResult = Partial<{ rotation: [number, number, number]; offset: [number, number]; scale: number; state: number; uniforms: Record<string, number> }>;
+export type AnimResult = Partial<{ rotation: [number, number, number]; offset: [number, number]; scale: number; state: number }>;
 export type Animation = { meta: Meta; fn: (t: number, speed: number, o: SdObject) => AnimResult };
 export type EffectDef = { manifest: Meta; frag: string };
 export type ShadeDef = { manifest: Meta; frag: string };
@@ -51,7 +49,7 @@ function param(metas: Meta[], name: string, value: string | null, into: Record<s
     if (!p) continue;
     // Unset, empty or unparseable removes the entry, so a scene's value (or the manifest default) shows through again.
     const n = value == null || value === '' ? NaN : Number(value);
-    if (isNaN(n)) delete into[m.name]?.[p.name]; else (into[m.name] ??= {})[p.name] = n;
+    if (!Number.isFinite(n)) delete into[m.name]?.[p.name]; else (into[m.name] ??= {})[p.name] = clampTo(n, p);
     return true;
   }
   return false;
@@ -69,5 +67,7 @@ export function resolveShade(name: string, theme: number): string {
 /** An interaction param on a scene: its `<interaction>-<param>` attribute, else the default from the meta. */
 export const interactionValue = (scene: SdScene, name: string, p: string) =>
   scene.interactionParams[name]?.[p] ?? (interactions.get(name)!.meta.params.find((d) => d.name === p)!.default as number);
-/** Attribute number with a default for missing, empty or unparseable values; 0 is a value. */
-export const num = (v: string | null | undefined, d: number) => { if (v == null || v === '') return d; const n = Number(v); return isNaN(n) ? d : n; };
+/** Attribute number with a default for missing, empty, unparseable or infinite values; 0 is a value. */
+export const num = (v: string | null | undefined, d: number) => { if (v == null || v === '') return d; const n = Number(v); return Number.isFinite(n) ? n : d; };
+/** A value held to its manifest range, when the manifest gives one. */
+export const clampTo = (n: number, d: { min?: number; max?: number }) => Math.min(d.max ?? n, Math.max(d.min ?? n, n));

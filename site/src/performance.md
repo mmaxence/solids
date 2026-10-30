@@ -4,7 +4,7 @@ What solids costs, in bytes and in milliseconds. The sizes come from the build. 
 
 ## Sizes
 
-Gzipped bytes of the two bundles, written by the build to `dist/sizes.json` and checked against the budgets (18 KB for the core, 60 KB for everything) on every push. The core is the engine alone: scene, object base, animations, interactions and the five shades. The full bundle is what the script tag loads.
+Gzipped bytes of the two bundles, measured when the site is generated and checked against the budgets (18 KB for the core, 60 KB for everything) on every push. The core is the engine alone: scene, object base, animations, interactions and the five shades. The full bundle is what the script tag loads.
 
 ## Live meter
 
@@ -12,4 +12,4 @@ The scene below reports its own numbers while it runs. Frame (CPU) is the time t
 
 ## Benchmark
 
-Run benchmark draws each object alone at 200 px, then each effect over an orb, 60 frames each in one hidden scene, and reports the median per frame. CPU ms is wall-clock time per frame measured in JavaScript, waiting until the frame is drawn, so it includes the GPU work even where the GPU timer is unavailable. GPU ms comes from the timer query when there is one. The demo scene above pauses during the run, and each benchmark scene frees its graphics context when done. The numbers are yours: they depend on your screen's pixel ratio, your graphics card and what else the machine is doing, and they stay in this tab.
+Run benchmark draws each object alone at 200 px, then each effect over an orb, 60 frames each in one hidden scene, and reports the median per frame. The ms per frame column is wall-clock time measured in JavaScript, waiting until the frame is drawn, so it includes the GPU work even where the GPU timer is unavailable. GPU ms comes from the timer query when there is one. The demo scene above pauses during the run, and each benchmark scene frees its graphics context when done. The numbers are yours: they depend on your screen's pixel ratio, your graphics card and what else the machine is doing, and they stay in this tab.

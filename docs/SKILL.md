@@ -1,17 +1,17 @@
 ---
 name: solids-object
-description: Add a new 3D object or effect to the solids library (a zero-dependency WebGL2 web-component library). Use when asked to create, tune, or fix an sd-* object, its shader, or an effect.
+description: Add a new 3D object, effect, shade, interaction or animation to the solids library (a zero-dependency WebGL2 web-component library). Use when asked to create, tune, or fix an sd-* object, its shader, a shade, an effect, an interaction or an animation.
 ---
 
 # Adding an object to solids
 
-solids renders every object as a signed distance field (SDF) raymarched in a fragment shader on a quad. You never touch the renderer. You add one folder and the build picks it up: the element, the site page, and the controls all come from the manifest.
+solids renders every object as a signed distance field (SDF) raymarched in a fragment shader on a quad. You never touch the renderer. You add one folder and register it in one index file; the element, the site page and the controls all come from the manifest.
 
 ## The contract
 
 ```
 src/objects/<name>/
-  manifest.json   name, tag, description, bleed, uniforms, tags
+  manifest.json   name, tag, description, uniforms
   frag.glsl       uniforms + float map(vec3 p) + void main()
   README.md       one paragraph, a bullet per parameter, one html snippet
 ```
@@ -19,9 +19,7 @@ src/objects/<name>/
 Then register it in `src/index.ts` (two imports and one `defineObject` call, copy the orb lines) and run:
 
 ```sh
-npm run build   # bundles src into dist/solids.js
-npm run check   # validates the manifest, compiles the shader headlessly, draws it, checks size budgets
-npm run site    # regenerates the site pages
+npm run check   # builds, regenerates the site, then validates manifests, compiles every shader headlessly, draws and measures
 ```
 
 `check` must print `ok`. It fails on an invalid manifest, a shader that does not compile, a uniform declared in the manifest but missing from the shader, an object that draws nothing, or a bundle over budget (60 KB gzipped for everything).
@@ -33,17 +31,14 @@ npm run site    # regenerates the site pages
   "name": "pebble",
   "tag": "sd-pebble",
   "description": "A flattened stone with a soft edge.",
-  "bleed": 1.5,
   "uniforms": [
     { "name": "flatness", "type": "float", "default": 0.5, "min": 0, "max": 1, "step": 0.01, "label": "Flatness" }
-  ],
-  "tags": ["organic"]
+  ]
 }
 ```
 
 - `name` equals the folder name. `tag` is `sd-` plus the name.
-- `bleed` is how much larger than the element box the drawing quad is, so halos can spill. 1.5 is right for most shapes.
-- `uniforms` become attributes (kebab-case) and site controls. Types: `float` (needs `min` and `max`), `vec3`, `color`. Keep to two or three; the core already provides `color`, `size`, `state`, `speed`, `animation`, `effect`.
+- `uniforms` become attributes (kebab-case) and site controls. Every uniform is a `float` with `min`, `max` and `default`; values are clamped to that range. Keep to two or three; the core already provides `color`, `size`, `state`, `speed`, `animation`, `effect`, `shading`. A uniform must visibly change the image between its min and its max (the check draws both).
 
 ### frag.glsl
 
@@ -72,9 +67,8 @@ What the prelude gives you:
 
 | Name | Meaning |
 |---|---|
-| `uTime` | seconds since the scene started |
+| `uTime` | the scene clock in seconds; it pauses with the scene and freezes under reduced motion |
 | `uResolution` | quad size in device px |
-| `uPointer` | pointer in quad space, -1..1, y up, (0,0) when outside |
 | `uRotation` | mat3 from animations and interactions. `sdRay` already applies it |
 | `uScale` | object scale, already applied in `sdCoord` and `sdRay` |
 | `uState` | 0..1 eased state (off, idle, busy, active) plus animation modulation |
@@ -99,7 +93,7 @@ Every object must read as the same family on the site:
 - Shade-agnostic: an object only defines its shape; the shade (glass, matte, cel, clay, metal) decides how the surface takes light. Return `sdRender(rim, glow)` and let it call the shade.
 - High contrast on near-black and on near-white (`uTheme`). No flat gray bodies, no muddy mid-tones.
 - One accent: the object is tinted by `uColor` only. Do not hardcode colors.
-- A soft silhouette: edges are anti-aliased by `sdRender` using the closest-approach distance.
+- A soft silhouette: edges are anti-aliased by `sdRender` using the closest-approach distance. Keep the shape inside |p| < 0.8: rays that never enter the r = 1.6 sphere are culled before the march, so a halo or shape reaching past it is cut at the quad corners.
 - Still by default. An object with no `animation` should look at rest, not frozen mid-motion. If it needs an angle to read as 3D, bake that rest rotation into `map` (see the cube).
 
 ### README.md
@@ -143,7 +137,7 @@ A shade is how a surface takes light. Same shape under `src/shades/<name>/` with
 ```glsl
 uniform float light;
 vec4 sdShade(vec3 p, vec3 n, vec3 rd, float rim) {   // premultiplied color of a surface hit
-  vec3 l = sdLightDir(light);                        // key light at an azimuth around the view, 45 degrees up
+  vec3 l = sdLightDir(light);                        // key light at an azimuth around the view, about 47 degrees up
   float diff = max(dot(n, l), 0.0);
   vec3 col = uColor * (0.3 + 0.7 * diff);
   return vec4(col, 1.0);
@@ -153,9 +147,17 @@ vec3 sdEdge() { return uColor; }                     // tint of the soft edge an
 
 It sees `uColor`, `uTheme` (0 dark, 1 light: branch with `mix(dark, light, uTheme)` and tune both), `uState`, `map(p)` for occlusion tricks, `sdLightDir(azimuthDeg)` (a key light fixed to the view, already in object space) and `sdView(v)` (object to view space, for sky or environment lookups). Return `rgb` at most 1 with alpha 1 for an opaque surface, or premultiplied `rgb * a`: the scene composites premultiplied color. Param names must not equal any object uniform name (the check enforces it). Users pick a shade with `shading="<name>"` on an object or a scene; `auto` is glass in dark and the light default in light. Params become `<shade>-<param>` attributes.
 
+## Adding an interaction
+
+Interactions are scene rules in TypeScript under `src/interactions/<name>.ts`, added to the array in `src/interactions/index.ts`. One exports `{ meta: { name, description, params }, frame(scene, dt, pointer) }`; `params` are floats that become `<name>-<param>` attributes on the scene, read with `interactionValue(scene, name, param)`. `frame` runs every frame after animations and before drawing and adds to each object's `anim` (`offset` in px, `scale`, `rotation`, `state`, `z`). Use `o.drawCenter()` and `o.drawRadius()` for where an object is this frame, keep state in a `WeakMap` keyed by object, leave `o.pinned` objects (a gravity center or orbiter) in place if your rule moves things, and keep responding under reduced motion only to the person's own pointer or scroll. An optional `setup(scene)` runs when the scene's `interaction` list changes.
+
+## Adding an animation
+
+Animations are pure functions of time under `src/animations/`, added to the array in `src/animations/index.ts`: `{ meta: { name, description, params: [] }, fn(t, speed, o) }` returning any of `rotation` (radians, XYZ), `offset` (px), `scale` and `state`. They compose by addition (rotation, offset, state) and multiplication (scale); the core cross-fades over 400 ms when `animation` changes, and `phase` offsets `t` per object. Under reduced motion the core calls them with `t = 0`, so `t = 0` must be the rest pose.
+
 ## The universe
 
-`<sd-universe>` is a scene that fills its box with seeded copies of every registered object in a 3D ball behind a perspective camera, so a new object shows up there with no extra work: check that it still reads at 40 px, blurred, and at two thirds of its size in the distance. Attributes: `count` (0 to 120), `seed`, `collide` (elastic bounces), `camera` (tokens `spin`, `drag`, `pointer`; default all three; `none` for a fixed view), `speed` (spin rate), `drift` (0 to 1, how much free shapes float), `perspective` (0.05 to 1, camera distance `1.6 / perspective`), `depth` (0 to 1, depth of field strength), `focus` (-1 back to 1 front, in camera space), `shapes` and `palette` (space separated). The children are plain light-DOM objects centered on the box with a `data-pos="x y z"` in a unit ball, a `size`, `color`, `animation`, `speed` and `phase`; the universe places them every frame through its `step(dt)` hook (projection added to `anim.offset`, perspective multiplied into `anim.scale`, camera depth in `anim.z`) and gives each the `defocus` effect at `depth * |z - focus| * 14` px with far ones dimmed. Changing `count`, `seed`, `shapes` or `palette` regenerates them; everything else applies live. A body's world radius is `size / 640`.
+`<sd-universe>` is a scene that fills its box with seeded copies of every registered object in a 3D ball behind a perspective camera, so a new object shows up there with no extra work: check that it still reads at 40 px, blurred, and at two thirds of its size in the distance. Attributes: `count` (0 to 120), `seed`, `collide` (elastic bounces), `camera` (tokens `spin`, `drag`, `pointer`; default all three; `none` for a fixed view), `speed` (spin rate), `drift` (0 to 1, how much free shapes float), `perspective` (0.05 to 1, camera distance `1.6 / perspective`), `depth` (0 to 1, depth of field strength), `focus` (-1 back to 1 front, in camera space), `shapes` and `palette` (space separated). The children are plain light-DOM objects centered on the box with a `data-pos="x y z"` in a unit ball, a `size`, `color`, `animation`, `speed` and `phase`; the universe places them every frame through its `step(dt)` hook (projection added to `anim.offset`, perspective multiplied into `anim.scale`, camera depth in `anim.z`) and sets each child's `blurPx` to `depth * |z - focus| * 14`, which `draw` turns into a `defocus` pass, with far ones dimmed. A child appended later gets a seeded body of its own. Changing `count`, `seed`, `shapes` or `palette` regenerates them; everything else applies live. A body's world radius is `size / 640`.
 
 ## Checklist before a PR
 

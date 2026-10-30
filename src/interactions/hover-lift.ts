@@ -9,8 +9,8 @@ export const hoverLift: Interaction = {
   frame(scene, dt, pointer) {
     for (const o of scene.objects) {
       if (!o.rect) continue;
-      const cx = o.rect.x + o.rect.width / 2 + o.anim.offset[0], cy = o.rect.y + o.rect.height / 2 + o.anim.offset[1];
-      const hit = pointer.inside && Math.abs(pointer.x - cx) <= o.rect.width / 2 && Math.abs(pointer.y - cy) <= o.rect.height / 2;
+      const [cx, cy] = o.drawCenter(), rad = o.drawRadius();
+      const hit = pointer.inside && Math.abs(pointer.x - cx) <= rad && Math.abs(pointer.y - cy) <= rad;
       const l = ease(lift.get(o) ?? 0, hit ? 1 : 0, dt, 160);
       lift.set(o, l);
       o.anim.scale *= 1 + 0.08 * l;

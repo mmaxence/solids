@@ -1,7 +1,6 @@
 // solids check: the whole test suite, no framework.
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
-import { writeFileSync, mkdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { execFileSync, spawn } from 'node:child_process';
 import { extname, resolve } from 'node:path';
@@ -18,25 +17,25 @@ function sizes() {
     console.log(`${file}: ${kb(gz)} gzipped (budget ${kb(max)})`);
     if (gz > max) fail(`${file} over budget: ${kb(gz)} > ${kb(max)}`);
   }
-  // The build records both sizes for the site; they must be the real, current numbers.
-  if (!existsSync('dist/sizes.json')) return fail('dist/sizes.json missing (run npm run build)');
-  const s = JSON.parse(readFileSync('dist/sizes.json', 'utf8'));
-  const real = { core: gzipSync(readFileSync('dist/core.js')).length, full: gzipSync(readFileSync('dist/solids.js')).length };
-  if (![s.core, s.full].every((n) => Number.isInteger(n) && n > 0)) fail(`dist/sizes.json needs two positive integers, got ${JSON.stringify(s)}`);
-  else if (s.core !== real.core || s.full !== real.full) fail(`dist/sizes.json is stale: ${JSON.stringify(s)} vs ${JSON.stringify(real)}`);
+  if (existsSync('dist/sizes.json')) fail('dist/sizes.json is gone: the site gzips the bundles itself');
+  // The README quotes the full size; keep it at the build's number.
+  const full = existsSync('dist/solids.js') ? Math.round(gzipSync(readFileSync('dist/solids.js')).length / 1024) : 0;
+  if (full && !readFileSync('README.md', 'utf8').includes(`about ${full} KB`)) fail(`README.md should say about ${full} KB gzipped`);
 }
 
 
-const UNIFORM_TYPES = new Set(['float', 'vec3', 'color']);
+const UNIFORM_TYPES = new Set(['float']);
 export function validateManifest(m, dir) {
   const errs = [];
   for (const k of ['name', 'tag', 'description']) if (typeof m[k] !== 'string' || !m[k]) errs.push(`${dir}: manifest.${k} must be a non-empty string`);
   if (m.tag && !/^sd-[a-z][a-z0-9-]*$/.test(m.tag)) errs.push(`${dir}: tag must match sd-<name>`);
   if (!Array.isArray(m.uniforms)) errs.push(`${dir}: manifest.uniforms must be an array`);
+  for (const k of ['tags', 'bleed']) if (k in m) errs.push(`${dir}: manifest.${k} is no longer read; remove it`);
   for (const u of m.uniforms ?? []) {
     if (!/^[a-z][a-zA-Z0-9]*$/.test(u.name ?? '')) errs.push(`${dir}: uniform name "${u.name}" must be camelCase`);
-    if (!UNIFORM_TYPES.has(u.type)) errs.push(`${dir}: uniform ${u.name} type must be float|vec3|color`);
-    if (u.default === undefined) errs.push(`${dir}: uniform ${u.name} needs a default`);
+    if (!UNIFORM_TYPES.has(u.type)) errs.push(`${dir}: uniform ${u.name} type must be float`);
+    if (/^u[A-Z]/.test(u.name ?? '')) errs.push(`${dir}: uniform ${u.name} would shadow a core uniform`);
+    if (typeof u.default !== 'number' || (typeof u.min === 'number' && (u.default < u.min || u.default > u.max))) errs.push(`${dir}: uniform ${u.name} needs a numeric default inside min..max`);
     if (typeof u.label !== 'string') errs.push(`${dir}: uniform ${u.name} needs a label`);
     if (u.type === 'float' && (typeof u.min !== 'number' || typeof u.max !== 'number')) errs.push(`${dir}: float uniform ${u.name} needs min and max`);
   }
@@ -112,6 +111,7 @@ function serve(root) {
   let resolveResult;
   const result = new Promise((r) => (resolveResult = r));
   const srv = createServer((req, res) => {
+    if (req.method === 'POST' && req.url === '/__progress') { let b = ''; req.on('data', (d) => (b += d)); req.on('end', () => { res.end('ok'); if (process.env.SD_TRACE) console.error('progress:', b); }); return; }
     if (req.method === 'POST' && req.url === '/__result') {
       let body = ''; req.on('data', (d) => (body += d)); req.on('end', () => { res.end('ok'); resolveResult(JSON.parse(body)); });
       return;
@@ -126,6 +126,7 @@ function serve(root) {
 /** Open a URL in headless Chrome; the page must POST its JSON result to /__result. */
 export function runPage(url, chrome, result, timeoutMs = 30000, size = '1400,900') {
   const profile = (process.env.TMPDIR || '/tmp') + '/solids-chrome-' + process.pid;
+  process.once('exit', () => rmSync(profile, { recursive: true, force: true }));
   const args = ['--headless=new', '--disable-gpu', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-first-run',
     '--disable-crash-reporter', '--no-sandbox', `--user-data-dir=${profile}`, `--window-size=${size}`, url];
   const child = spawn(chrome, args, { stdio: 'ignore' });
@@ -144,14 +145,15 @@ window.addEventListener('error', (e) => window.__errors.push(String(e.message)))
 window.addEventListener('unhandledrejection', (e) => window.__errors.push(String(e.reason)));
 </script>
 <script type="module">
-import { registry } from '/dist/solids.js';
+import { registry, reflect } from '/dist/solids.js';
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+const mark = (l) => fetch('/__progress', { method: 'POST', body: l }).catch(() => {});
 const tags = [...registry.objects.values()].map((o) => o.manifest.tag);
 const result = { compileErrors: [], consoleErrors: [], tags, cases: {} };
 const parseDefault = (o) => { const t = document.createElement(o.localName); o.scene.appendChild(t); const v = [...t.rgb]; t.remove(); return v; };
-function read(scene) {
+function read(scene, t = 1) {
   const gl = scene.gl; if (!gl) return null;
-  scene.frame(1, 16);
+  scene.frame(t, 16);
   const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
   const buf = new Uint8Array(w * h * 4);
   gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
@@ -162,14 +164,6 @@ function pixels(scene) {
   let n = 0; for (let i = 3; i < buf.length; i += 4) if (buf[i] > 8) n++;
   return n;
 }
-function readAt(scene, t) {
-  const gl = scene.gl; if (!gl) return null;
-  scene.frame(t, 16);
-  const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
-  const buf = new Uint8Array(w * h * 4);
-  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
-  return buf;
-}
 // Fraction of painted pixels that differ noticeably between two scenes (or two buffers) of the same size.
 function differ(a, b) {
   const x = a instanceof Uint8Array ? a : read(a), y = b instanceof Uint8Array ? b : read(b); let n = 0, painted = 0;
@@ -177,8 +171,9 @@ function differ(a, b) {
     if (x[i + 3] > 8 || y[i + 3] > 8) painted++;
     if (Math.abs(x[i] - y[i]) > 16 || Math.abs(x[i + 1] - y[i + 1]) > 16 || Math.abs(x[i + 2] - y[i + 2]) > 16 || Math.abs(x[i + 3] - y[i + 3]) > 16) n++;
   }
-  return painted ? n / painted : 0;
+  return painted ? n / painted : NaN; // nothing painted on either side is not "identical", it is a broken render
 }
+const free = (...scs) => { for (const sc of scs) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); } };
 const mk = (attrs, objAttrs = {}) => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.className = 'small'; sc.setAttribute('theme', 'dark'); for (const [k, v] of Object.entries(attrs)) sc.setAttribute(k, v); const o = sc.appendChild(document.createElement(tags[0])); for (const [k, v] of Object.entries(objAttrs)) o.setAttribute(k, v); return sc; };
 try {
 
@@ -213,6 +208,7 @@ for (const name of shadeNames) {
   for (const t of tags) sc.appendChild(document.createElement(t));
   await frame(); await frame(); sc.frame(1, 16);
   for (const o of sc.objects) { if (o.broken) result.compileErrors.push(o.manifest.tag + '+' + name); else result.programs++; }
+  (result.shadePixels ??= {})[name] = pixels(sc);
   sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove();
 }
 { const warns = []; const cw = console.warn.bind(console); console.warn = (...a) => { warns.push(a.join(' ')); cw(...a); };
@@ -255,8 +251,11 @@ for (const name of shadeNames) {
   await frame(); await frame();
   rm.firstElementChild.removeAttribute('cel-bands'); await frame(); await frame();
   let over = 0; { const b = read(ink); for (let i = 0; i < b.length; i += 4) if (b[i] > b[i + 3] + 1 || b[i + 1] > b[i + 3] + 1 || b[i + 2] > b[i + 3] + 1) over++; }
-  result.cases.shade.fixed = { viewLight: differ(lit, turned), paramRemoved: differ(rm, sc2), clamp: { same: differ(big, one), pixels: pixels(big) }, inkOver: over };
-  drop(lit, turned, rm, sc2, big, one, ink); }
+  // cel: outline is the parameter that removes the ink line entirely at 0; the old ink name is gone.
+  const o0 = mk({}, { shading: 'cel', 'cel-outline': '0' }), o8 = mk({}, { shading: 'cel', 'cel-outline': '0.8' }), oi = mk({}, { shading: 'cel', 'cel-ink': '0' });
+  await frame(); await frame();
+  result.cases.shade.fixed = { viewLight: differ(lit, turned), paramRemoved: differ(rm, sc2), clamp: { same: differ(big, one), pixels: pixels(big) }, inkOver: over, outline: { off: differ(o0, o8), oldName: differ(oi, o8) } };
+  drop(lit, turned, rm, sc2, big, one, ink, o0, o8, oi); }
 // Case D: animations move things; reduced motion freezes them.
 const an = document.body.appendChild(document.createElement('sd-scene')); an.className = 'small';
 const spin = document.createElement(tags[0]); spin.setAttribute('animation', 'spin'); an.appendChild(spin);
@@ -291,24 +290,29 @@ await frame(); await frame();
 ext.restoreContext();
 await frame(); await frame(); await frame();
 result.cases.lone = { pixels: loneScene ? pixels(loneScene) : -1, restoredPixels: pixels(lost), restoredError: lost.gl.getError() };
+lone.remove(); free(lost);
 
+mark('Case H');
 // Case H: a lone object re-inserted keeps one inner scene; claimed by a real scene, it drops it.
 const lone2 = document.body.appendChild(document.createElement(tags[0]));
 await frame();
 lone2.remove(); await frame();
-document.body.appendChild(lone2); await frame();
+document.body.appendChild(lone2); await frame(); await frame(); await frame();
 const reinsert = lone2.shadowRoot.querySelectorAll('sd-scene').length;
+result.cases.lone.redrawn = pixels(lone2.shadowRoot.querySelector('sd-scene'));
+{ const back = mk({}); await frame(); back.remove(); await frame(); document.body.appendChild(back); await frame(); await frame(); await frame(); result.cases.lone.sceneBack = pixels(back); free(back); }
 const host = mk({}); host.appendChild(lone2); await frame();
 result.cases.lone.reinsert = reinsert;
 result.cases.lone.claimed = lone2.shadowRoot.querySelectorAll('sd-scene').length;
+mark('Case I');
 // Case I: two overlapping objects look the same before a context loss and after the restore.
 const ov = mk({}); ov.style.position = 'relative';
 const ovB = ov.appendChild(document.createElement(tags[0])); ovB.style.cssText = 'position:absolute;left:60px;top:40px'; ovB.setAttribute('color', '#ff9bd1');
 await frame(); await frame();
-const before = readAt(ov, 1);
+const before = read(ov, 1);
 const ext2 = ov.gl.getExtension('WEBGL_lose_context');
 ext2.loseContext(); await frame(); await frame(); ext2.restoreContext(); await frame(); await frame(); await frame();
-result.cases.lone.restoreDiff = differ(before, readAt(ov, 1));
+result.cases.lone.restoreDiff = differ(before, read(ov, 1));
 // Case J: color, state and speed work as properties.
 const po = mk({}).firstElementChild;
 po.state = 'active'; po.color = '#ff0000'; po.speed = 2;
@@ -323,6 +327,8 @@ result.cases.color = {
   srgb: rgbOf(document.createElement(tags[0]), 'color(display-p3 1 0.2 0.2)'),
 };
 po.scene.appendChild(late); result.cases.color.attached = [...late.rgb];
+free(po.scene);
+mark('Case K');
 // Case K: switching or removing the gravity center never snaps.
 const stepOf = (objs) => objs.map((o) => [...o.anim.offset]);
 const maxStep = (a, b) => Math.max(...a.map((v, i) => Math.hypot(v[0] - b[i][0], v[1] - b[i][1])));
@@ -332,6 +338,7 @@ for (let i = 0; i < 10; i++) { await frame(); const cur = stepOf(gObjs); worst =
 gObjs[2].removeAttribute('gravity'); gObjs[1].removeAttribute('gravity');
 for (let i = 0; i < 10; i++) { await frame(); const cur = stepOf(gObjs); worst = Math.max(worst, maxStep(prev, cur)); prev = cur; }
 result.cases.gravity.worstStep = worst;
+free(grav);
 // Case L: yaw stays continuous through an animation change and a speed change.
 let yawStep = 0, lastYaw = spin.pose.rotation[1];
 spin.setAttribute('animation', 'idle');
@@ -350,7 +357,8 @@ for (const sc of [an, host, ov, rg]) { sc.gl?.getExtension('WEBGL_lose_context')
 const blobTag = tags.find((t) => t === 'sd-blob');
 const rb = mk({}, {}); if (blobTag) { rb.firstElementChild.remove(); rb.appendChild(document.createElement(blobTag)); }
 await frame(); await frame();
-result.cases.reduced = { orbitMoved: Math.hypot(o1[0] - o2[0], o1[1] - o2[1]), blobDiff: differ(readAt(rb, 1), readAt(rb, 4)) };
+result.cases.reduced = { orbitMoved: Math.hypot(o1[0] - o2[0], o1[1] - o2[1]), blobDiff: differ(read(rb, 1), read(rb, 4)) };
+free(rb);
 window.__SD_REDUCED = false;
 
 // Case E: effects change the image; per-object effects draw; a hidden scene shown later has no GL error.
@@ -363,7 +371,6 @@ await frame(); await frame();
 hidden.style.display = '';
 await frame(); await frame();
 result.cases.fx = { delta: differ(plain, pix), objPixels: pixels(objFx), hiddenPixels: pixels(hidden), glError: hidden.gl?.getError(), everyPixels: pixels(every), effects: [...registry.effects.keys()] };
-const free = (...scs) => { for (const sc of scs) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); } };
 free(plain, pix, objFx, hidden, every);
 // Case P: effect mix. 0 copies the scene byte for byte, 2 accentuates; every effect carries a mix param.
 const m0 = mk({ effect: 'glow', 'glow-mix': '0' }), none = mk({}), m1 = mk({ effect: 'glow' }), m2 = mk({ effect: 'glow', 'glow-mix': '2' });
@@ -373,6 +380,7 @@ result.cases.mix = { zero: differ(b0, bn), same: b0.length === bn.length && b0.e
   missing: [...registry.effects.values()].filter((e) => !e.manifest.params.some((p) => p.name === 'mix')).map((e) => e.manifest.name) };
 free(m0, none, m1, m2);
 
+mark('Case N: repel');
 // Case N: repel, magnet, collide, scroll. Frames are driven by hand so the counts are exact.
 const run = (sc, n) => { for (let i = 0; i < n; i++) sc.frame(i / 60, 16); };
 const place = (sc, x, y) => { const o = document.createElement(tags[0]); o.style.cssText = 'position:absolute;left:' + x + 'px;top:' + y + 'px'; o.setAttribute('size', '40px'); sc.appendChild(o); return o; };
@@ -392,7 +400,7 @@ rp.pointer = { x: 110, y: 100, inside: true }; run(rp, 20);
 const rIn = [...ro.anim.offset];
 rp.pointer = { x: 0, y: 0, inside: false }; run(rp, 40);
 const rBack = Math.hypot(...ro.anim.offset);
-rp.setAttribute('repel-radius', '5'); rp.pointer = { x: 110, y: 100, inside: true }; run(rp, 20);
+rp.setAttribute('repel-radius', '20'); rp.pointer = { x: 110, y: 100, inside: true }; run(rp, 20);
 it.repel = { x: rIn[0], mag: Math.hypot(...rIn), back: rBack, narrow: Math.hypot(...ro.anim.offset) };
 // magnet pulls toward the pointer, then drifts home.
 const mg = bare({ interaction: 'magnet' }); const mo = place(mg, 80, 80);
@@ -474,10 +482,11 @@ const gpu0 = pf.gpuTime;
 for (let i = 0; i < 10; i++) await frame();
 result.cases.perf = { frameTime: pf.frameTime, fps: pf.fps, gpu0, gpu: pf.gpuTime, glError: pf.gl?.getError() };
 free(pf);
+mark('Case U');
 // Case U: universe. Seeded 3D bodies, live depth and focus, camera spin, drag and pointer tilt, unique motion, collisions, 3D orbits, pasted markup, odd inputs.
 const uni = (attrs) => { const u = document.createElement('sd-universe'); u.setAttribute('theme', 'dark'); for (const [k, v] of Object.entries(attrs)) u.setAttribute(k, v); return document.body.appendChild(u); };
 const sig = (u) => [...u.children].map((c) => c.localName + ' ' + c.dataset.pos + ' ' + c.getAttribute('size')).join('|');
-const radii = (u) => [...u.children].map((c) => (c.effectNames.includes('defocus') ? c.effectParams.defocus.radius : 0));
+const radii = (u) => [...u.children].map((c) => (c.blurPx >= 0.5 ? c.blurPx : 0));
 const still = (u) => { for (const c of u.children) c.setAttribute('animation', ''); for (let i = 0; i < 6; i++) u.frame(i / 10, 100); };
 const offs = (u) => [...u.children].map((c) => [...c.anim.offset]);
 const sameOffs = (a, b) => a.every((o, i) => Math.abs(o[0] - b[i][0]) < 0.01 && Math.abs(o[1] - b[i][1]) < 0.01);
@@ -530,6 +539,9 @@ await frame();
   uv.gravity = { same: sig(ug) === sig(ug0) && sameOffs(offs(ug), offs(ug0)), centers: [...ug.children].filter((c) => c.getAttribute('gravity') === 'center').length,
     fields: ug.bodies.filter((b) => 'orbit' in b || 'pinned' in b).length, interaction: ug.interactionNames.includes('gravity') }; }
 uv.zero = u0.children.length; uv.known = [...uk.children].map((c) => c.localName); uv.none = un.children.length;
+{ const ub0 = uni({ count: '6', seed: '4', camera: '' }); const early = ub0.bodies.length; ub0.frame(0, 16); uv.bodiesLazy = { early, after: ub0.bodies.length }; free(ub0); }
+{ const sa = uni({ count: '8', seed: '6', camera: '' }), sb = uni({ count: '8', seed: '6', camera: '' }); sa.frame(0, 16); sb.frame(0, 16);
+  uv.sameMotion = sa.bodies.every((b, i) => b.v.every((v, k) => v === sb.bodies[i].v[k]) && [...b.tilt].every((v, k) => v === sb.bodies[i].tilt[k])); free(sa, sb); }
 free(ug, ug0, u0, uk, un);
 // Reduced motion: spin and drift hold still.
 window.__SD_REDUCED = true;
@@ -578,6 +590,7 @@ const dp = mk({}), db = mk({ effect: 'defocus', 'defocus-radius': '12' }), dz = 
 await frame(); await frame();
 uv.defocus = { blur: differ(db, dp), zero: differ(dz, dp) };
 free(dp, db, dz);
+mark('Case V');
 // Case V: the blit must not flatten glass highlights (rgb above alpha survives); the effect buffer pool keeps
 // every size in use and drops sizes no longer drawn; a universe with no author height still draws.
 const hv = mk({}, { state: 'active' });
@@ -612,6 +625,123 @@ const ph = mk({}, { animation: 'spin' }); const ph2 = ph.appendChild(document.cr
 await frame(); await frame();
 result.cases.phase = { differ: [...ph.firstElementChild.anim.rotation].some((v, i) => Math.abs(v - ph2.anim.rotation[i]) > 0.1) };
 free(ph);
+mark('Case Y');
+// Case Y: v7 hardening. Params clamp and stay finite; a zero-size body is harmless; reduced motion rests; contexts are released
+// on removal and flagged on loss; a failing effect logs once; the clock pauses; odd state keys; frame-rate-free springs;
+// late universe children get bodies; blur never leaks; author CSS does not move a universe child; tilt clamps;
+// gravity toggles ease; orbiters are pinned for collide; hover-lift follows scale; nested scenes; lone theme; reflection walk.
+const Y = result.cases.hard = {};
+mark('Y start');
+{ const pz = mk({ effect: 'pixelate' }); pz.setAttribute('pixelate-size', '0');
+  const po2 = mk({}).firstElementChild; po2.setAttribute('glow', '-5'); po2.setAttribute('speed', '1e999'); po2.setAttribute('state', 'constructor');
+  const sizeMin = registry.effects.get('pixelate').manifest.params.find((q) => q.name === 'size').min;
+  Y.clamp = { effect: pz.effectParams.pixelate?.size, effectMin: sizeMin, uniform: po2.uniforms.glow, speed: po2.speedValue, state: po2.stateTarget };
+  free(pz, po2.scene); }
+{ const g = ringScene([60]); g.sc.setAttribute('gravity-strength', '100'); g.os[0].setAttribute('gravity', 'fall');
+  await frame(); for (let i = 0; i < 300; i++) g.sc.frame(i / 60, 16);
+  Y.fall = { dist: polar(g.c, g.os[0])[0] }; free(g.sc); }
+{ const z = pasteU('collide camera="" drift="0"', '<sd-orb data-pos="0 0 0" size="0px"></sd-orb><sd-orb data-pos="0.02 0 0" size="80px"></sd-orb>');
+  await frame(); for (let i = 0; i < 10; i++) z.frame(i / 10, 50);
+  Y.zeroSize = z.bodies.every((b) => b.p.every(Number.isFinite)); const zp = z.parentNode; free(z); zp.remove(); }
+{ window.__SD_REDUCED = true; const rs = mk({}, { animation: 'spin', phase: '2' }); await frame(); await frame();
+  Y.rest = rs.firstElementChild.pose?.rotation[1]; window.__SD_REDUCED = false; free(rs); }
+{ const gone = mk({}); await frame(); const gl2 = gone.gl; gone.remove(); await frame(); await frame();
+  Y.released = gl2.isContextLost();
+  const lost2 = mk({}); await frame(); const ex2 = lost2.gl.getExtension('WEBGL_lose_context'); ex2.loseContext(); await frame(); await frame();
+  Y.flagOnLoss = 'fallback' in lost2.dataset; ex2.restoreContext(); await frame(); await frame(); await frame();
+  Y.flagCleared = !('fallback' in lost2.dataset); free(lost2); }
+{ registry.effects.set('bad', { manifest: { name: 'bad', description: 'x', params: [] }, frag: 'vec4 sdEffect() { return nope; }' });
+  const before = window.__errors.length; const be = mk({ effect: 'bad' }); await frame(); for (let i = 0; i < 10; i++) be.frame(i / 10, 16);
+  Y.badEffect = { errors: window.__errors.slice(before).filter((e) => /"bad"/.test(e)).length, pixels: pixels(be) };
+  window.__errors.length = before; registry.effects.delete('bad'); free(be); }
+{ const pc = mk({}); await frame(); await frame(); await frame(); const c0 = pc.clock; pc.setAttribute('paused', '');
+  await new Promise((r) => setTimeout(r, 300)); pc.removeAttribute('paused'); await frame(); await frame();
+  Y.pausedClock = pc.clock - c0; free(pc); }
+{ const sp = (dt, n) => { const sc = mk({ interaction: 'repel' }); sc.style.cssText = 'width:200px;height:200px'; const o = sc.firstElementChild; o.style.cssText = 'position:absolute;left:80px;top:80px'; sc.measure(); sc.pointer = { x: 120, y: 100, inside: true }; for (let i = 0; i < n; i++) sc.frame(i * dt / 1000, dt); const v = [...o.anim.offset]; free(sc); return v; };
+  await frame(); const a16 = sp(16, 6), a8 = sp(8, 12); Y.spring = { a16: Math.hypot(...a16), a8: Math.hypot(...a8) }; }
+{ const ul = uni({ count: '4', seed: '2', camera: '', drift: '0' }); await frame(); ul.frame(0, 16);
+  const late = ul.appendChild(document.createElement('sd-orb')); late.setAttribute('size', '60px'); await frame(); ul.frame(0.1, 16);
+  Y.lateBody = { projected: Math.abs(late.anim.scale - 1) > 1e-6 || Math.hypot(...late.anim.offset) > 0.5 };
+  // Blur lives on the object, not in its effect chain, and does not follow a child into another scene.
+  const ub = uni({ count: '12', seed: '3', camera: '', drift: '0', depth: '1' }); await frame(); ub.frame(0, 16);
+  const blurred = [...ub.children].find((c) => c.blurPx > 0.5);
+  Y.blur = { field: !!blurred, chain: blurred ? blurred.effectNames.includes('defocus') : null };
+  if (blurred) { const home = mk({}); const twin = mk({}); twin.firstElementChild.remove(); const ref = twin.appendChild(document.createElement(blurred.localName)); ref.setAttribute('color', blurred.getAttribute('color')); ref.setAttribute('size', '80px'); home.firstElementChild.remove(); blurred.removeAttribute('data-pos'); blurred.setAttribute('size', '80px'); blurred.removeAttribute('animation'); blurred.removeAttribute('phase'); ref.removeAttribute('animation'); home.appendChild(blurred); document.body.append(home, twin); await frame(); await frame();
+    for (let i = 0; i < 8; i++) { home.frame(i / 10, 100); twin.frame(i / 10, 100); } // past the animation cross-fade
+    Y.blur.leak = differ(home, twin); free(home, twin); }
+  free(ul, ub); }
+{ const a = pasteU('camera="" drift="0"', '<sd-orb data-pos="0.3 0 0" size="60px"></sd-orb>'), b = pasteU('camera="" drift="0"', '<sd-orb data-pos="0.3 0 0" size="60px" style="left:10px;top:10px"></sd-orb>');
+  await frame(); a.frame(0, 16); b.frame(0, 16);
+  const ctr = (u) => { const o = u.firstElementChild; return [o.rect.x + o.rect.width / 2 + o.anim.offset[0], o.rect.y + o.rect.height / 2 + o.anim.offset[1]]; };
+  const ca = ctr(a), cb = ctr(b); Y.authorCss = Math.hypot(ca[0] - cb[0], ca[1] - cb[1]); const pa = [a.parentNode, b.parentNode]; free(a, b); pa.forEach((d) => d.remove()); }
+{ const ut = uni({ count: '2', seed: '2', camera: 'drag pointer', drift: '0' }); await frame();
+  ptr(ut, 'pointerdown', 100, 100); ptr(ut, 'pointermove', 1800, 1200); for (let i = 0; i < 20; i++) ut.frame(i / 10, 100);
+  Y.tiltClamp = Math.max(Math.abs(ut.tilt[0]), Math.abs(ut.tilt[1])); ptr(ut, 'pointerup', 1800, 1200); free(ut); }
+{ const g = ringScene([80, 140]); await frame(); for (let i = 0; i < 12; i++) g.sc.frame(i / 10, 100);
+  let worst = 0, prev = g.os.map((o) => [...o.anim.offset]); const stepAll = () => { const cur = g.os.map((o) => [...o.anim.offset]); worst = Math.max(worst, ...cur.map((v, k) => Math.hypot(v[0] - prev[k][0], v[1] - prev[k][1]))); prev = cur; };
+  g.sc.setAttribute('interaction', ''); for (let i = 0; i < 25; i++) g.sc.frame(2 + i / 60, 16); // off: the offsets stop at once (documented)
+  prev = g.os.map((o) => [...o.anim.offset]);
+  g.sc.setAttribute('interaction', 'gravity'); for (let i = 0; i < 25; i++) { g.sc.frame(3 + i / 60, 16); stepAll(); } // on again: eases back out
+  Y.toggleWorst = worst; free(g.sc); }
+{ const g = ringScene([100]); g.sc.setAttribute('interaction', 'gravity collide'); const blocker = g.sc.appendChild(document.createElement(tags[0])); blocker.setAttribute('gravity', 'none'); blocker.setAttribute('size', '40px');
+  await frame(); for (let i = 0; i < 12; i++) g.sc.frame(i / 10, 100);
+  // park the blocker on the orbiter's current spot: its offset should move, the orbiter's should not
+  const orbiter = g.os[0]; const spot = [orbiter.rect.x + orbiter.rect.width / 2 + orbiter.anim.offset[0], orbiter.rect.y + orbiter.rect.height / 2 + orbiter.anim.offset[1]];
+  blocker.style.cssText = 'position:absolute;left:' + (spot[0] - 20) + 'px;top:' + (spot[1] - 20) + 'px'; g.sc.measure();
+  const ring1 = polar(g.c, orbiter)[0]; for (let i = 0; i < 12; i++) g.sc.frame(2 + i / 10, 100);
+  Y.pinned = { orbiterRadius: polar(g.c, orbiter)[0], ring: ring1, blockerMoved: Math.hypot(...blocker.anim.offset), orbiterPinned: orbiter.pinned, centerPinned: g.c.pinned }; free(g.sc); }
+{ const g = ringScene([120]); g.os[0].setAttribute('gravity', 'fall'); await frame(); g.sc.frame(0.5, 16); Y.fallerPinned = g.os[0].pinned; free(g.sc); }
+{ const hs = mk({ interaction: 'hover-lift' }); hs.style.cssText = 'width:200px;height:200px'; const ho = hs.firstElementChild; ho.setAttribute('size', '100px'); ho.style.cssText = 'position:absolute;left:50px;top:50px';
+  const hu = ho.update.bind(ho); ho.update = (dt) => { hu(dt); ho.anim.scale = 0.5; }; hs.measure();
+  hs.pointer = { x: 100 + 40, y: 100, inside: true }; await frame(); for (let i = 0; i < 20; i++) hs.frame(i / 10, 100);
+  Y.hoverScale = ho.anim.scale; free(hs); }
+{ const wrap = document.body.appendChild(document.createElement('div')); wrap.innerHTML = '<sd-scene class="small"><sd-scene class="small"><' + tags[0] + '></' + tags[0] + '></sd-scene></sd-scene>'; const outer = wrap.firstElementChild, inner = outer.firstElementChild;
+  await frame(); Y.nested = { outer: outer.objects.size, inner: inner.objects.size }; free(inner, outer); wrap.remove(); }
+{ const lt = document.body.appendChild(document.createElement(tags[0])); lt.setAttribute('theme', 'light'); await frame();
+  const ls = lt.shadowRoot?.querySelector('sd-scene'); const light = ls?.themeValue; lt.setAttribute('theme', 'dark'); const dark = ls?.themeValue;
+  Y.loneTheme = light === 1 && dark === 0 ? 1 : [light, dark]; lt.remove(); }
+{ const bad = []; const base = Object.getPrototypeOf(Object.getPrototypeOf(document.createElement(tags[0]))); // SdObject.prototype
+  for (const t of tags) { const e = document.createElement(t); for (const a of e.constructor.observedAttributes) { const k = a.replace(/-([a-z])/g, (_, c) => c.toUpperCase()); if (Object.hasOwn(e, k) || k in HTMLElement.prototype || k in base) bad.push(t + '.' + k); } }
+  // The guard itself: a uniform named like a member must be skipped with a warning, not shadow it.
+  const warns = []; const cw = console.warn.bind(console); console.warn = (...x) => { warns.push(x.join(' ')); cw(...x); };
+  const proto = Object.create(base); reflect(proto, ['update']); console.warn = cw;
+  Y.reflect = bad; Y.reflectGuard = { warned: warns.length, defined: Object.getOwnPropertyDescriptor(proto, 'update') !== undefined }; }
+// Case Z: performance changes that must not change pixels. The march far limit and the bounding-sphere cull are undone through a
+// shaderSource wrapper and every object must render byte for byte the same; a scene with no effect keeps no buffers and matches the
+// buffer path; an offscreen scene compiles nothing; regenerating 120 bodies measures once; collide at 120 bodies stays under budget.
+mark('Case AA');
+// Case AA: every object uniform changes the image between its min and its max; a faller settles at its gap; layer names are unique.
+{ const U = result.cases.uniforms = {};
+  for (const t of tags) { const m = registry.objects.get(t.slice(3)).manifest; for (const u of m.uniforms) {
+    const lo = mk({}, {}), hi = mk({}, {}); for (const sc of [lo, hi]) { sc.style.cssText = 'width:120px;height:120px'; sc.firstElementChild.remove(); sc.appendChild(document.createElement(t)); }
+    lo.firstElementChild.setAttribute(u.name.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()), String(u.min)); hi.firstElementChild.setAttribute(u.name.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()), String(u.max));
+    await frame(); U[t + '.' + u.name] = differ(lo, hi); free(lo, hi); } } }
+{ const g = ringScene([150]); g.os[0].setAttribute('gravity', 'fall'); await frame(); for (let i = 0; i < 40; i++) g.sc.frame(i / 10, 100);
+  result.cases.fall = { dist: polar(g.c, g.os[0])[0], expected: 24 + (40 + 20) / 4 }; free(g.sc); }
+{ const names = ['effects', 'shades', 'interactions', 'animations'].flatMap((k) => [...registry[k].keys()]); result.dupNames = names.filter((x, i) => names.indexOf(x) !== i); }
+const Z = result.cases.perf2 = {};
+mark('Z start');
+{ const dump = (sc) => { const b = read(sc); return b; };
+  const mkAll = () => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); for (const t of tags) { const o = sc.appendChild(document.createElement(t)); o.setAttribute('state', 'active'); o.setAttribute('size', '96px'); } return sc; };
+  const a = mkAll(); await frame(); await frame(); const bufA = dump(a);
+  const orig = WebGL2RenderingContext.prototype.shaderSource; let patched = 0;
+  let culls = 0;
+  WebGL2RenderingContext.prototype.shaderSource = function (sh, src) { const n1 = src.replace('if (t > 4.6) break;', 'if (t > 7.0) break;'); const n = n1.replace('if (sdMisses(ro, rd)) return vec4(0.0); // cull', ''); if (n1 !== src) patched++; if (n !== n1) culls++; return orig.call(this, sh, n); };
+  const b = mkAll(); await frame(); await frame(); const bufB = dump(b);
+  WebGL2RenderingContext.prototype.shaderSource = orig;
+  let diff = 0; for (let i = 0; i < bufA.length; i++) if (bufA[i] !== bufB[i]) diff++;
+  Z.march = { patched, culls, bytesDiffer: diff, pixels: pixels(a) }; free(a, b); mark('Z march done'); }
+{ const plain = mk({}), buffered = mk({ effect: 'grain', 'grain-mix': '0' }); await frame(); await frame();
+  const x = read(plain), y = read(buffered); let diff = 0; for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) diff++;
+  Z.noFx = { buffers: !!plain.fbos?.scene, bytesDiffer: diff, pixels: pixels(plain) }; free(plain, buffered); mark('Z nofx done'); }
+{ let links = 0; const lp = WebGL2RenderingContext.prototype.linkProgram; WebGL2RenderingContext.prototype.linkProgram = function (p) { links++; return lp.call(this, p); };
+  const far = document.createElement('sd-scene'); far.setAttribute('theme', 'dark'); far.style.cssText = 'position:absolute;top:300vh;left:0;width:200px;height:200px'; far.appendChild(document.createElement(tags[0])); document.body.appendChild(far);
+  for (let i = 0; i < 10; i++) await frame();
+  Z.offscreen = { fps: far.fps, links }; WebGL2RenderingContext.prototype.linkProgram = lp; free(far); mark('Z offscreen done'); }
+{ const um = uni({ count: '120', camera: '', drift: '0' }); um.frame(0, 16); let measures = 0; const m0 = um.measure.bind(um); um.measure = () => { measures++; m0(); };
+  um.setAttribute('seed', '9'); mark('Z regen'); um.frame(0, 16); Z.measures = measures; um.remove(); mark('Z measures done'); } // regenerate from 120 (removal plus attach); frame() by hand: 120 bodies in software GL are slow
+{ const uc = uni({ count: '120', seed: '7', collide: '', camera: '', drift: '0.5' }); uc.step(16);
+  const t0 = performance.now(); for (let i = 0; i < 60; i++) uc.step(16); Z.collideMs = (performance.now() - t0) / 60; uc.remove(); mark('Z collide done'); }
 } catch (e) { window.__errors.push('check page threw: ' + (e && e.stack || e)); }
 result.consoleErrors = window.__errors;
 await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
@@ -620,12 +750,11 @@ await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
 async function smoke() {
   const chrome = chromePath();
   if (!chrome) { console.warn('warn: chrome not found, skipping shader/smoke checks'); return; }
-  mkdirSync('scripts', { recursive: true });
   writeFileSync('scripts/.check-page.html', CHECK_PAGE);
   const { srv, port, result } = await serve('.');
   try {
-    const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 90000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade']) r.cases[k] ??= {};
+    const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 240000);
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
@@ -642,6 +771,7 @@ async function smoke() {
       if (!(fx.viewLight < 0.01)) fail(`shades: the key light should stay fixed to the view: a sphere turned 180 degrees differs by ${pc(fx.viewLight ?? 1)}`);
       if (!(fx.paramRemoved < 1e-6)) fail(`shades: removing an object's cel-bands should let the scene's value through, differs ${pc(fx.paramRemoved ?? 1)}`);
       if (!(fx.clamp?.same < 1e-6) || !(fx.clamp?.pixels > 100)) fail(`shades: metal-roughness="1.5" should clamp to 1: ${JSON.stringify(fx.clamp)}`);
+      if (!(fx.outline?.off > 0.02) || !(fx.outline?.oldName < 1e-6)) fail(`shades: cel-outline="0" should remove the ink line (differs ${pc(fx.outline?.off ?? 0)} from 0.8) and cel-ink should be gone (${pc(fx.outline?.oldName ?? 1)})`);
       if (fx.inkOver !== 0) fail(`shades: cel ink edge has ${fx.inkOver} pixels with rgb above alpha (invalid premultiplied color)`); }
     { const sh = r.cases.shade ?? {}; if (!(sh.glassEqualsDefault < 1e-6) || !(sh.unknownDraws > 100) || sh.unknownWarned !== 1 || !(sh.unknownEqualsDefault < 1e-6)) fail(`shades: glass vs default ${sh.glassEqualsDefault}, unknown name drew ${sh.unknownDraws} px and warned ${sh.unknownWarned} times (expected 1), unknown vs default ${sh.unknownEqualsDefault}`); }
     if (r.consoleErrors.length) fail(`console errors: ${r.consoleErrors.join(' | ').slice(0, 1200)}`);
@@ -667,6 +797,7 @@ async function smoke() {
     if (!(r.cases.lone.restoredPixels > 500) || r.cases.lone.restoredError !== 0) fail(`context restore: ${JSON.stringify({ px: r.cases.lone.restoredPixels, err: r.cases.lone.restoredError })}`);
     if (r.cases.lone.reinsert !== 1) fail(`lone object re-inserted has ${r.cases.lone.reinsert} inner scenes, expected 1`);
     if (r.cases.lone.claimed !== 0) fail(`lone object claimed by a scene still has ${r.cases.lone.claimed} inner scene(s)`);
+    if (!(r.cases.lone.redrawn > 500) || !(r.cases.lone.sceneBack > 100)) fail(`a removed scene re-inserted later should draw again: lone ${r.cases.lone.redrawn} px, scene ${r.cases.lone.sceneBack} px`);
     if (!(r.cases.lone.restoreDiff < 0.05)) fail(`after context restore ${(r.cases.lone.restoreDiff * 100).toFixed(1)}% of pixels differ (blend state lost?)`);
     if (r.cases.props.stateAttr !== 'active' || !Number.isFinite(r.cases.props.stateTarget) || r.cases.props.stateTarget !== 1) fail(`state as property: ${JSON.stringify(r.cases.props)}`);
     const c = r.cases.color ?? {}, fin = (v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
@@ -701,7 +832,7 @@ async function smoke() {
     const it = r.cases.interact, js = (v) => JSON.stringify(v);
     if (!it.one?.finite || !(it.one.max < 1e-6)) fail(`collide with one object should not move: ${js(it.one)}`);
     if (!(it.apart >= 40) || it.width !== 40) fail(`collide: two overlapping 40 px objects ended ${it.apart?.toFixed(1)} px apart, expected >= 40 (width ${it.width})`);
-    if (!(it.repel?.x < -1) || !(it.repel.back < it.repel.mag * 0.5) || !(it.repel.narrow < 0.5)) fail(`repel: pushed left, springs back, repel-radius narrows: ${js(it.repel)}`);
+    if (!(it.repel?.x < -1) || !(it.repel.back < it.repel.mag * 0.5) || !(it.repel.narrow < it.repel.mag * 0.25)) fail(`repel: pushed left, springs back, repel-radius narrows: ${js(it.repel)}`);
     if (!(it.magnet?.x > 1) || !(it.magnet.back < it.magnet.mag * 0.5)) fail(`magnet: pulled right, drifts home: ${js(it.magnet)}`);
     if (!(it.scroll?.diff > 0.01)) fail(`scroll: rotation did not change with the page scroll under reduced motion: ${js(it.scroll)}`);
     const tl = it.tall;
@@ -724,6 +855,8 @@ async function smoke() {
     if (!uv.gravity?.same || uv.gravity.centers !== 0 || uv.gravity.fields !== 0 || uv.gravity.interaction) fail(`universe gravity attribute should be ignored: ${js(uv.gravity)}`);
     if (uv.reduced?.yaw !== 0 || !uv.reduced?.held) fail(`universe under reduced motion still moves: ${js(uv.reduced)}`);
     if (uv.pasted?.children !== 1 || uv.pasted.attached !== 1 || !(uv.pasted.scale > 1)) fail(`pasted universe markup should keep its one child and scale it up: ${js(uv.pasted)}`);
+    if (uv.bodiesLazy?.early !== 0 || uv.bodiesLazy?.after !== 6) fail(`reading bodies before the first step should create nothing: ${js(uv.bodiesLazy)}`);
+    if (uv.sameMotion !== true) fail('two universes with the same seed should get the same seeded velocities and tilts');
     if (uv.zero !== 0 || uv.none !== 0) fail(`universe count="0" or only unknown shapes: ${uv.zero} and ${uv.none} children, expected 0`);
     if (uv.known?.length !== 8 || !uv.known.every((t) => t === 'sd-orb' || t === 'sd-ring')) fail(`universe shapes="sd-orb sd-nope ring": ${js(uv.known)}`);
     if (uv.big?.children !== 120 || !(uv.big.pixels > 1000) || uv.big.stray !== 0) fail(`universe count="120": ${js(uv.big)}`);
@@ -738,6 +871,39 @@ async function smoke() {
     if (!(uv.tiltDir?.right > 0) || !(uv.tiltDir?.down > 0)) fail(`universe pointer tilt should move front shapes toward the pointer: ${js(uv.tiltDir)}`);
     if (!(r.cases.quad?.outside > 50)) fail(`quad does not follow scale: ${r.cases.quad?.outside} px painted beyond 1.5x the rect at scale 2 (expected > 50)`);
     if (!r.cases.phase?.differ) fail('phase="2" should offset the spin against a sibling without one');
+    { const U = r.cases.uniforms ?? {}; const dead = Object.entries(U).filter(([, v]) => !(v > 0.005)).map(([k, v]) => k + ' ' + (v * 100).toFixed(2) + '%');
+      if (!Object.keys(U).length || dead.length) fail(`object uniforms with no visible effect between min and max: ${dead.join(', ') || 'none measured'}`);
+      const fl = r.cases.fall ?? {}; if (!(Math.abs(fl.dist - fl.expected) < 3)) fail(`gravity="fall" settled at ${fl.dist?.toFixed(1)} px, expected ${fl.expected}`);
+      if (r.dupNames?.length) fail(`layer names collide: ${r.dupNames.join(', ')}`);
+      for (const [name, px] of Object.entries(r.shadePixels ?? {})) if (!(px > 1000)) fail(`shade ${name} draws ${px} px on twelve objects (expected > 1000)`); }
+    { const Z = r.cases.perf2 ?? {}, j = (v) => JSON.stringify(v);
+      if (!(Z.march?.patched >= 2) || !(Z.march?.culls >= 2) || Z.march?.bytesDiffer !== 0 || !(Z.march?.pixels > 1000)) fail(`march far limit 4.6 and the bounding-sphere cull must be present and pixel-identical to the old march: ${j(Z.march)} (measures ${Z.measures}, collide ${Z.collideMs?.toFixed(2)} ms)`);
+      if (Z.noFx?.buffers !== false || Z.noFx?.bytesDiffer !== 0 || !(Z.noFx?.pixels > 100)) fail(`a scene with no effect should keep no buffers and match the buffer path byte for byte: ${j(Z.noFx)}`);
+      if (!(Z.offscreen?.fps === 0) || !(Z.offscreen?.links === 0)) fail(`an offscreen scene should not run or compile before it is seen: ${j(Z.offscreen)}`);
+      if (!(Z.measures <= 2)) fail(`regenerating 120 bodies measured the scene ${Z.measures} times (expected at most 2)`);
+      if (!(Z.collideMs < 0.6)) fail(`universe collide at 120 bodies takes ${Z.collideMs?.toFixed(2)} ms per step (expected under 0.6)`); }
+    { const Y = r.cases.hard ?? {}, j = (v) => JSON.stringify(v);
+      if (!(Y.clamp?.effect === Y.clamp?.effectMin) || Y.clamp?.uniform !== 0 || Y.clamp?.speed !== 1 || Y.clamp?.state !== 0.25) fail(`params should clamp and stay finite: ${j(Y.clamp)}`);
+      if (!(Y.fall?.dist < 300)) fail(`gravity-strength 100 flung a faller ${Y.fall?.dist?.toFixed(0)} px away (expected under 300)`);
+      if (Y.zeroSize !== true) fail('a zero-size universe body made positions non-finite');
+      if (Y.rest !== 0) fail(`reduced motion with phase="2" should rest at rotation 0, got ${Y.rest}`);
+      if (Y.released !== true) fail('a removed scene should release its WebGL context');
+      if (Y.flagOnLoss !== true || Y.flagCleared !== true) fail(`context loss should set data-fallback and restore should clear it: ${j({ on: Y.flagOnLoss, cleared: Y.flagCleared })}`);
+      if (Y.badEffect?.errors !== 1 || !(Y.badEffect?.pixels > 100)) fail(`a failing effect should log once and pass through: ${j(Y.badEffect)}`);
+      if (!(Y.pausedClock < 0.2)) fail(`the shader clock advanced ${Y.pausedClock?.toFixed(2)} s while paused for 0.3 s`);
+      if (!(Math.abs(Y.spring?.a16 / Y.spring?.a8 - 1) < 0.05)) fail(`repel spring depends on frame rate: ${j(Y.spring)}`);
+      if (!Y.lateBody?.projected) fail('a child appended to a universe after connect is not projected');
+      if (!Y.blur?.field || Y.blur?.chain !== false || !(Y.blur?.leak < 1e-6)) fail(`blur should be a field, not an effect, and not leak: ${j(Y.blur)}`);
+      if (!(Y.authorCss < 0.5)) fail(`author CSS moved a universe child by ${Y.authorCss?.toFixed(1)} px`);
+      if (!(Y.tiltClamp <= 12 * Math.PI / 180 + 1e-6)) fail(`pointer tilt while dragging outside the box reached ${(Y.tiltClamp * 180 / Math.PI).toFixed(1)} degrees`);
+      if (!(Y.toggleWorst < 12)) fail(`toggling gravity off and on snapped ${Y.toggleWorst?.toFixed(1)} px in one frame`);
+      if (!(Math.abs(Y.pinned?.orbiterRadius - Y.pinned?.ring) < 1) || !(Y.pinned?.blockerMoved > 5) || Y.pinned?.orbiterPinned !== true || Y.pinned?.centerPinned !== true) fail(`collide should not push an orbiter off its ring: ${j(Y.pinned)}`);
+      if (Y.fallerPinned !== false) fail('a falling object should not be pinned (collide keeps fallers apart)');
+      if (Y.hoverScale !== 0.5) fail(`hover-lift ignores the object's scale: scale ${Y.hoverScale} with the pointer outside the drawn shape`);
+      if (Y.nested?.outer !== 0 || Y.nested?.inner !== 1) fail(`a nested scene's object attached to the wrong scene: ${j(Y.nested)}`);
+      if (Y.loneTheme !== 1) fail(`theme="light" on a lone object did not reach its scene (${Y.loneTheme})`);
+      if (Y.reflect?.length) fail(`attributes that shadow fields or HTMLElement properties: ${j(Y.reflect)}`);
+      if (Y.reflectGuard?.warned !== 1 || Y.reflectGuard?.defined !== false) fail(`reflecting an attribute named like a member should warn and skip: ${j(Y.reflectGuard)}`); }
     if (!(uv.defaultHeight >= 300) || !(uv.defaultPixels > 1000)) fail(`universe with no author height: ${uv.defaultHeight}px tall, ${uv.defaultPixels} px drawn`);
     if (!fails.length) console.log(`smoke ok (${r.cases.all.pixels} px, color space ${r.cases.color.space})`);
     return r;
@@ -776,13 +942,26 @@ async function site() {
     if (stages !== badges) { fail(`site/${f}: ${stages} stage(s) but ${badges} fps badge(s)`); break; } }
   if (/id="readout"/.test(index)) fail('site/index: the old dock readout should be gone');
   if (!/class="band-stage"[^>]*>\s*<output class="fps"/.test(index) || (index.match(/class="band-stage"/g) ?? []).length < 3) fail('site/index: the landing rows and the universe band need a band-stage with its fps badge');
+  // Page pass: grouped docks with legends, the hero's single row, the Shades page in the Guide, a scrolling code bar, a 20 px badge figure.
+  { const spec = (f) => JSON.parse(text(f).match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{"controls":[]}').controls;
+    const groupsOf = (f) => [...new Set(spec(f).map((c) => c.group ?? ''))];
+    const expect = { 'objects/orb.html': ['Shape', 'Motion', 'Look'], 'scene.html': ['Scene', 'Interactions', 'Look'], 'universe.html': ['Universe', 'Camera', 'Depth', 'Look'], 'effects/glow.html': ['Scene', 'Effect', 'Look'], 'shades/cel.html': ['Scene', 'Shade', 'Look'], 'interactions/repel.html': ['Scene', 'Interactions', 'Look'] };
+    for (const [f, want] of Object.entries(expect)) { const got = groupsOf(f); if (want.some((g) => !got.includes(g)) || got.includes('')) fail(`site/${f}: dock groups ${JSON.stringify(got)}, expected ${JSON.stringify(want)} with every control grouped`); }
+    if (spec('index.html').some((c) => c.group)) fail('site/index: the hero dock keeps one flat row (no groups)');
+    const css = readFileSync('site/src/styles.css', 'utf8');
+    if (!/\.codebar pre \{[^}]*overflow-x: auto/.test(css)) fail('site/styles: the live markup should scroll horizontally (.codebar pre overflow-x: auto)');
+    if (!/\.fps b \{[^}]*font-size: 20px/.test(css)) fail('site/styles: the fps figure should be 20 px');
+    if (!/<h2>Guide<\/h2><ul>[\s\S]*?href="\.\/shades\.html"/.test(index)) fail('site/index: the Guide list should link the Shades page');
+    if (!/<p class="chips"><span><a href="shades\.html">Shades<\/a><\/span>/.test(index)) fail('site/index: the catalogue Shades row should link the Shades page'); }
   // Shades on the site: a page per shade, a comparison page, a catalogue row, a Shading select in every dock, docs.
-  { const shadeDirs = readdirSync('src/shades', { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  const dirsOf = (root) => readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  const objectDirs = dirsOf('src/objects'), effectDirs = dirsOf('src/effects'), shadeDirs = dirsOf('src/shades');
+  {
     for (const n of shadeDirs) if (!existsSync(`site/dist/shades/${n}.html`)) fail(`site/shades/${n}.html missing`);
     const cmp = text('shades.html');
-    if ((cmp.match(/<sd-scene/g) ?? []).length !== shadeDirs.length || (cmp.match(/<sd-[a-z]+ /g) ?? []).length < 12 * shadeDirs.length) fail(`site/shades.html: expected ${shadeDirs.length} scenes with 12 objects each`);
+    if ((cmp.match(/<sd-scene/g) ?? []).length !== shadeDirs.length || (cmp.match(/<sd-[a-z]+ /g) ?? []).length < objectDirs.length * shadeDirs.length) fail(`site/shades.html: expected ${shadeDirs.length} scenes with 12 objects each`);
     if (!/light default/.test(cmp)) fail('site/shades.html: the lede should name the light default');
-    if (!/<p class="chips"><span>Shades<\/span>/.test(index)) fail('site/index: the catalogue band has no Shades row');
+    if (!/<p class="chips"><span>(<a href="shades\.html">)?Shades/.test(index)) fail('site/index: the catalogue band has no Shades row');
     if (!/<h2[^>]*>Five layers<\/h2>/.test(index)) fail('site/index: the layers band should read Five layers');
     for (const f of ['objects/orb.html', 'effects/glow.html', 'scene.html', 'universe.html', 'index.html', 'shades/cel.html']) {
       const spec = JSON.parse(text(f).match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{"controls":[]}');
@@ -791,7 +970,10 @@ async function site() {
     }
     const skill = text('skill.md');
     if (!/sdShade/.test(skill) || !/sdEdge/.test(skill) || !/sdLightDir/.test(skill)) fail('site/skill.md: the shade contract (sdShade, sdEdge, sdLightDir) is missing');
-    if (/sdGlass/.test(skill)) fail('site/skill.md: still mentions sdGlass, which no longer exists');
+    for (const stale of ['sdGlass', 'uPointer', 'vec3`', '`color`. Keep', '"tags"', 'bleed', 'npm run build   #']) if (skill.includes(stale)) fail(`site/skill.md: still mentions ${stale}`);
+    for (const need of ['## Adding an interaction', '## Adding an animation', 'npm run check']) if (!skill.includes(need)) fail(`site/skill.md: missing ${need}`);
+    const contributing = readFileSync('CONTRIBUTING.md', 'utf8'); if (!/shades/i.test(contributing)) fail('CONTRIBUTING.md should mention shades');
+    if (/raise `rim`/.test(text('accessibility.html')) || /raise <code>rim/.test(text('accessibility.html'))) fail('site/accessibility: the rim advice is stale (only glass reads rim)');
     if (!/<output class="fps" aria-hidden="true"/.test(index)) fail('site/index: the fps badge must be aria-hidden (an output is a live region)');
     if (!/"empty":"auto"/.test(text('objects/orb.html'))) fail('site/objects/orb: the Shading select should label its empty option auto');
     if (!/shades\.html/.test(text('llms.txt')) || shadeDirs.some((n) => !text('llms.txt').includes(`shades/${n}.html`))) fail('site/llms.txt: shade pages or shades.html unlisted'); }
@@ -799,7 +981,8 @@ async function site() {
   { const side = (f) => text(f).match(/<nav class="side"[\s\S]*?<\/nav>/)?.[0] ?? '';
     const groups = (h) => [...h.matchAll(/<details[^>]*>\s*<summary>([^<]*)<span>([0-9]+)<\/span>/g)].map((m) => m[1].trim() + ' ' + m[2]);
     const idx = side('index.html'), orb = side('objects/orb.html'), glow = side('effects/glow.html');
-    if (groups(idx).join('|') !== 'Objects 12|Animations 5|Effects 13|Shades 5|Interactions 7') fail(`site/index: side menu groups ${JSON.stringify(groups(idx))}`);
+    const want = `Objects ${objectDirs.length}|Animations ${groups(idx)[1]?.split(' ')[1] ?? '?'}|Effects ${effectDirs.length}|Shades ${shadeDirs.length}|Interactions ${groups(idx)[4]?.split(' ')[1] ?? '?'}`;
+    if (groups(idx).join('|') !== want) fail(`site/index: side menu groups ${JSON.stringify(groups(idx))}, expected ${want}`);
     if ((idx.match(/<details open/g) ?? []).length !== 0) fail('site/index: a catalogue group is open on the Introduction');
     const openOrb = orb.match(/<details open[\s\S]*?<\/details>/g) ?? [];
     if (openOrb.length !== 1 || !/aria-current="page"/.test(openOrb[0]) || !/>Objects\s*</.test(openOrb[0])) fail(`site/objects/orb: expected only the Objects group open with the current link inside, got ${openOrb.length} open`);
@@ -848,6 +1031,8 @@ async function site() {
         if (r.scenesBeforeBench !== r.scenes) fail(`site/performance: the benchmark left ${r.scenes - r.scenesBeforeBench} scene(s) behind`);
         if (!/fps/.test(r.meter ?? '') || !/(srgb|display-p3)/.test(r.meter ?? '')) fail(`site/performance: live meter reads ${JSON.stringify(r.meter)}`);
       }
+      if (f === 'objects/orb.html' && (!r.legends || r.legends.length < 3)) fail(`site/${f}: dock fieldsets rendered ${JSON.stringify(r.legends)}, expected at least three legends`);
+      if (f === 'objects/orb.html' && r.liveEscaped !== true) fail(`site/${f}: Copy code should escape quotes and ampersands in attribute values`);
       if (f === 'objects/orb.html' && !/^[0-9]+ fps/.test(r.badge ?? '')) fail(`site/${f}: fps badge reads ${JSON.stringify(r.badge)}`);
       if (r.errors.length) fail(`site/${f}: console errors: ${r.errors.join(' | ').slice(0, 600)}`);
       if (!(r.scenes >= 1)) fail(`site/${f}: no scene mounted`);

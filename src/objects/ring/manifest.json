@@ -2,11 +2,33 @@
   "name": "ring",
   "tag": "sd-ring",
   "description": "A glassy torus, tilted toward the viewer. Spin it, or put it in orbit around something.",
-  "bleed": 1.5,
   "uniforms": [
-    { "name": "thickness", "type": "float", "default": 0.16, "min": 0.05, "max": 0.5, "step": 0.01, "label": "Tube thickness" },
-    { "name": "tilt", "type": "float", "default": 0.55, "min": 0, "max": 1, "step": 0.01, "label": "Tilt toward the viewer" },
-    { "name": "rim", "type": "float", "default": 1.0, "min": 0, "max": 2, "step": 0.01, "label": "Fresnel rim" }
-  ],
-  "tags": ["torus", "basic"]
+    {
+      "name": "thickness",
+      "type": "float",
+      "default": 0.16,
+      "min": 0.05,
+      "max": 0.5,
+      "step": 0.01,
+      "label": "Tube thickness"
+    },
+    {
+      "name": "tilt",
+      "type": "float",
+      "default": 0.55,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "label": "Tilt toward the viewer"
+    },
+    {
+      "name": "rim",
+      "type": "float",
+      "default": 1.0,
+      "min": 0,
+      "max": 2,
+      "step": 0.01,
+      "label": "Fresnel rim"
+    }
+  ]
 }

@@ -1,6 +1,6 @@
 # solids
 
-Lightweight 3D objects for the web. Zero dependencies, about 22 KB gzipped for the whole library.
+Lightweight 3D objects for the web. Zero dependencies, about 23 KB gzipped for the whole library.
 
 ## Built for agents
 
