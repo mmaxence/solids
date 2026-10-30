@@ -11,7 +11,7 @@ float map(vec3 p) {
   float tu = emUnits / (uFieldSize.y - 2.0 * uFieldRange);
   vec2 half2 = uFieldSize * tu * 0.5;
   vec2 uv = vec2(p.x, -p.y) / (half2 * 2.0) + 0.5;
-  float d2 = (texture(uField, clamp(uv, 0.0, 1.0)).r - 0.5) * 2.0 * uFieldRange * tu - 0.25 * tu; // a quarter texel of bilinear safety
+  float d2 = (texture(uField, clamp(uv, 0.0, 1.0)).r - 0.5) * 2.0 * uFieldRange * tu;
   vec2 q = abs(p.xy) - half2;
   d2 += length(max(q, 0.0));                                   // outside the field rect the lookup clamps; grow by the rect distance
   float r = bevel * 0.08;

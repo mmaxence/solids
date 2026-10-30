@@ -221,10 +221,12 @@ export class SdScene extends HTMLElement {
     else if (f.scene) { deleteFBO(gl, f.scene); deleteFBO(gl, f.a!); deleteFBO(gl, f.b!); f.scene = f.a = f.b = null; }
     const target = chain.length ? f.scene : null;
 
-    // 1. Objects into the scene buffer, or the canvas.
+    // 1. Objects into the scene buffer, or the canvas. An object with `none` in its effect list is exempt from the scene chain:
+    //    it is drawn after the chain, straight onto the canvas (text usually wants this).
     this.bind(gl, target, 0, 0, W, H, true);
     const sorted = [...this.objects].filter((o) => o.rect && !o.broken).sort((a, b) => (a.anim.z || 0) - (b.anim.z || 0));
-    for (const o of sorted) this.draw(gl, o, t, theme, f, target);
+    const exempt = chain.length ? sorted.filter((o) => o.effectNames.includes('none')) : [];
+    for (const o of sorted) if (!exempt.includes(o)) this.draw(gl, o, t, theme, f, target);
 
     // 2. Scene effect chain, ping-pong, then blit to the canvas.
     if (chain.length) {
@@ -237,6 +239,7 @@ export class SdScene extends HTMLElement {
       }
       this.bind(gl, null, 0, 0, W, H, true);
       this.blit(gl, src);
+      for (const o of exempt) this.draw(gl, o, t, theme, f, null);
     }
     // Drop per-object buffers for sizes unused for 60 frames: quads change size as objects scale, so a size that
     // skipped a few frames usually comes back, and reallocating it every time would stall the GPU.

@@ -791,6 +791,20 @@ const T1 = '<sd-text style="font:700 64px ui-monospace, Menlo, monospace">Solids
 { const dark = textScene(T1, {}, 'dark'), light = textScene(T1, {}, 'light'); await frame(); await frame();
   const lum = (sc) => { const b = read(sc); let sum = 0, n = 0; for (let i = 0; i < b.length; i += 4) { const a = b[i + 3]; if (a > 200) { sum += (0.299 * b[i] + 0.587 * b[i + 1] + 0.114 * b[i + 2]) / a; n++; } } return n ? sum / n : NaN; };
   AD.theme = { dark: lum(dark), light: lum(light) }; free(dark, light); }
+mark('Case AF');
+// Case AF: v9. An object with effect="none" is exempt from the scene's effect chain (drawn after it, byte for byte as without the
+// effect) while its siblings take it; it still takes its own effect; the smooth text field is 160 texels per em and coverage-seeded.
+const AF = result.cases.v9 = {};
+{ const plain = mk({}), fx = mk({ effect: 'pixelate', 'pixelate-size': '12' }); for (const sc of [plain, fx]) { sc.firstElementChild.setAttribute('effect', 'none'); sc.firstElementChild.setAttribute('size', '80px'); }
+  const sib = mk({ effect: 'pixelate', 'pixelate-size': '12' }), sibPlain = mk({}); for (const sc of [sib, sibPlain]) sc.firstElementChild.setAttribute('size', '80px');
+  await frame(); await frame();
+  const x = read(plain), y = read(fx); let diff = 0; for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) diff++;
+  AF.exempt = { bytesDiffer: diff, pixels: pixels(fx), siblingChanged: differ(sib, sibPlain) };
+  const own = mk({ effect: 'pixelate', 'pixelate-size': '12' }); own.firstElementChild.setAttribute('effect', 'none glow'); own.firstElementChild.setAttribute('size', '80px'); await frame(); await frame();
+  AF.ownEffect = differ(own, fx); free(plain, fx, sib, sibPlain, own); }
+{ const sc = textScene('<sd-text style="font:700 96px ui-monospace, Menlo, monospace">O</sd-text>'); await frame(); await frame();
+  const f = sc.firstElementChild.field; let sub = 0; if (f) for (let i = 0; i < f.data.length; i++) { const d = Math.abs(f.data[i] - 128); if (d >= 1 && d <= 5) sub++; } // within a texel of the edge: only coverage seeding gives sub-texel distances (one texel is about 8 steps)
+  AF.text = { em: f ? f.height - 2 * f.range : 0, subTexel: sub }; free(sc); }
 mark('Case AE');
 // Case AE: review fixes. Poke hits the drawn spot (after collide's push) and the shape drawn on top; enabling a tap rule after a tap
 // does not fire on the stale tap; a wide box turned toward the camera is not sliced by the march start; a narrow text keeps its em;
@@ -894,7 +908,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 240000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms', 'taps', 'boxes', 'text', 'fixes']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms', 'taps', 'boxes', 'text', 'fixes', 'v9']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
@@ -1016,6 +1030,10 @@ async function smoke() {
       const fl = r.cases.fall ?? {}; if (!(Math.abs(fl.dist - fl.expected) < 3)) fail(`gravity="fall" settled at ${fl.dist?.toFixed(1)} px, expected ${fl.expected}`);
       if (r.dupNames?.length) fail(`layer names collide: ${r.dupNames.join(', ')}`);
       for (const [name, px] of Object.entries(r.shadePixels ?? {})) if (!(px > 1000)) fail(`shade ${name} draws ${px} px on twelve objects (expected > 1000)`); }
+    { const V = r.cases.v9 ?? {}, j = (v) => JSON.stringify(v);
+      if (V.exempt?.bytesDiffer !== 0 || !(V.exempt?.pixels > 100) || !(V.exempt?.siblingChanged > 0.05)) fail(`effect="none" should exempt an object from the scene effect while siblings take it: ${j(V.exempt)}`);
+      if (!(V.ownEffect > 0.02)) fail(`an exempt object should still take its own effect (differs ${((V.ownEffect ?? 0) * 100).toFixed(2)}%)`);
+      if (V.text?.em !== 160 || !(V.text?.subTexel > 50)) fail(`smooth text should raster at 160 texels per em with coverage-seeded distances: ${j(V.text)}`); }
     { const E = r.cases.fixes ?? {}, j = (v) => JSON.stringify(v);
       if (E.pushedPoke?.bTurned !== true || E.pushedPoke?.aTurned !== false) fail(`poke should hit the shape where it is drawn, after collide moved it: ${j(E.pushedPoke)}`);
       if (E.topPoke?.firstTurned !== true || E.topPoke?.lastTurned !== false) fail(`poke should hit the shape drawn on top, not the last in DOM order: ${j(E.topPoke)}`);
