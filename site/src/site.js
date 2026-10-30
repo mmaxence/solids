@@ -216,6 +216,7 @@ if (location.search.includes('__check')) {
     if (center) { center.value = 'ring'; center.dispatchEvent(new Event('input')); }
     const strength = $$('#controls label').find((l) => l.querySelector('span')?.firstChild?.textContent === 'Gravity strength')?.querySelector('input');
     if (strength) { strength.value = '0'; strength.dispatchEvent(new Event('input')); }
+    for (let i = 0; i < 30 && $('.fps') && !/fps/.test($('.fps').textContent); i++) await new Promise((r) => setTimeout(r, 100)); // the badge fills after the first frames
     const h1 = $('h1')?.getBoundingClientRect(), dock = $('.dock')?.getBoundingClientRect();
     const toggle = (name, on) => { const t = $$('#controls label.check').find((l) => l.textContent.trim() === name)?.querySelector('input'); if (t && t.checked !== on) { t.checked = on; t.dispatchEvent(new Event('input')); } };
     let interactionAttr;
