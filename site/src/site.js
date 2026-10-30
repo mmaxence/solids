@@ -57,7 +57,7 @@ if (specEl) {
       input = Object.assign(document.createElement('input'), { type: 'color', value: c.value });
     } else if (c.kind === 'select') {
       input = document.createElement('select');
-      for (const o of c.options) input.append(new Option(o || 'none', o));
+      for (const o of c.options) input.append(new Option(o || c.empty || 'none', o));
       input.value = c.value ?? '';
     } else if (c.kind === 'check') {
       label.className = 'check';
@@ -102,12 +102,26 @@ if (specEl) {
 }
 function flash(btn, text) { const t = btn.textContent; btn.textContent = text; setTimeout(() => (btn.textContent = t), 1200); }
 
-// Live numbers from the demo scene: the hero dock readout, and the meter on the Performance page.
-const demo = $('#demo'), readout = $('#readout'), meter = $('#meter'), liveFrame = $('#live-frame');
-if (demo && (readout || meter || liveFrame)) {
+// fps badge on every stage, fed by that stage's own scene. A dash until the scene has drawn a frame.
+$$('.fps').forEach((badge) => {
+  const scene = badge.parentElement.querySelector('sd-scene, sd-universe');
+  if (!scene) return;
+  const tick = () => {
+    if (!(scene.fps > 0)) return;
+    const fps = Math.round(scene.fps);
+    badge.firstElementChild.textContent = `${fps} fps`;
+    badge.lastElementChild.textContent = ` ${scene.frameTime.toFixed(2)} ms`;
+    badge.classList.toggle('warn', fps < 50 && fps >= 30);
+    badge.classList.toggle('bad', fps < 30);
+  };
+  tick(); setInterval(tick, 250);
+});
+
+// Live numbers from the demo scene: the Performance page's meter and the landing's frame number.
+const demo = $('#demo'), meter = $('#meter'), liveFrame = $('#live-frame');
+if (demo && (meter || liveFrame)) {
   const show = () => {
     const fps = Math.round(demo.fps);
-    if (readout) readout.textContent = `${fps} fps, ${demo.frameTime.toFixed(2)} ms`;
     if (liveFrame) liveFrame.textContent = `${demo.frameTime.toFixed(2)} ms`;
     if (!meter) return;
     const gpu = demo.gpuTime;   // reading it turns the GPU timer on for this scene
@@ -202,6 +216,7 @@ if (location.search.includes('__check')) {
     if (center) { center.value = 'ring'; center.dispatchEvent(new Event('input')); }
     const strength = $$('#controls label').find((l) => l.querySelector('span')?.firstChild?.textContent === 'Gravity strength')?.querySelector('input');
     if (strength) { strength.value = '0'; strength.dispatchEvent(new Event('input')); }
+    for (let i = 0; i < 30 && $('.fps') && !/fps/.test($('.fps').textContent); i++) await new Promise((r) => setTimeout(r, 100)); // the badge fills after the first frames
     const h1 = $('h1')?.getBoundingClientRect(), dock = $('.dock')?.getBoundingClientRect();
     const toggle = (name, on) => { const t = $$('#controls label.check').find((l) => l.textContent.trim() === name)?.querySelector('input'); if (t && t.checked !== on) { t.checked = on; t.dispatchEvent(new Event('input')); } };
     let interactionAttr;
@@ -212,7 +227,7 @@ if (location.search.includes('__check')) {
       objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top,
       markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr,
 contexts: $$('sd-scene, sd-universe').length + $$('*').filter((e) => e.shadowRoot?.querySelector('sd-scene')).length, sceneObjects: $$('sd-scene, sd-universe').map((s) => s.objects?.size), liveFrame: $('#live-frame')?.textContent,
-      readout: readout && (getComputedStyle(readout).display === 'none' ? 'hidden' : readout.textContent), meter: meter?.textContent, bench, benchRow: benchRowText, noTimerRow, scenesBeforeBench }) });
+      badge: $('.fps')?.textContent, meter: meter?.textContent, bench, benchRow: benchRowText, noTimerRow, scenesBeforeBench }) });
   };
   const tick = () => (++n < 6 ? requestAnimationFrame(tick) : report());
   requestAnimationFrame(tick);

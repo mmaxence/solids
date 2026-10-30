@@ -112,7 +112,16 @@ td:first-child code { white-space: nowrap; }
 .bench td.bar { width: 40%; vertical-align: middle; }
 .bench td.bar span { display: block; width: 0; height: 6px; border-radius: 3px; background: var(--accent); transition: width 0.3s; }
 /* Out of the flow, just above the dock's right edge, so it never changes how the dock wraps. */
-.dock .readout { position: absolute; right: 16px; bottom: calc(100% + 8px); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+/* fps badge: top-right of every stage, big figures, color says when a scene struggles */
+.fps { position: absolute; top: 12px; right: 12px; z-index: 2; display: inline-flex; align-items: baseline; gap: 4px; padding: 6px 12px; border-radius: 999px; background: color-mix(in srgb, var(--bg) 70%, transparent); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: var(--fg); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; line-height: 1; }
+.fps b { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+.fps span { font-size: 12px; color: var(--muted); }
+.fps.warn b { color: #e7b53b; }
+.fps.bad b { color: #ff6b6b; }
+.band-stage { position: relative; padding-top: 44px; } /* a strip above the row holds the badge, clear of prose and cards */
+.band-stage > .fps { top: 0; right: 0; }
+.band-stage:has(> sd-universe) { padding-top: 0; } /* the universe fills its band; the badge sits inside */
+.band-stage:has(> sd-universe) > .fps { top: 12px; right: 12px; }
 .foot { display: flex; justify-content: space-between; gap: 16px; padding: 18px 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 .foot a { color: var(--fg); }
 
@@ -127,6 +136,7 @@ td:first-child code { white-space: nowrap; }
   .side details ul { margin: 2px 0 6px; padding-left: 0; border-left: 0; }
   .side summary span { margin-left: 0; }
   .side li a, .side summary { margin-left: 0; }
+  .hero-title h1 { padding-right: 120px; } /* room for the fps badge in the corner */
   .main { padding: 28px 16px 60px; }
   .main > h1 { font-size: 32px; }
   .stage { height: 280px; }
@@ -161,7 +171,6 @@ td:first-child code { white-space: nowrap; }
   .dock .btn { margin-left: 0; }
   .dock label, .dock .btn { flex: 1 1 40%; }
   .hero-full #disc { display: none; }
-  .dock .readout { display: none; }
 }
 
 /* Landing under the hero: one band per job. Inside a live row the canvas sits above
@@ -182,7 +191,7 @@ td:first-child code { white-space: nowrap; }
 #built-for-agents li { counter-increment: step; padding: 16px 18px; }
 #built-for-agents li::before { content: counter(step); display: grid; place-items: center; width: 26px; height: 26px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 50%; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-.layers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.layers { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
 .layer { padding: 0 18px 16px; }
 .layer .mini { display: grid; place-items: center; height: 150px; margin: 0 -18px 14px; border-bottom: 1px solid var(--line); }
 .layer .mini > * { grid-area: 1 / 1; }
@@ -226,3 +235,9 @@ td:first-child code { white-space: nowrap; }
 
 /* Landing: what a shape costs an agent, under the catalogue grid */
 .cost { margin: 18px 0 0; color: var(--muted); font-size: 14px; max-width: 70ch; }
+
+/* Shades comparison page: one row per shade, the catalogue grid without labels */
+.compare-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 28px; }
+.compare-rows h2 { margin: 0 0 4px; font-size: 20px; }
+.compare-rows > li > p { margin: 0 0 12px; color: var(--muted); }
+.catalogue.compare li { display: grid; place-items: center; padding: 14px 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--glass); }

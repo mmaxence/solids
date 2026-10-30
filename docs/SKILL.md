@@ -84,7 +84,9 @@ What the prelude gives you:
 | `sdRay(ro, rd)` | camera ray for this pixel, rotated by `uRotation` |
 | `sdMarch(ro, rd, minD)` | hit distance or -1; `minD` is the closest approach |
 | `sdNormal(p)` | normal from `map` |
-| `sdGlass(p, n, rd, rim)` | the house shading: tinted body, fresnel rim, one specular, premultiplied alpha |
+| `sdShade(p, n, rd, rim)` | the active shade's surface color (glass, matte, cel, clay, metal), premultiplied; called by `sdRender` |
+| `sdEdge()` | the active shade's tint for the soft edge and halo on a miss |
+| `sdLightDir(azimuthDeg)` | a key light fixed to the view, in object space; `sdView(v)` turns an object-space direction into view space |
 | `sdRender(rim, glow)` | march, shade, soft edge, halo on miss. Most objects just call this |
 
 Output is premultiplied RGBA. If you write your own `main`, multiply rgb by alpha before writing `fragColor`.
@@ -94,7 +96,7 @@ Output is premultiplied RGBA. If you write your own `main`, multiply rgb by alph
 ### The look
 
 Every object must read as the same family on the site:
-- Glassy: a tinted body, a bright fresnel rim, one specular highlight. Use `sdGlass` or start from it.
+- Shade-agnostic: an object only defines its shape; the shade (glass, matte, cel, clay, metal) decides how the surface takes light. Return `sdRender(rim, glow)` and let it call the shade.
 - High contrast on near-black and on near-white (`uTheme`). No flat gray bodies, no muddy mid-tones.
 - One accent: the object is tinted by `uColor` only. Do not hardcode colors.
 - A soft silhouette: edges are anti-aliased by `sdRender` using the closest-approach distance.
@@ -133,6 +135,23 @@ vec4 sdEffect() {
 It receives `uScene` (the previous pass, premultiplied), `uResolution`, `uTime`, `uTheme`, `sdLuma(rgb)`, and `sdBayer(px)` for jittering sparse kernels. Params become `<effect>-<param>` attributes on a scene or an object.
 
 Every effect also gets a `mix` param (0 to 2, default 1) without declaring it: the core blends your result with the incoming scene, `mix(scene, sdEffect(), mix)`, and clamps to valid premultiplied color (`a` in 0..1, `rgb` at most `a`). 0 is a plain copy, 1 is the effect as designed, 2 pushes it further. Return the look as designed and let `<effect>-mix` dial it. Keep to one pass; sample at most a few dozen taps.
+
+## Adding a shade
+
+A shade is how a surface takes light. Same shape under `src/shades/<name>/` with `manifest.json` (`name`, `description`, `params`, all floats with min and max), `frag.glsl` and `README.md`; register it in `src/shades/index.ts`. The shade is appended between the prelude and every object's fragment, so it compiles once per object. Define two functions; do not write `main`:
+
+```glsl
+uniform float light;
+vec4 sdShade(vec3 p, vec3 n, vec3 rd, float rim) {   // premultiplied color of a surface hit
+  vec3 l = sdLightDir(light);                        // key light at an azimuth around the view, 45 degrees up
+  float diff = max(dot(n, l), 0.0);
+  vec3 col = uColor * (0.3 + 0.7 * diff);
+  return vec4(col, 1.0);
+}
+vec3 sdEdge() { return uColor; }                     // tint of the soft edge and halo when a ray misses
+```
+
+It sees `uColor`, `uTheme` (0 dark, 1 light: branch with `mix(dark, light, uTheme)` and tune both), `uState`, `map(p)` for occlusion tricks, `sdLightDir(azimuthDeg)` (a key light fixed to the view, already in object space) and `sdView(v)` (object to view space, for sky or environment lookups). Return `rgb` at most 1 with alpha 1 for an opaque surface, or premultiplied `rgb * a`: the scene composites premultiplied color. Param names must not equal any object uniform name (the check enforces it). Users pick a shade with `shading="<name>"` on an object or a scene; `auto` is glass in dark and the light default in light. Params become `<shade>-<param>` attributes.
 
 ## The universe
 

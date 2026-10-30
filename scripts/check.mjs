@@ -74,7 +74,26 @@ function manifests() {
       if (!new RegExp(`uniform\\s+float\\s+${u.name}\\b`).test(frag)) fail(`${dir}: frag.glsl does not declare uniform ${u.name}`);
     }
   }
-  if (!fails.length) console.log(`manifests ok (${dirs.length} objects, ${fx.length} effects)`);
+  // Shades: like effects, plus a README (shown on the shade page) and no param name shared with any object uniform
+  // (one program holds an object's uniforms and its shade's, and a redeclaration would fail to compile).
+  const objUniforms = new Set(dirs.flatMap((d) => { try { return (JSON.parse(readFileSync(`${root}/${d}/manifest.json`, 'utf8')).uniforms ?? []).map((u) => u.name); } catch { return []; } }));
+  const sh = existsSync('src/shades') ? readdirSync('src/shades', { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name) : [];
+  if (!sh.includes('glass')) fail('src/shades/glass: the glass shade must exist');
+  for (const d of sh) {
+    const dir = `src/shades/${d}`;
+    if (!existsSync(`${dir}/manifest.json`) || !existsSync(`${dir}/frag.glsl`) || !existsSync(`${dir}/README.md`)) { fail(`${dir}: needs manifest.json, frag.glsl and README.md`); continue; }
+    const m = JSON.parse(readFileSync(`${dir}/manifest.json`, 'utf8'));
+    if (m.name !== d) fail(`${dir}: manifest.name must equal folder name`);
+    if (typeof m.description !== 'string') fail(`${dir}: manifest.description missing`);
+    const frag = readFileSync(`${dir}/frag.glsl`, 'utf8');
+    if (!/vec4\s+sdShade\s*\(/.test(frag) || !/vec3\s+sdEdge\s*\(/.test(frag)) fail(`${dir}: frag.glsl must define vec4 sdShade(vec3 p, vec3 n, vec3 rd, float rim) and vec3 sdEdge()`);
+    for (const u of m.params ?? []) {
+      if (!/^[a-z][a-zA-Z0-9]*$/.test(u.name ?? '') || u.type !== 'float' || typeof u.min !== 'number' || typeof u.max !== 'number' || typeof u.label !== 'string') fail(`${dir}: param ${u.name} must be a float with name, min, max, label`);
+      if (!new RegExp(`uniform\\s+float\\s+${u.name}\\b`).test(frag)) fail(`${dir}: frag.glsl does not declare uniform ${u.name}`);
+      if (objUniforms.has(u.name)) fail(`${dir}: param ${u.name} collides with an object uniform of the same name`);
+    }
+  }
+  if (!fails.length) console.log(`manifests ok (${dirs.length} objects, ${fx.length} effects, ${sh.length} shades)`);
 }
 
 
@@ -186,6 +205,58 @@ result.cases.odd = { pixels: pixels(odd), objects: odd.objects.size };
 result.cases.dyn = { pixels: pixels(dyn), objects: dyn.objects.size };
 for (const o of all.objects) if (o.broken) result.compileErrors.push(o.manifest.tag);
 for (const sc of [all, empty, odd, dyn]) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); }
+// Case S: every object compiles with every shade; glass is the dark default; an unknown shade name draws and warns once.
+const shadeNames = [...(registry.shades?.keys() ?? [])];
+result.shades = shadeNames; result.programs = 0;
+for (const name of shadeNames) {
+  const sc = document.body.appendChild(document.createElement('sd-scene')); sc.setAttribute('theme', 'dark'); sc.setAttribute('shading', name);
+  for (const t of tags) sc.appendChild(document.createElement(t));
+  await frame(); await frame(); sc.frame(1, 16);
+  for (const o of sc.objects) { if (o.broken) result.compileErrors.push(o.manifest.tag + '+' + name); else result.programs++; }
+  sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove();
+}
+{ const warns = []; const cw = console.warn.bind(console); console.warn = (...a) => { warns.push(a.join(' ')); cw(...a); };
+  const g1 = mk({}, { shading: 'glass' }), g0 = mk({}), gx = mk({}, { shading: 'nope' }), gy = mk({}, { shading: 'nope' });
+  await frame(); await frame();
+  result.cases.shade = { glassEqualsDefault: differ(g1, g0), unknownDraws: pixels(gx), unknownWarned: warns.filter((w) => /nope/.test(w)).length, unknownEqualsDefault: differ(gx, g0) };
+  console.warn = cw; for (const sc of [g1, g0, gx, gy]) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); } }
+// Shade behavior: shades differ from each other, params change the image, scene shading is inherited, the object overrides,
+// auto is the theme default (glass in dark, the light default in light), and params merge scene under object.
+{ const drop = (...scs) => { for (const sc of scs) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); } };
+  const light = (attrs, objAttrs) => { const sc = mk(attrs, objAttrs); sc.setAttribute('theme', 'light'); return sc; };
+  const sGlass = mk({}, { shading: 'glass' }), sMatte = mk({}, { shading: 'matte' }), sCel = mk({}, { shading: 'cel' }), sClay = mk({}, { shading: 'clay' }), sMetal = mk({}, { shading: 'metal' });
+  await frame(); await frame();
+  const names = ['glass', 'matte', 'cel', 'clay', 'metal'], bufs = [sGlass, sMatte, sCel, sClay, sMetal].map((sc) => read(sc));
+  let least = 1; for (let i = 0; i < bufs.length; i++) for (let j = i + 1; j < bufs.length; j++) least = Math.min(least, differ(bufs[i], bufs[j]));
+  drop(sGlass, sMatte, sCel, sClay, sMetal);
+  const b2 = mk({}, { shading: 'cel', 'cel-bands': '2' }), b5 = mk({}, { shading: 'cel', 'cel-bands': '5' });
+  const inh = mk({ shading: 'cel' }), exp = mk({}, { shading: 'cel' }), ovr = mk({ shading: 'cel' }, { shading: 'metal' }), met = mk({}, { shading: 'metal' });
+  const autoObj = mk({ shading: 'cel' }, { shading: 'auto' }), glassObj = mk({}, { shading: 'glass' });
+  const aL = light({}, {}), dL = light({}, { shading: registry.LIGHT_SHADE }), gL = light({}, { shading: 'glass' });
+  const pm = mk({ 'cel-bands': '2' }, { shading: 'cel', 'cel-bands': '5' }), pmScene = mk({ shading: 'cel', 'cel-bands': '2' });
+  await frame(); await frame();
+  result.cases.shade.least = least;
+  result.cases.shade.bands = differ(b2, b5);
+  result.cases.shade.inherit = differ(inh, exp);
+  result.cases.shade.override = { equalsMetal: differ(ovr, met), differsFromCel: differ(ovr, exp) };
+  result.cases.shade.autoOnObject = differ(autoObj, glassObj);
+  result.cases.shade.autoLight = { equalsDefault: differ(aL, dL), differsFromGlass: differ(aL, gL), name: registry.LIGHT_SHADE };
+  result.cases.shade.paramMerge = { objectWins: differ(pm, b5), sceneAlone: differ(pmScene, b2) };
+  drop(b2, b5, inh, exp, ovr, met, autoObj, glassObj, aL, dL, gL, pm, pmScene); }
+// Review fixes: the key light is fixed to the view (a sphere turned 180 degrees looks the same); removing an object's param lets the
+// scene's value through; out-of-range params clamp to the manifest range; cel's ink edge is valid premultiplied color.
+{ const drop = (...scs) => { for (const sc of scs) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); } };
+  const lit = mk({}, { shading: 'cel' }), turned = mk({}, { shading: 'cel' });
+  const to = turned.firstElementChild, up = to.update.bind(to);
+  to.update = (dt) => { up(dt); to.anim.rotation = new Float32Array([-1, 0, 0, 0, 1, 0, 0, 0, -1]); };
+  const rm = mk({ 'cel-bands': '2' }, { shading: 'cel', 'cel-bands': '5' }), sc2 = mk({ 'cel-bands': '2' }, { shading: 'cel' });
+  const big = mk({}, { shading: 'metal', 'metal-roughness': '1.5' }), one = mk({}, { shading: 'metal', 'metal-roughness': '1' });
+  const ink = mk({}, { shading: 'cel' });
+  await frame(); await frame();
+  rm.firstElementChild.removeAttribute('cel-bands'); await frame(); await frame();
+  let over = 0; { const b = read(ink); for (let i = 0; i < b.length; i += 4) if (b[i] > b[i + 3] + 1 || b[i + 1] > b[i + 3] + 1 || b[i + 2] > b[i + 3] + 1) over++; }
+  result.cases.shade.fixed = { viewLight: differ(lit, turned), paramRemoved: differ(rm, sc2), clamp: { same: differ(big, one), pixels: pixels(big) }, inkOver: over };
+  drop(lit, turned, rm, sc2, big, one, ink); }
 // Case D: animations move things; reduced motion freezes them.
 const an = document.body.appendChild(document.createElement('sd-scene')); an.className = 'small';
 const spin = document.createElement(tags[0]); spin.setAttribute('animation', 'spin'); an.appendChild(spin);
@@ -554,10 +625,25 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 90000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
-    if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.tags.length})`);
+    if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
+    if (!(r.shades?.length >= 1) || !(r.programs === r.tags.length * r.shades.length)) fail(`shade programs: ${r.programs} compiled for ${r.tags.length} objects x ${r.shades?.length ?? 0} shades`);
+    { const sh = r.cases.shade ?? {}, pc = (v) => (v * 100).toFixed(2) + '%';
+      if (!(sh.least > 0.02)) fail(`shades: two of glass, matte, cel, clay, metal look alike (least difference ${pc(sh.least ?? 0)})`);
+      if (!(sh.bands > 0.02)) fail(`shades: cel-bands 2 vs 5 differ by ${pc(sh.bands ?? 0)}`);
+      if (!(sh.inherit < 1e-6)) fail(`shades: scene shading="cel" not inherited (${pc(sh.inherit ?? 1)} differs)`);
+      if (!(sh.override?.equalsMetal < 1e-6) || !(sh.override?.differsFromCel > 0.02)) fail(`shades: object shading should override the scene: ${JSON.stringify(sh.override)}`);
+      if (!(sh.autoOnObject < 1e-6)) fail(`shades: shading="auto" on an object inside a cel scene should be the theme default (glass), differs ${pc(sh.autoOnObject ?? 1)}`);
+      if (!(sh.autoLight?.equalsDefault < 1e-6) || !(sh.autoLight?.differsFromGlass > 0.02)) fail(`shades: auto in the light theme should be ${sh.autoLight?.name}: ${JSON.stringify(sh.autoLight)}`);
+      if (!(sh.paramMerge?.objectWins < 1e-6) || !(sh.paramMerge?.sceneAlone < 1e-6)) fail(`shades: params should merge scene under object: ${JSON.stringify(sh.paramMerge)}`);
+      const fx = sh.fixed ?? {};
+      if (!(fx.viewLight < 0.01)) fail(`shades: the key light should stay fixed to the view: a sphere turned 180 degrees differs by ${pc(fx.viewLight ?? 1)}`);
+      if (!(fx.paramRemoved < 1e-6)) fail(`shades: removing an object's cel-bands should let the scene's value through, differs ${pc(fx.paramRemoved ?? 1)}`);
+      if (!(fx.clamp?.same < 1e-6) || !(fx.clamp?.pixels > 100)) fail(`shades: metal-roughness="1.5" should clamp to 1: ${JSON.stringify(fx.clamp)}`);
+      if (fx.inkOver !== 0) fail(`shades: cel ink edge has ${fx.inkOver} pixels with rgb above alpha (invalid premultiplied color)`); }
+    { const sh = r.cases.shade ?? {}; if (!(sh.glassEqualsDefault < 1e-6) || !(sh.unknownDraws > 100) || sh.unknownWarned !== 1 || !(sh.unknownEqualsDefault < 1e-6)) fail(`shades: glass vs default ${sh.glassEqualsDefault}, unknown name drew ${sh.unknownDraws} px and warned ${sh.unknownWarned} times (expected 1), unknown vs default ${sh.unknownEqualsDefault}`); }
     if (r.consoleErrors.length) fail(`console errors: ${r.consoleErrors.join(' | ').slice(0, 1200)}`);
     if (!(r.cases.all.pixels > 1000)) fail(`smoke: scene drew ${r.cases.all.pixels} pixels, expected > 1000`);
     if (r.cases.empty.objects !== 0 || r.cases.empty.pixels !== 0) fail(`empty scene: ${JSON.stringify(r.cases.empty)}`);
@@ -676,20 +762,44 @@ async function site() {
   const text = (f) => (existsSync(`site/dist/${f}`) ? readFileSync(`site/dist/${f}`, 'utf8') : '');
   if (!existsSync('site/dist/skill.md') || !readFileSync('site/dist/skill.md').equals(readFileSync('docs/SKILL.md'))) fail('site/skill.md is not a byte copy of docs/SKILL.md');
   const llms = text('llms.txt');
-  const unlisted = pages.filter((f) => /^(objects|effects|interactions)\//.test(f) && !llms.includes(f));
+  const unlisted = pages.filter((f) => /^(objects|effects|shades|interactions)\//.test(f) && !llms.includes(f));
   for (const extra of ['universe.html', 'performance.html']) if (existsSync(`site/dist/${extra}`) && !llms.includes(extra)) unlisted.push(extra);
   if (!llms.startsWith('# solids') || !llms.includes('skill.md') || unlisted.length) fail(`site/llms.txt: title, skill.md and every object, effect and interaction page expected; missing ${unlisted.join(', ') || 'none'}`);
   for (const f of ['skill.md', 'llms.txt']) if (/\u2014/.test(text(f))) fail(`site/${f}: contains an em dash`);
   // Landing: the sections under the hero, in the spec order, and a Copy prompt in the dock.
   const index = text('index.html');
   const h2s = [...index.slice(index.indexOf('<main')).matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
-  const ORDER = ['Built for agents', 'Install', 'Four layers', 'Universe', 'Catalogue', 'Performance', 'Details'];
+  const ORDER = ['Built for agents', 'Install', 'Five layers', 'Universe', 'Catalogue', 'Performance', 'Details'];
   { const band = index.match(/<sd-universe class="band-universe"[^>]*>/)?.[0] ?? ''; if (!/\bcollide\b/.test(band) || /\bgravity\b/.test(band)) fail(`site/index: the universe band should run with collide and no gravity: ${band}`); }
+  // fps badge: one per stage on every page (stages and the landing's band stages); the hero's old readout is gone.
+  for (const f of pages) { const h = text(f); const stages = (h.match(/class="(stage|band-stage)[ "]/g) ?? []).length, badges = (h.match(/class="fps"/g) ?? []).length;
+    if (stages !== badges) { fail(`site/${f}: ${stages} stage(s) but ${badges} fps badge(s)`); break; } }
+  if (/id="readout"/.test(index)) fail('site/index: the old dock readout should be gone');
+  if (!/class="band-stage"[^>]*>\s*<output class="fps"/.test(index) || (index.match(/class="band-stage"/g) ?? []).length < 3) fail('site/index: the landing rows and the universe band need a band-stage with its fps badge');
+  // Shades on the site: a page per shade, a comparison page, a catalogue row, a Shading select in every dock, docs.
+  { const shadeDirs = readdirSync('src/shades', { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+    for (const n of shadeDirs) if (!existsSync(`site/dist/shades/${n}.html`)) fail(`site/shades/${n}.html missing`);
+    const cmp = text('shades.html');
+    if ((cmp.match(/<sd-scene/g) ?? []).length !== shadeDirs.length || (cmp.match(/<sd-[a-z]+ /g) ?? []).length < 12 * shadeDirs.length) fail(`site/shades.html: expected ${shadeDirs.length} scenes with 12 objects each`);
+    if (!/light default/.test(cmp)) fail('site/shades.html: the lede should name the light default');
+    if (!/<p class="chips"><span>Shades<\/span>/.test(index)) fail('site/index: the catalogue band has no Shades row');
+    if (!/<h2[^>]*>Five layers<\/h2>/.test(index)) fail('site/index: the layers band should read Five layers');
+    for (const f of ['objects/orb.html', 'effects/glow.html', 'scene.html', 'universe.html', 'index.html', 'shades/cel.html']) {
+      const spec = JSON.parse(text(f).match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{"controls":[]}');
+      const c = spec.controls.find((x) => x.attr === 'shading');
+      if (!c || c.kind !== 'select' || !c.options.includes('cel') || !c.options.includes('')) fail(`site/${f}: dock has no Shading select listing auto and every shade`);
+    }
+    const skill = text('skill.md');
+    if (!/sdShade/.test(skill) || !/sdEdge/.test(skill) || !/sdLightDir/.test(skill)) fail('site/skill.md: the shade contract (sdShade, sdEdge, sdLightDir) is missing');
+    if (/sdGlass/.test(skill)) fail('site/skill.md: still mentions sdGlass, which no longer exists');
+    if (!/<output class="fps" aria-hidden="true"/.test(index)) fail('site/index: the fps badge must be aria-hidden (an output is a live region)');
+    if (!/"empty":"auto"/.test(text('objects/orb.html'))) fail('site/objects/orb: the Shading select should label its empty option auto');
+    if (!/shades\.html/.test(text('llms.txt')) || shadeDirs.some((n) => !text('llms.txt').includes(`shades/${n}.html`))) fail('site/llms.txt: shade pages or shades.html unlisted'); }
   // Side menu: two tiers, four collapsible catalogue groups with counts; only the current page's group is open.
   { const side = (f) => text(f).match(/<nav class="side"[\s\S]*?<\/nav>/)?.[0] ?? '';
     const groups = (h) => [...h.matchAll(/<details[^>]*>\s*<summary>([^<]*)<span>([0-9]+)<\/span>/g)].map((m) => m[1].trim() + ' ' + m[2]);
     const idx = side('index.html'), orb = side('objects/orb.html'), glow = side('effects/glow.html');
-    if (groups(idx).join('|') !== 'Objects 12|Animations 5|Effects 13|Interactions 7') fail(`site/index: side menu groups ${JSON.stringify(groups(idx))}`);
+    if (groups(idx).join('|') !== 'Objects 12|Animations 5|Effects 13|Shades 5|Interactions 7') fail(`site/index: side menu groups ${JSON.stringify(groups(idx))}`);
     if ((idx.match(/<details open/g) ?? []).length !== 0) fail('site/index: a catalogue group is open on the Introduction');
     const openOrb = orb.match(/<details open[\s\S]*?<\/details>/g) ?? [];
     if (openOrb.length !== 1 || !/aria-current="page"/.test(openOrb[0]) || !/>Objects\s*</.test(openOrb[0])) fail(`site/objects/orb: expected only the Objects group open with the current link inside, got ${openOrb.length} open`);
@@ -711,7 +821,7 @@ async function site() {
   }
   const chrome = chromePath();
   if (!chrome) return;
-  for (const [f, size] of [['scene.html'], ['index.html'], ['index.html', '500,800'], ['objects/orb.html'], ['effects/glow.html'], ['performance.html'], ['universe.html']]) {
+  for (const [f, size] of [['scene.html'], ['index.html'], ['index.html', '500,800'], ['objects/orb.html'], ['effects/glow.html'], ['shades/cel.html'], ['performance.html'], ['universe.html']]) {
     const { srv, port, result } = await serve('site/dist');
     try {
       const r = await runPage(`http://127.0.0.1:${port}/${f}?__check`, chrome, result, 30000, size);
@@ -728,7 +838,7 @@ async function site() {
         if (!size && !/\d+(\.\d+)? ms/.test(r.liveFrame ?? '')) fail(`site/index: the Performance band's live frame number reads ${JSON.stringify(r.liveFrame)}`);
         if (!(r.contexts <= 6)) fail(`site/index (${size ?? 'desktop'}): ${r.contexts} WebGL scenes, expected at most 6 (one per section row, never one per card)`);
         if (!r.sceneObjects?.length || r.sceneObjects.some((n) => !(n > 0))) fail(`site/index (${size ?? 'desktop'}): a scene holds no objects: ${JSON.stringify(r.sceneObjects)}`);
-        if (size ? r.readout !== 'hidden' : !/\d+ fps/.test(r.readout ?? '')) fail(`site/index (${size ?? 'desktop'}): dock readout should be ${size ? 'hidden' : 'visible with fps'}, got ${JSON.stringify(r.readout)}`);
+        if (!/^[0-9]+ fps/.test(r.badge ?? '') || !/[0-9.]+ ms/.test(r.badge ?? '')) fail(`site/index (${size ?? 'desktop'}): hero fps badge reads ${JSON.stringify(r.badge)}`);
       }
       if (f === 'performance.html') {
         const b = r.bench;
@@ -738,10 +848,11 @@ async function site() {
         if (r.scenesBeforeBench !== r.scenes) fail(`site/performance: the benchmark left ${r.scenes - r.scenesBeforeBench} scene(s) behind`);
         if (!/fps/.test(r.meter ?? '') || !/(srgb|display-p3)/.test(r.meter ?? '')) fail(`site/performance: live meter reads ${JSON.stringify(r.meter)}`);
       }
+      if (f === 'objects/orb.html' && !/^[0-9]+ fps/.test(r.badge ?? '')) fail(`site/${f}: fps badge reads ${JSON.stringify(r.badge)}`);
       if (r.errors.length) fail(`site/${f}: console errors: ${r.errors.join(' | ').slice(0, 600)}`);
       if (!(r.scenes >= 1)) fail(`site/${f}: no scene mounted`);
       if (r.theme !== 'light') fail(`site/${f}: one click on Theme gave "${r.theme}", expected light`);
-      if (f.startsWith('effects/') && r.subject !== 'sd-cube') fail(`site/${f}: Object select left subject "${r.subject}"`);
+      if ((f.startsWith('effects/') || f.startsWith('shades/')) && r.subject !== 'sd-cube') fail(`site/${f}: Object select left subject "${r.subject}"`);
       if (f === 'scene.html' && !/<sd-ring[^>]*gravity="center"/.test(r.live)) fail(`site/${f}: center select did not mark the ring: ${r.live?.slice(0, 160)}`);
       if (f === 'scene.html' && /<sd-scene[^>]*gravity="/.test(r.live)) fail(`site/${f}: junk gravity attribute on the scene`);
       if (f === 'universe.html' && !/<sd-universe[^>]*camera="none"/.test(r.live)) fail(`site/${f}: with Spin, Drag and Pointer off, Copy code should carry camera="none": ${r.live?.slice(0, 120)}`);

@@ -1,6 +1,6 @@
 # solids
 
-Lightweight 3D objects for the web. Zero dependencies, about 20 KB gzipped for the whole library.
+Lightweight 3D objects for the web. Zero dependencies, about 22 KB gzipped for the whole library.
 
 ## Built for agents
 
@@ -32,13 +32,14 @@ Each object is a web component drawn by a fragment shader. Add one script tag, t
 </sd-scene>
 ```
 
-## Four layers
+## Five layers
 
 | Layer | What it is | Set with |
 |---|---|---|
 | Objects | orb, ring, crystal, coil, blob, cube, knot, prism, capsule, star, shell, disc | the tag: `<sd-orb>` |
 | Animations | idle, spin, pulse, breathe, float | `animation="spin breathe"` |
 | Effects | glow, beam, rgb-split, pixelate, dither, scanlines, halftone, outline, grain, vignette, chroma, ripple, defocus | `effect="glow"` on an object or a scene |
+| Shades | glass, matte, cel, clay, metal | `shading="cel"` on an object or a scene |
 | Interactions | pointer-follow, hover-lift, gravity, repel, magnet, collide, scroll | `interaction="gravity"` on a scene |
 
 Objects outside a scene work on their own. Inside a scene they share one canvas and can react to each other: mark one `gravity="center"` and the rest orbit it on rings, farther rings turning slower.

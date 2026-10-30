@@ -43,21 +43,17 @@ float sdMarch(vec3 ro, vec3 rd, out float minD) {
   }
   return -1.0;
 }
-// Glassy shading: tinted body, fresnel rim, one specular, premultiplied alpha.
-vec4 sdGlass(vec3 p, vec3 n, vec3 rd, float rim) {
-  vec3 l = normalize(vec3(-0.55, 0.85, 0.9));
-  float diff = max(dot(n, l), 0.0);
-  float fres = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
-  float spec = pow(max(dot(reflect(-l, n), -rd), 0.0), 60.0);
-  float back = max(dot(n, normalize(vec3(0.6, -0.5, -0.4))), 0.0);
-  vec3 body = uColor * (0.26 + 0.6 * diff + 0.22 * back) * (0.8 + 0.4 * uState);
-  vec3 col = body + uColor * fres * rim * 1.1 + vec3(1.0) * (spec * 0.9 + fres * 0.22);
-  // Light theme: pale tinted glass with a darker rim instead of a dark body.
-  vec3 light = uColor * (0.5 + 0.3 * diff) + vec3(0.3) * (1.0 - 0.6 * fres) + vec3(1.0) * spec * 0.5 - uColor * fres * 0.35;
-  col = mix(col, light, uTheme);
-  float a = clamp(0.72 + 0.28 * fres + 0.3 * spec, 0.0, 1.0);
-  return vec4(col * a, a);
+// A key light at `azimuthDeg` around the view (0 from the right, 90 from the top), about 47 degrees up toward the viewer.
+// Fixed to the view: the object turns under it (p, n and rd are object space, so the direction is brought into that space).
+vec3 sdLightDir(float azimuthDeg) {
+  float a = radians(azimuthDeg);
+  return transpose(uRotation) * normalize(vec3(cos(a) * 0.7, sin(a) * 0.7, 0.75));
 }
+// A view-space direction from an object-space one (for sky and environment lookups that must not turn with the object).
+vec3 sdView(vec3 v) { return uRotation * v; }
+// A shade (src/shades/<name>/frag.glsl) defines these two: the color of a surface hit and the tint of the soft edge on a miss.
+vec4 sdShade(vec3 p, vec3 n, vec3 rd, float rim);
+vec3 sdEdge();
 // Default renderer: march, shade, soft edge, optional halo on miss.
 vec4 sdRender(float rim, float glow) {
   vec3 ro, rd; sdRay(ro, rd);
@@ -66,10 +62,10 @@ vec4 sdRender(float rim, float glow) {
   if (t < 0.0) {
     float edge = 1.0 - smoothstep(0.0, px * 2.0, minD);
     float halo = glow * exp(-minD * 7.0) * 0.35 * (0.6 + 0.4 * uState);
-    vec3 c = uColor * (edge * 0.9 + halo);
+    vec3 c = sdEdge() * (edge * 0.9 + halo);
     float a = clamp(edge * 0.9 + halo, 0.0, 1.0);
     return vec4(c, a);
   }
   vec3 p = ro + rd * t;
-  return sdGlass(p, sdNormal(p), rd, rim);
+  return sdShade(p, sdNormal(p), rd, rim);
 }

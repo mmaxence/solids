@@ -1,9 +1,9 @@
 import { ease, lerp, rotXYZ, IDENTITY, parseColor, type Mat3 } from './math';
-import { objects, animations, effectAttrs, effectParam, kebab, num, type Manifest, type AnimResult } from './registry';
+import { objects, animations, effectAttrs, effectParam, shadeAttrs, shadeParam, kebab, num, type Manifest, type AnimResult } from './registry';
 import type { SdScene } from './scene';
 
 const STATES: Record<string, number> = { off: 0, idle: 0.25, busy: 0.6, active: 1 };
-const CORE_ATTRS = ['animation', 'speed', 'effect', 'state', 'color', 'size', 'phase', 'gravity', 'gravity-gap'];
+const CORE_ATTRS = ['animation', 'speed', 'effect', 'shading', 'state', 'color', 'size', 'phase', 'gravity', 'gravity-gap'];
 const camel = (s: string) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
 export type Pose = { rotation: [number, number, number]; offset: [number, number]; scale: number; state: number };
@@ -11,7 +11,7 @@ export type Pose = { rotation: [number, number, number]; offset: [number, number
 export class SdObject extends HTMLElement {
   static manifest: Manifest;
   static frag: string;
-  static get observedAttributes() { return [...CORE_ATTRS, ...this.manifest.uniforms.map((u) => kebab(u.name)), ...effectAttrs()]; }
+  static get observedAttributes() { return [...CORE_ATTRS, ...this.manifest.uniforms.map((u) => kebab(u.name)), ...effectAttrs(), ...shadeAttrs()]; }
 
   get manifest(): Manifest { return (this.constructor as typeof SdObject).manifest; }
   get frag(): string { return (this.constructor as typeof SdObject).frag; }
@@ -26,6 +26,8 @@ export class SdObject extends HTMLElement {
   animNames: string[] = [];
   effectNames: string[] = [];
   effectParams: Record<string, Record<string, number>> = {};
+  shadeName = 'auto';                     // `shading` attribute (reflected as .shading); auto follows the scene, then the theme
+  shadeParams: Record<string, Record<string, number>> = {};
   anim = { rotation: new Float32Array(IDENTITY) as Mat3, offset: [0, 0] as [number, number], scale: 1, z: 0, state: 0 };
   pose: Pose | null = null;               // last composed animation pose
   z = 0;                                  // base draw depth: anim.z starts here each frame (the universe sets it)
@@ -67,6 +69,7 @@ export class SdObject extends HTMLElement {
         if (this.pose) { this.prevPose = this.pose; this.blend = 0; }
         return;
       case 'effect': this.effectNames = val.split(/\s+/).filter(Boolean); return;
+      case 'shading': this.shadeName = val.trim() || 'auto'; return;
       case 'speed': { const n = Number(val); this.speedValue = val === '' || isNaN(n) ? 1 : n; return; }
       case 'state': this.stateTarget = STATES[val] ?? 0.25; return;
       case 'color': this.recolor(val || '#9bd1ff'); return;
@@ -76,7 +79,7 @@ export class SdObject extends HTMLElement {
       case 'phase': this.phaseOffset = num(val, 0); return;
       case 'gravity': case 'gravity-gap': return; // read by the gravity interaction
     }
-    if (effectParam(name, v, this.effectParams)) return;
+    if (effectParam(name, v, this.effectParams) || shadeParam(name, v, this.shadeParams)) return;
     const u = this.manifest.uniforms.find((u) => kebab(u.name) === name);
     if (u) {
       const c = coerce(v === null || v === '' ? u.default : v, u.type);
