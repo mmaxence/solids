@@ -106,7 +106,7 @@ export class SdScene extends HTMLElement {
     this.objects = new Set([...this.objects].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)));
     this.measure();
   }
-  detach(o: SdObject) { this.objects.delete(o); o.scene = null; this.ro?.unobserve(o); if (this.isConnected) this.measure(); }
+  detach(o: SdObject) { this.objects.delete(o); o.scene = null; this.ro?.unobserve(o); this.dirty = true; } // siblings re-measure at the next frame, once per batch
 
   get themeValue(): number {
     if (this.theme === 'dark') return 0;
