@@ -1,5 +1,5 @@
 // Generates site/dist from src/objects, src/effects, the bundle's meta, and site/src.
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
+import { statSync, readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
@@ -59,11 +59,10 @@ function md(src) {
 
 function nav(root, current) {
   const item = (href, label) => `<li><a href="${root}${href}"${href === current ? ' aria-current="page"' : ''}>${esc(label)}</a></li>`;
-  return `<h2>Getting started</h2><ul>${item('index.html', 'Introduction')}${item('accessibility.html', 'Accessibility')}${item('scene.html', 'Scene and gravity')}${item('universe.html', 'Universe')}${item('performance.html', 'Performance')}</ul>
-<h2>Objects</h2><ul>${objects.map((o) => item(`objects/${o.name}.html`, o.name)).join('')}</ul>
-<h2>Animations</h2><ul>${animations.map((a) => item(`animations/${a.name}.html`, a.name)).join('')}</ul>
-<h2>Effects</h2><ul>${effects.map((e) => item(`effects/${e.name}.html`, e.name)).join('')}</ul>
-<h2>Interactions</h2><ul>${interactions.map((i) => item(`interactions/${i.name}.html`, i.name)).join('')}</ul>`;
+  // Two tiers: the guide, always open, then the catalogue as four collapsible groups. Only the current page's group starts open.
+  const group = (label, dir, list) => { const open = current.startsWith(dir + '/'); return `<details${open ? ' open' : ''}><summary>${label} <span>${list.length}</span></summary><ul>${list.map((x) => item(`${dir}/${x.name}.html`, x.name)).join('')}</ul></details>`; };
+  return `<h2>Guide</h2><ul>${item('index.html', 'Introduction')}${item('accessibility.html', 'Accessibility')}${item('scene.html', 'Scene and gravity')}${item('universe.html', 'Universe')}${item('performance.html', 'Performance')}</ul>
+<h2>Catalogue</h2>${group('Objects', 'objects', objects)}${group('Animations', 'animations', animations)}${group('Effects', 'effects', effects)}${group('Interactions', 'interactions', interactions)}`;
 }
 
 function page(path, { title, description, main, hero = '' }) {
@@ -124,17 +123,17 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
 
 // --- Introduction ---
 {
-  // Hand-placed hero. Orbiters sit on a ring of about 27vmin around the center; the others float at the edges.
+  // Hand-placed hero. Orbiters sit at five distances from 20 to 32 vmin, one ring each (inner rings turn faster); the others float at the edges.
   const sz = (px) => `clamp(${Math.round(px * 0.6)}px, ${(px / 6.5).toFixed(1)}vmin, ${Math.round(px * 1.3)}px)`;
   const orbit = (tag, id, size, dx, dy, color, anim) => `<${tag} id="${id}" size="${sz(size)}" color="${color}" animation="${anim}" style="position:absolute;left:calc(50% + ${dx}vmin - ${sz(size)} / 2);top:calc(50% + ${dy}vmin - ${sz(size)} / 2)"></${tag}>`;
   const edge = (tag, id, size, left, top, color, anim) => `<${tag} id="${id}" gravity="none" size="${sz(size)}" color="${color}" animation="${anim}" style="position:absolute;left:${left}%;top:${top}%"></${tag}>`;
   const heroInner = [
     `<sd-orb id="orb" gravity="center" size="${sz(200)}" color="${colorOf(0)}" animation="breathe" glow="0.8" style="position:absolute;left:calc(50% - ${sz(200)} / 2);top:calc(50% - ${sz(200)} / 2)"></sd-orb>`,
-    orbit('sd-ring', 'ring', 90, 30, -8, colorOf(1), 'spin'),
-    orbit('sd-crystal', 'crystal', 80, -28, 12, colorOf(2), 'idle'),
-    orbit('sd-knot', 'knot', 84, 21, 22, colorOf(3), 'spin'),
-    orbit('sd-capsule', 'capsule', 70, -23, -18, colorOf(4), 'idle'),
-    orbit('sd-star', 'star', 72, 6, -30, colorOf(5), 'spin'),
+    orbit('sd-ring', 'ring', 90, 22.2, -5.9, colorOf(1), 'spin'),
+    orbit('sd-crystal', 'crystal', 80, -23.9, 10.2, colorOf(2), 'idle'),
+    orbit('sd-knot', 'knot', 84, 20, 21, colorOf(3), 'spin'),
+    orbit('sd-capsule', 'capsule', 70, -25.2, -19.7, colorOf(4), 'idle'),
+    orbit('sd-star', 'star', 72, 3.9, -19.6, colorOf(5), 'spin'),
     edge('sd-cube', 'cube', 64, 9, 60, colorOf(5), 'idle'),
     edge('sd-coil', 'coil', 80, 84, 12, colorOf(3), 'spin'),
     edge('sd-blob', 'blob', 76, 86, 56, colorOf(4), 'float'),
@@ -171,8 +170,18 @@ ${layer('Interactions', 'Scene rules that react to the pointer and to each other
 <p class="chips"><span>Effects</span>${effects.map((e) => `<a href="effects/${e.name}.html">${esc(e.name)}</a>`).join('')}</p>
 <p class="chips"><span>Interactions</span>${interactions.map((i) => `<a href="interactions/${i.name}.html">${esc(i.name)}</a>`).join('')}</p>`;
   const numbers = `<dl class="numbers"><div><dt>The whole library, gzipped</dt><dd>${(gzipSync(readFileSync('dist/solids.js')).length / 1024).toFixed(1)} KB</dd></div><div><dt>Objects on the hero, one canvas</dt><dd>${ids.length}</dd></div><div><dt>One hero frame, measured now</dt><dd id="live-frame">measuring</dd></div></dl>`;
-  const universe = `<sd-universe class="band-universe" count="36" seed="5" gravity collide depth="0.55" dpr="1.5" style="position:relative;height:70vh;min-height:480px"></sd-universe>`;
-  const live = { 'Four layers': layers, Universe: universe, Catalogue: catalogue, Performance: numbers };
+  const universe = `<sd-universe class="band-universe" count="36" seed="5" collide depth="0.55" dpr="1.5" style="position:relative;height:70vh;min-height:480px"></sd-universe>`;
+  // What a new shape costs an agent, from the files it reads and writes. Reads: the contract, the SDF prelude and the largest object
+  // as a reference, re-read over 4 turns, plus two check runs of about 2 KB each; writes: one object of mean size. Bytes / 4 per token.
+  // Prices: Claude Opus 5.5 list, $4 in / $20 out per million tokens, as of 2026-10-06.
+  const bytes = (...fs) => fs.reduce((t, f) => { const st = statSync(f); if (!st.size) throw new Error(`empty ${f}`); return t + st.size; }, 0);
+  const objFiles = (n) => ['manifest.json', 'frag.glsl', 'README.md'].map((f) => `src/objects/${n}/${f}`);
+  const reads = bytes('docs/SKILL.md', 'src/core/prelude.glsl', ...objFiles('knot'));
+  const writes = objects.reduce((t, o) => t + bytes(...objFiles(o.name)), 0) / objects.length;
+  const inTok = (4 * reads + 2 * 2048) / 4, outTok = writes / 4;
+  const usd = inTok * 4e-6 + outTok * 20e-6;
+  const cost = `<p class="cost">The files an agent reads and writes to add a shape come to about ${Math.round((inTok + outTok) / 1000)} K tokens: the contract, one reference object, and the three small files it writes, with two check runs. That is around $${usd.toFixed(2)} at Claude Opus 5.5 list prices (2026-10-06), before the agent's own system prompt and reasoning, which a full session adds on top. Codex reads the same files.</p>`;
+  const live = { 'Four layers': layers, Universe: universe, Catalogue: catalogue + cost, Performance: numbers };
   const main = `<div class="landing">${readFileSync('site/src/intro.md', 'utf8').split(/^(?=## )/m).map((s) => {
     const h = s.match(/^## (.*)/)[1];
     return `<section class="band" id="${h.toLowerCase().replace(/\s+/g, '-')}">${md(s)}${live[h] ?? ''}</section>`;
@@ -228,10 +237,10 @@ const sceneControls = (active) => [
   ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: active.includes(i.name), target: 'scene' })),
   { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
 ];
-const scenePrompt = `A solids scene holds objects on one canvas and applies interactions between them. Gravity: mark one object gravity="center"; the others orbit it by default, gravity="fall" drifts toward it and stops at gravity-gap, gravity="none" opts out. Change the center at runtime and everything eases to its new path.\n\n\`\`\`html\n{{markup}}\n\`\`\``;
+const scenePrompt = `A solids scene holds objects on one canvas and applies interactions between them. Gravity: mark one object gravity="center"; the others orbit it by default, each on its own ring (sorted by distance in the layout, spread evenly, farther rings turn slower like real orbits), gravity="fall" drifts toward it and stops at gravity-gap, gravity="none" opts out. Change the center at runtime and everything eases to its new path.\n\n\`\`\`html\n{{markup}}\n\`\`\``;
 page('scene.html', { title: 'Scene and gravity', description: 'Objects in one scene interact. Pick the center of gravity and watch the others follow.', main: `<h1>Scene and gravity</h1><p class="lede">Objects inside one scene share a canvas and can react to each other. Pick which object is the center of gravity.</p>${preview({ sceneAttrs: 'interaction="gravity hover-lift" gravity-strength="0.6"', inner: sceneInner, controls: sceneControls(['gravity', 'hover-lift']), prompt: scenePrompt, stageClass: 'scatter' })}
 <h2>How a scene works</h2><p>A scene is a block element that owns one canvas covering its own box. Its children are placed with ordinary CSS, and each object renders centered on its layout box. Interactions may move an object visually without touching the layout, so your page never reflows.</p>
-<h2>Gravity</h2>${optionsTable([['gravity', 'keyword', 'orbit', 'center, orbit, fall, none', 'On an object: its role. Exactly one center; extra centers orbit.'], ['gravity-strength', 'number', '0.6', '0 to 1', 'On the scene: orbital speed and pull.'], ['gravity-gap', 'number', '24', '0 to 200', 'On a falling object: distance it keeps from the center, in px.']])}
+<h2>Gravity</h2><p>Orbiters take concentric rings: they are sorted by how far the layout puts them from the center, the nearest ring keeps clear of the center, the farthest sits at the farthest rest distance, and the rings in between are spread evenly. A ring turns at a speed that falls with its radius to the power 1.5, so the outer ring sets the pace and inner rings pass it, the way planets do.</p>${optionsTable([['gravity', 'keyword', 'orbit', 'center, orbit, fall, none', 'On an object: its role. Exactly one center; extra centers orbit. Orbiters sit on rings, one each, farther rings turning slower.'], ['gravity-strength', 'number', '0.6', '0 to 1', 'On the scene: orbital speed and pull. At 1 the outer ring turns once every 21 seconds.'], ['gravity-gap', 'number', '24', '0 to 200', 'On a falling object: distance it keeps from the center, in px.']])}
 ${license}` });
 interactions.forEach((i) => {
   const rows = i.params.map((p) => [`${i.name}-${kebab(p.name)}`, 'number', String(p.default), `${p.min} to ${p.max}`, p.label]);
@@ -268,7 +277,6 @@ ${effects.map((e) => row(`data-effect="${e.name}"`, `<a href="effects/${e.name}.
   const controls = [
     { kind: 'range', attr: 'count', label: 'Count', min: 1, max: 120, step: 1, value: 36, default: 24, target: 'scene' },
     { kind: 'range', attr: 'seed', label: 'Seed', min: 1, max: 99, step: 1, value: 1, default: 1, target: 'scene' },
-    { kind: 'check', attr: 'gravity', on: 'on', label: 'Gravity', value: false, target: 'scene' },
     { kind: 'check', attr: 'collide', on: 'on', label: 'Collide', value: false, target: 'scene' },
     { kind: 'check', attr: 'camera', on: 'spin', label: 'Spin', value: true, target: 'scene' },
     { kind: 'check', attr: 'camera', on: 'drag', label: 'Drag', value: true, target: 'scene' },
@@ -283,10 +291,9 @@ ${effects.map((e) => row(`data-effect="${e.name}"`, `<a href="effects/${e.name}.
   const rows = [
     ['count', 'number', '24', '0 to 120', 'How many shapes. Changing it regenerates the children.'],
     ['seed', 'number', '1', 'any integer', 'The same seed always gives the same universe: positions, sizes, colors and motion.'],
-    ['gravity', 'boolean', 'absent', 'present or absent', 'The largest shape is pinned at the center and the closest third orbit it, each on its own plane, faster when closer. Regenerates.'],
-    ['collide', 'boolean', 'absent', 'present or absent', 'Shapes bounce off each other and keep their speed. The center and the orbiters are not pushed.'],
+    ['collide', 'boolean', 'absent', 'present or absent', 'Shapes bounce off each other and keep their speed.'],
     ['camera', 'list', 'spin drag pointer', 'spin, drag, pointer', 'How the view moves: spin turns on its own, drag or swipe rotates it with inertia, pointer tilts it toward the cursor. none for a fixed view.'],
-    ['speed', 'number', '1', '0 to 4', 'How fast the spin and the orbits turn. 1 is one turn every 90 seconds.'],
+    ['speed', 'number', '1', '0 to 4', 'How fast the camera spins. 1 is one turn every 90 seconds.'],
     ['drift', 'number', '0.5', '0 to 1', 'How much the free shapes float about. 0 holds them in place.'],
     ['perspective', 'number', '0.5', '0.05 to 1', 'How strongly near shapes grow and far ones shrink. Higher brings the camera closer.'],
     ['depth', 'number', '0.5', '0 to 1', 'Strength of the depth of field. 0 keeps every shape sharp.'],
@@ -294,10 +301,10 @@ ${effects.map((e) => row(`data-effect="${e.name}"`, `<a href="effects/${e.name}.
     ['shapes', 'list', 'every object', 'object tags', 'Space separated tags to draw from, for example sd-orb sd-ring. Unknown tags are skipped.'],
     ['palette', 'list', 'six P3 colors', 'any CSS colors', 'Space separated colors to pick from.'],
   ];
-  const prompt = `A solids universe is a scene that fills its box with seeded shapes in a 3D ball, seen through a perspective camera. Its children are plain objects with a data-pos (x y z in a unit ball), a size, a color, an animation with its own speed and phase. Each shape drifts on its own; the camera spins, drags and tilts toward the pointer; far shapes blur and dim with the depth of field. Change count, seed, shapes, palette or gravity to regenerate; everything else applies live.\n\n${optionsMd(rows)}\n\n\`\`\`html\n{{markup}}\n\`\`\``;
-  page('universe.html', { title: 'Universe', description: 'A scene that fills its box with seeded shapes in 3D, with a camera you can spin and drag, a depth of field, gravity and collisions.', main: `<h1>Universe</h1><p class="lede">One element fills its box with a cloud of shapes in three dimensions. Spin it, drag it, set the focal plane, turn on gravity or collisions.</p>${preview({ tag: 'sd-universe', sceneAttrs: 'count="36" dpr="1.5"', inner: '', controls, prompt, stageClass: 'scatter universe' })}
+  const prompt = `A solids universe is a scene that fills its box with seeded shapes in a 3D ball, seen through a perspective camera. Its children are plain objects with a data-pos (x y z in a unit ball), a size, a color, an animation with its own speed and phase. Each shape drifts on its own; the camera spins, drags and tilts toward the pointer; far shapes blur and dim with the depth of field. Change count, seed, shapes or palette to regenerate; everything else applies live.\n\n${optionsMd(rows)}\n\n\`\`\`html\n{{markup}}\n\`\`\``;
+  page('universe.html', { title: 'Universe', description: 'A scene that fills its box with seeded shapes in 3D, with a camera you can spin and drag, a depth of field and optional collisions.', main: `<h1>Universe</h1><p class="lede">One element fills its box with a cloud of shapes in three dimensions. Spin it, drag it, set the focal plane, turn on collisions.</p>${preview({ tag: 'sd-universe', sceneAttrs: 'count="36" dpr="1.5"', inner: '', controls, prompt, stageClass: 'scatter universe' })}
 <h2>How a universe works</h2><p><code>&lt;sd-universe&gt;</code> is a scene. On first connect it creates its children from a seeded random sequence: a shape, a spot in a unit ball chosen to keep its distance from the others, a size, a color, and an animation with its own speed and phase. They are ordinary objects in the light DOM with a <code>data-pos</code>, so Copy code gives you markup you can paste and edit; a universe that already has children keeps them.</p>
-<p>Every frame the universe moves its shapes and places them through a camera. Free shapes drift and wobble on their own paths and turn back at the edge of the ball; with <code>gravity</code> the largest shape is pinned at the center and the closest third circle it on their own planes, faster when closer; with <code>collide</code> shapes bounce off each other. The camera sits at a distance set by <code>perspective</code> and turns with the tokens in <code>camera</code>: <code>spin</code> on its own, <code>drag</code> with the pointer or a swipe (with inertia), <code>pointer</code> as a tilt toward the cursor.</p>
+<p>Every frame the universe moves its shapes and places them through a camera. Shapes drift and wobble on their own paths and turn back at the edge of the ball; with <code>collide</code> they bounce off each other. The camera sits at a distance set by <code>perspective</code> and turns with the tokens in <code>camera</code>: <code>spin</code> on its own, <code>drag</code> with the pointer or a swipe (with inertia), <code>pointer</code> as a tilt toward the cursor.</p>
 <p>Depth comes from the camera: near shapes draw larger and on top, far ones smaller and behind. Each shape gets the <code>defocus</code> effect with a radius of <code>depth</code> times its distance from the <code>focus</code> plane, times 14 px, and shapes behind the plane are dimmed. Under reduced motion nothing moves on its own; drag and the pointer tilt still work.</p>
 <h2>Options</h2>${optionsTable(rows)}
 ${license}` });
@@ -339,7 +346,7 @@ ${entries('interactions', interactions)}
 
 - [Introduction](${BASE}index.html): install, the four layers, the catalogue.
 - [Scene and gravity](${BASE}scene.html): objects in one scene and the center of gravity.
-- [Universe](${BASE}universe.html): a scene that fills its box with seeded shapes in 3D, with a camera that spins and drags, a depth of field, gravity and collisions.
+- [Universe](${BASE}universe.html): a scene that fills its box with seeded shapes in 3D, with a camera that spins and drags, a depth of field and optional collisions.
 - [Performance](${BASE}performance.html): bundle sizes, a live frame meter, and a benchmark that runs in the browser.
 - [Accessibility](${BASE}accessibility.html): reduced motion, focus, contrast, the context limit.
 - [GitHub](${REPO}): source, README and the contribution flow.

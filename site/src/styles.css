@@ -44,6 +44,15 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .side li a { display: block; padding: 5px 10px; margin-left: -10px; border-radius: 8px; color: var(--muted); }
 .side li a:hover { color: var(--fg); background: var(--glass); text-decoration: none; }
 .side li a[aria-current="page"] { color: var(--fg); background: var(--glass); }
+.side details { margin: 2px 0; }
+.side summary { display: flex; align-items: center; gap: 8px; padding: 6px 10px; margin-left: -10px; border-radius: 8px; color: var(--fg); cursor: pointer; list-style: none; user-select: none; }
+.side summary::-webkit-details-marker { display: none; }
+.side summary::before { content: ''; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(-45deg); transition: transform 0.15s; flex: none; }
+.side details[open] > summary::before { transform: rotate(45deg); }
+.side summary span { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.side summary:hover { background: var(--glass); }
+.side summary:focus-visible { outline: 2px solid var(--fg); outline-offset: -2px; }
+.side details ul { margin: 2px 0 8px 8px; padding-left: 10px; border-left: 1px solid var(--line); }
 
 .main { padding: 44px 48px 80px; max-width: 860px; width: 100%; min-width: 0; }
 .main > h1 { font-size: 40px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 10px; font-weight: 650; }
@@ -113,6 +122,11 @@ td:first-child code { white-space: nowrap; }
   .side { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 16px; display: flex; flex-wrap: wrap; gap: 4px 18px; }
   .side h2 { width: 100%; margin: 10px 0 2px; }
   .side ul { display: flex; flex-wrap: wrap; gap: 2px 4px; }
+  .side details { flex: 0 0 auto; }
+  .side details[open] { flex-basis: 100%; }
+  .side details ul { margin: 2px 0 6px; padding-left: 0; border-left: 0; }
+  .side summary span { margin-left: 0; }
+  .side li a, .side summary { margin-left: 0; }
   .main { padding: 28px 16px 60px; }
   .main > h1 { font-size: 32px; }
   .stage { height: 280px; }
@@ -209,3 +223,6 @@ td:first-child code { white-space: nowrap; }
 .stage.universe { height: 70vh; min-height: 420px; }
 .stage.universe sd-universe { width: 100%; }
 .codebar pre { max-height: 16em; }
+
+/* Landing: what a shape costs an agent, under the catalogue grid */
+.cost { margin: 18px 0 0; color: var(--muted); font-size: 14px; max-width: 70ch; }

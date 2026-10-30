@@ -34,7 +34,7 @@ Four layers compose on any object. Each one is a single attribute, and each name
 
 ## Universe
 
-One element fills its box with a seeded cloud of shapes in three dimensions. Drag it to turn it, or let it spin; the largest shape holds the others in orbit, the free ones drift and bounce, and a depth of field blurs them away from the focal plane. Tune every knob on the [Universe page](universe.html), or paste the markup and edit it by hand.
+One element fills its box with a seeded cloud of shapes in three dimensions. Drag it to turn it, or let it spin; every shape drifts on its own path, they can bounce off each other, and a depth of field blurs them away from the focal plane. Tune every knob on the [Universe page](universe.html), or paste the markup and edit it by hand.
 
 ## Catalogue
 
