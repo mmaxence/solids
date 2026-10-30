@@ -45,6 +45,9 @@ if (specEl) {
   const live = $('#live');
   const targets = (c) => (c.target === 'scene' ? [scene] : c.target === 'all' ? $$('sd-scene > *', scene) : [$('#demo > [data-subject]') || $('#demo > *')]);
   const refresh = () => { if (live) live.textContent = serialize(scene); };
+  // Controls with a group render inside a fieldset with that legend, in first-seen order; a group of checkboxes becomes a chip row.
+  const groups = new Map();
+  const holder = (c) => { if (!c.group) return form; let g = groups.get(c.group); if (!g) { g = document.createElement('fieldset'); g.append(Object.assign(document.createElement('legend'), { textContent: c.group })); groups.set(c.group, g); form.append(g); } return g; };
   for (const c of spec.controls) {
     const label = document.createElement('label');
     const head = document.createElement('span');
@@ -88,8 +91,9 @@ if (specEl) {
     };
     input.addEventListener('input', apply);
     if (c.kind === 'check') label.append(input, head); else label.append(head, input);
-    form.append(label);
+    holder(c).append(label);
   }
+  for (const g of groups.values()) if ([...g.children].every((el) => el.tagName === 'LEGEND' || el.classList.contains('check'))) g.classList.add('chips');
   refresh();
 
   $('#copy-code')?.addEventListener('click', async (e) => {
@@ -228,7 +232,7 @@ if (location.search.includes('__check')) {
       objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top,
       markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr,
 contexts: $$('sd-scene, sd-universe').length + $$('*').filter((e) => e.shadowRoot?.querySelector('sd-scene')).length, sceneObjects: $$('sd-scene, sd-universe').map((s) => s.objects?.size), liveFrame: $('#live-frame')?.textContent,
-      badge: $('.fps')?.textContent, meter: meter?.textContent, bench, benchRow: benchRowText, noTimerRow, scenesBeforeBench }) });
+      badge: $('.fps')?.textContent, legends: $$('#controls legend').map((l) => l.textContent), liveEscaped: (() => { const o = $('#demo > *'); if (!o) return null; o.setAttribute('title', 'a"b&c'); const txt = serialize($('#demo')); o.removeAttribute('title'); return txt.includes('title="a&quot;b&amp;c"'); })(), meter: meter?.textContent, bench, benchRow: benchRowText, noTimerRow, scenesBeforeBench }) });
   };
   const tick = () => (++n < 6 ? requestAnimationFrame(tick) : report());
   requestAnimationFrame(tick);

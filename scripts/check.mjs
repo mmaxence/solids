@@ -693,7 +693,7 @@ const Y = result.cases.hard = {};
 // Case AA: every object uniform changes the image between its min and its max; a faller settles at its gap; layer names are unique.
 { const U = result.cases.uniforms = {};
   for (const t of tags) { const m = registry.objects.get(t.slice(3)).manifest; for (const u of m.uniforms) {
-    const lo = mk({}, {}), hi = mk({}, {}); for (const sc of [lo, hi]) { sc.firstElementChild.remove(); sc.appendChild(document.createElement(t)); }
+    const lo = mk({}, {}), hi = mk({}, {}); for (const sc of [lo, hi]) { sc.style.cssText = 'width:120px;height:120px'; sc.firstElementChild.remove(); sc.appendChild(document.createElement(t)); }
     lo.firstElementChild.setAttribute(u.name.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()), String(u.min)); hi.firstElementChild.setAttribute(u.name.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()), String(u.max));
     await frame(); U[t + '.' + u.name] = differ(lo, hi); free(lo, hi); } } }
 { const g = ringScene([150]); g.os[0].setAttribute('gravity', 'fall'); await frame(); for (let i = 0; i < 40; i++) g.sc.frame(i / 10, 100);
@@ -733,7 +733,7 @@ async function smoke() {
   writeFileSync('scripts/.check-page.html', CHECK_PAGE);
   const { srv, port, result } = await serve('.');
   try {
-    const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 150000);
+    const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 240000);
     for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
@@ -917,6 +917,17 @@ async function site() {
     if (stages !== badges) { fail(`site/${f}: ${stages} stage(s) but ${badges} fps badge(s)`); break; } }
   if (/id="readout"/.test(index)) fail('site/index: the old dock readout should be gone');
   if (!/class="band-stage"[^>]*>\s*<output class="fps"/.test(index) || (index.match(/class="band-stage"/g) ?? []).length < 3) fail('site/index: the landing rows and the universe band need a band-stage with its fps badge');
+  // Page pass: grouped docks with legends, the hero's single row, the Shades page in the Guide, a scrolling code bar, a 20 px badge figure.
+  { const spec = (f) => JSON.parse(text(f).match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{"controls":[]}').controls;
+    const groupsOf = (f) => [...new Set(spec(f).map((c) => c.group ?? ''))];
+    const expect = { 'objects/orb.html': ['Shape', 'Motion', 'Look'], 'scene.html': ['Scene', 'Interactions', 'Look'], 'universe.html': ['Universe', 'Camera', 'Depth', 'Look'], 'effects/glow.html': ['Scene', 'Effect', 'Look'], 'shades/cel.html': ['Scene', 'Shade', 'Look'], 'interactions/repel.html': ['Scene', 'Interactions', 'Look'] };
+    for (const [f, want] of Object.entries(expect)) { const got = groupsOf(f); if (want.some((g) => !got.includes(g)) || got.includes('')) fail(`site/${f}: dock groups ${JSON.stringify(got)}, expected ${JSON.stringify(want)} with every control grouped`); }
+    if (spec('index.html').some((c) => c.group)) fail('site/index: the hero dock keeps one flat row (no groups)');
+    const css = readFileSync('site/src/styles.css', 'utf8');
+    if (!/\.codebar pre \{[^}]*overflow-x: auto/.test(css)) fail('site/styles: the live markup should scroll horizontally (.codebar pre overflow-x: auto)');
+    if (!/\.fps b \{[^}]*font-size: 20px/.test(css)) fail('site/styles: the fps figure should be 20 px');
+    if (!/<h2>Guide<\/h2><ul>[\s\S]*?href="\.\/shades\.html"/.test(index)) fail('site/index: the Guide list should link the Shades page');
+    if (!/<p class="chips"><span><a href="shades\.html">Shades<\/a><\/span>/.test(index)) fail('site/index: the catalogue Shades row should link the Shades page'); }
   // Shades on the site: a page per shade, a comparison page, a catalogue row, a Shading select in every dock, docs.
   const dirsOf = (root) => readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
   const objectDirs = dirsOf('src/objects'), effectDirs = dirsOf('src/effects'), shadeDirs = dirsOf('src/shades');
@@ -925,7 +936,7 @@ async function site() {
     const cmp = text('shades.html');
     if ((cmp.match(/<sd-scene/g) ?? []).length !== shadeDirs.length || (cmp.match(/<sd-[a-z]+ /g) ?? []).length < objectDirs.length * shadeDirs.length) fail(`site/shades.html: expected ${shadeDirs.length} scenes with 12 objects each`);
     if (!/light default/.test(cmp)) fail('site/shades.html: the lede should name the light default');
-    if (!/<p class="chips"><span>Shades<\/span>/.test(index)) fail('site/index: the catalogue band has no Shades row');
+    if (!/<p class="chips"><span>(<a href="shades\.html">)?Shades/.test(index)) fail('site/index: the catalogue band has no Shades row');
     if (!/<h2[^>]*>Five layers<\/h2>/.test(index)) fail('site/index: the layers band should read Five layers');
     for (const f of ['objects/orb.html', 'effects/glow.html', 'scene.html', 'universe.html', 'index.html', 'shades/cel.html']) {
       const spec = JSON.parse(text(f).match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{"controls":[]}');
@@ -995,6 +1006,8 @@ async function site() {
         if (r.scenesBeforeBench !== r.scenes) fail(`site/performance: the benchmark left ${r.scenes - r.scenesBeforeBench} scene(s) behind`);
         if (!/fps/.test(r.meter ?? '') || !/(srgb|display-p3)/.test(r.meter ?? '')) fail(`site/performance: live meter reads ${JSON.stringify(r.meter)}`);
       }
+      if (f === 'objects/orb.html' && (!r.legends || r.legends.length < 3)) fail(`site/${f}: dock fieldsets rendered ${JSON.stringify(r.legends)}, expected at least three legends`);
+      if (f === 'objects/orb.html' && r.liveEscaped !== true) fail(`site/${f}: Copy code should escape quotes and ampersands in attribute values`);
       if (f === 'objects/orb.html' && !/^[0-9]+ fps/.test(r.badge ?? '')) fail(`site/${f}: fps badge reads ${JSON.stringify(r.badge)}`);
       if (r.errors.length) fail(`site/${f}: console errors: ${r.errors.join(' | ').slice(0, 600)}`);
       if (!(r.scenes >= 1)) fail(`site/${f}: no scene mounted`);

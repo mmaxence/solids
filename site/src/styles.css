@@ -77,16 +77,25 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .stage.scatter sd-scene { position: relative; display: block; }
 .stage.scatter sd-scene > * { position: absolute; }
 .controls { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px 22px; padding: 18px 20px; margin: 0; border: 0; }
+/* Grouped docks: one fieldset per group with a small legend; a group of checks is a chip row */
+.controls fieldset { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px 22px; margin: 0; padding: 12px 0 0; border: 0; border-top: 1px solid var(--line); min-width: 0; }
+.controls fieldset:first-child { border-top: 0; padding-top: 0; }
+.controls legend { grid-column: 1 / -1; padding: 0; margin: 0 0 2px; font-size: 12px; color: var(--muted); float: left; width: 100%; }
+.controls fieldset.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.controls fieldset.chips legend { width: 100%; flex-basis: 100%; }
+.controls .check { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; font-size: 13px; }
+.controls .check:has(input:checked) { background: var(--glass); border-color: var(--fg); color: var(--fg); }
+.controls .check input { margin: 0; }
+.controls fieldset:not(.chips) > .check { justify-self: start; align-self: end; } /* a lone chip beside sliders keeps its own width */
 .controls label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
 .controls label span { display: flex; justify-content: space-between; }
 .controls label span output { color: var(--fg); font-variant-numeric: tabular-nums; }
 .controls input[type="range"] { width: 100%; accent-color: var(--accent); }
 .controls select, .controls input[type="color"] { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 13px; height: 34px; }
 .controls input[type="color"] { padding: 2px 4px; width: 100%; }
-.controls .check { display: flex; align-items: center; gap: 8px; }
 .controls .check input { accent-color: var(--accent); }
 .codebar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--line); }
-.codebar pre { margin: 0; flex: 1 1 420px; min-width: 0; background: none; border: 0; padding: 0; }
+.codebar pre { margin: 0; flex: 1 1 420px; min-width: 0; background: none; border: 0; padding: 0; overflow-x: auto; }
 .codebar .actions { margin-left: auto; }
 .actions { display: flex; gap: 8px; }
 .btn { background: var(--fg); color: var(--bg); border: 0; border-radius: 999px; padding: 7px 14px; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
@@ -112,7 +121,7 @@ td:first-child code { white-space: nowrap; }
 /* Out of the flow, just above the dock's right edge, so it never changes how the dock wraps. */
 /* fps badge: top-right of every stage, big figures, color says when a scene struggles */
 .fps { position: absolute; top: 12px; right: 12px; z-index: 2; display: inline-flex; align-items: baseline; gap: 4px; padding: 6px 12px; border-radius: 999px; background: color-mix(in srgb, var(--bg) 70%, transparent); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: var(--fg); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; line-height: 1; }
-.fps b { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+.fps b { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
 .fps span { font-size: 12px; color: var(--muted); }
 .fps.warn b { color: #e7b53b; }
 .fps.bad b { color: #ff6b6b; }

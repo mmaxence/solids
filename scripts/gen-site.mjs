@@ -63,7 +63,7 @@ function nav(root, current) {
   const item = (href, label) => `<li><a href="${root}${href}"${href === current ? ' aria-current="page"' : ''}>${esc(label)}</a></li>`;
   // Two tiers: the guide, always open, then the catalogue as four collapsible groups. Only the current page's group starts open.
   const group = (label, dir, list) => { const open = current.startsWith(dir + '/'); return `<details${open ? ' open' : ''}><summary>${label} <span>${list.length}</span></summary><ul>${list.map((x) => item(`${dir}/${x.name}.html`, x.name)).join('')}</ul></details>`; };
-  return `<h2>Guide</h2><ul>${item('index.html', 'Introduction')}${item('accessibility.html', 'Accessibility')}${item('scene.html', 'Scene and gravity')}${item('universe.html', 'Universe')}${item('performance.html', 'Performance')}</ul>
+  return `<h2>Guide</h2><ul>${item('index.html', 'Introduction')}${item('accessibility.html', 'Accessibility')}${item('scene.html', 'Scene and gravity')}${item('universe.html', 'Universe')}${item('shades.html', 'Shades')}${item('performance.html', 'Performance')}</ul>
 <h2>Catalogue</h2>${group('Objects', 'objects', objects)}${group('Animations', 'animations', animations)}${group('Effects', 'effects', effects)}${group('Shades', 'shades', shades)}${group('Interactions', 'interactions', interactions)}`;
 }
 
@@ -107,16 +107,19 @@ function preview({ sceneAttrs = '', inner, controls, prompt, stageClass = '', ta
 <script type="application/json" id="spec">${spec}</script>`;
 }
 
-const rangeControl = (u, target, attr) => ({ kind: 'range', attr: attr ?? kebab(u.name), label: u.label, min: u.min, max: u.max, step: u.step ?? 0.01, value: u.default, default: u.default, target });
+const rangeControl = (u, target, attr, group = 'Shape') => ({ kind: 'range', attr: attr ?? kebab(u.name), label: u.label, min: u.min, max: u.max, step: u.step ?? 0.01, value: u.default, default: u.default, target, group });
+// Docks are grouped by what a control changes; the hero's single row passes no group.
 const coreControls = (target = 'object') => [
-  { kind: 'color', attr: 'color', label: 'Color', value: '#9bd1ff', default: '#9bd1ff', target },
-  { kind: 'select', attr: 'animation', label: 'Animation', options: ['', ...animations.map((a) => a.name)], value: '', target },
-  { kind: 'range', attr: 'speed', label: 'Speed', min: 0.1, max: 3, step: 0.1, value: 1, default: 1, target },
-  { kind: 'select', attr: 'state', label: 'State', options: ['', 'off', 'idle', 'busy', 'active'], value: '', target },
-  { kind: 'select', attr: 'effect', label: 'Effect', options: ['', ...effects.map((e) => e.name)], value: '', target },
-  shadingControl(target),
+  { kind: 'select', attr: 'animation', label: 'Animation', options: ['', ...animations.map((a) => a.name)], value: '', target, group: 'Motion' },
+  { kind: 'range', attr: 'speed', label: 'Speed', min: 0.1, max: 3, step: 0.1, value: 1, default: 1, target, group: 'Motion' },
+  { kind: 'select', attr: 'state', label: 'State', options: ['', 'off', 'idle', 'busy', 'active'], value: '', target, group: 'Motion' },
+  { kind: 'color', attr: 'color', label: 'Color', value: '#9bd1ff', default: '#9bd1ff', target, group: 'Look' },
+  shadingControl(target, 'Look'),
+  { kind: 'select', attr: 'effect', label: 'Effect', options: ['', ...effects.map((e) => e.name)], value: '', target, group: 'Look' },
 ];
-const shadingControl = (target) => ({ kind: 'select', attr: 'shading', label: 'Shading', options: ['', ...shades.map((s) => s.name)], value: '', empty: 'auto', target });
+const shadingControl = (target, group) => ({ kind: 'select', attr: 'shading', label: 'Shading', options: ['', ...shades.map((s) => s.name)], value: '', empty: 'auto', target, group });
+const effectControl = (value, group) => ({ kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value, target: 'scene', group });
+const objectControl = (group) => ({ kind: 'select', attr: 'object', label: 'Object', options: objects.map((o) => o.tag), value: 'sd-orb', target: 'scene', group });
 const optionsTable = (rows) => `<table><thead><tr><th>Attribute</th><th>Type</th><th>Default</th><th>Range</th><th>Description</th></tr></thead><tbody>${rows.map((r) => `<tr><td><code>${esc(r[0])}</code></td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td><td>${esc(r[4])}</td></tr>`).join('')}</tbody></table>`;
 const optionsMd = (rows) => `| Attribute | Type | Default | Range | Description |\n|---|---|---|---|---|\n${rows.map((r) => `| ${r.join(' | ')} |`).join('\n')}`;
 const CORE_ROWS = [
@@ -180,7 +183,7 @@ ${layer('Interactions', 'Scene rules that react to the pointer and to each other
 </ul></sd-scene>`;
   const catalogue = `<sd-scene class="row" dpr="1.5" interaction="hover-lift"><ul class="catalogue">${objects.map((o, i) => `<li><a href="objects/${o.name}.html"><${o.tag} size="96px" animation="idle" color="${colorOf(i)}"></${o.tag}><span>${esc(o.name)}</span></a></li>`).join('')}</ul></sd-scene>
 <p class="chips"><span>Effects</span>${effects.map((e) => `<a href="effects/${e.name}.html">${esc(e.name)}</a>`).join('')}</p>
-<p class="chips"><span>Shades</span>${shades.map((x) => `<a href="shades/${x.name}.html">${esc(x.name)}</a>`).join('')}</p>
+<p class="chips"><span><a href="shades.html">Shades</a></span>${shades.map((x) => `<a href="shades/${x.name}.html">${esc(x.name)}</a>`).join('')}</p>
 <p class="chips"><span>Interactions</span>${interactions.map((i) => `<a href="interactions/${i.name}.html">${esc(i.name)}</a>`).join('')}</p>`;
   const numbers = `<dl class="numbers"><div><dt>The whole library, gzipped</dt><dd>${kb(sizes.full)}</dd></div><div><dt>Objects on the hero, one canvas</dt><dd>${ids.length}</dd></div><div><dt>One hero frame, measured now</dt><dd id="live-frame">measuring</dd></div></dl>`;
   const universe = `<sd-universe class="band-universe" count="36" seed="5" collide depth="0.55" dpr="1.5" style="position:relative;height:70vh;min-height:480px"></sd-universe>`;
@@ -229,10 +232,10 @@ animations.forEach((a, i) => {
 effects.forEach((e) => {
   const rows = e.params.map((p) => [`${e.name}-${kebab(p.name)}`, 'number', String(p.default), `${p.min} to ${p.max}`, p.label]);
   const controls = [
-    { kind: 'select', attr: 'object', label: 'Object', options: objects.map((o) => o.tag), value: 'sd-orb', target: 'scene' },
-    ...e.params.map((p) => rangeControl(p, 'scene', `${e.name}-${kebab(p.name)}`)),
-    { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: e.name, target: 'scene' },
-    shadingControl('scene'),
+    objectControl('Scene'),
+    ...e.params.map((p) => rangeControl(p, 'scene', `${e.name}-${kebab(p.name)}`, 'Effect')),
+    effectControl(e.name, 'Look'),
+    shadingControl('scene', 'Look'),
   ];
   const prompt = `Effect "${e.name}": ${e.description}\n\nSet it on a scene (applies to everything) or on one object. Parameters are attributes prefixed with the effect name.\n\n${optionsMd(rows)}\n\n\`\`\`html\n{{markup}}\n\`\`\``;
   page(`effects/${e.name}.html`, { title: e.name, description: e.description, main: `<h1>${esc(e.name)}</h1><p class="lede">${esc(e.description)}</p>${preview({ sceneAttrs: `effect="${e.name}"`, inner: `<sd-orb size="220px" color="${colorOf(0)}" animation="idle"></sd-orb>`, controls, prompt })}<h2>Options</h2>${optionsTable(rows)}<p>Put <code>effect="${e.name}"</code> on a scene to process the whole canvas, or on a single object to process only that object. Chain several with spaces; they run in the order written.</p>${license}` });
@@ -242,10 +245,10 @@ effects.forEach((e) => {
 shades.forEach((sh) => {
   const rows = sh.params.map((p) => [`${sh.name}-${kebab(p.name)}`, 'number', String(p.default), `${p.min} to ${p.max}`, p.label]);
   const controls = [
-    { kind: 'select', attr: 'object', label: 'Object', options: objects.map((o) => o.tag), value: 'sd-orb', target: 'scene' },
-    ...sh.params.map((p) => rangeControl(p, 'scene', `${sh.name}-${kebab(p.name)}`)),
-    { kind: 'select', attr: 'shading', label: 'Shading', options: ['', ...shades.map((x) => x.name)], value: sh.name, empty: 'auto', target: 'scene' },
-    { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
+    objectControl('Scene'),
+    ...sh.params.map((p) => rangeControl(p, 'scene', `${sh.name}-${kebab(p.name)}`, 'Shade')),
+    { kind: 'select', attr: 'shading', label: 'Shading', options: ['', ...shades.map((x) => x.name)], value: sh.name, empty: 'auto', target: 'scene', group: 'Look' },
+    effectControl('', 'Look'),
   ];
   const prompt = `Shade "${sh.name}": ${sh.description}\n\nSet shading="${sh.name}" on a scene (the default for its children) or on one object. Parameters are attributes prefixed with the shade name. shading="auto" is glass in the dark theme and ${LIGHT_SHADE} in the light one.\n\n${optionsMd(rows)}\n\n\`\`\`html\n{{markup}}\n\`\`\``;
   page(`shades/${sh.name}.html`, { title: sh.name, description: sh.description, main: `<h1>${esc(sh.name)}</h1><p class="lede">${esc(sh.description)}</p>${preview({ sceneAttrs: `shading="${sh.name}"`, inner: `<sd-orb size="220px" color="${colorOf(0)}" animation="idle"></sd-orb>`, controls, prompt })}${rows.length ? `<h2>Options</h2>${optionsTable(rows)}` : ''}<h2>Notes</h2>${md(sh.readme.replace(/^# .*\n/, ''))}<p>Put <code>shading="${sh.name}"</code> on a scene to shade every object in it, or on one object. Compare all shades on the <a href="../shades.html">Shades page</a>.</p>${license}` });
@@ -263,11 +266,11 @@ const sceneInner = `<sd-orb id="orb" gravity="center" animation="breathe" color=
 <sd-knot id="knot" animation="spin" speed="0.4" color="${colorOf(3)}" size="84px" style="position:absolute;left:70%;top:12%"></sd-knot>
 <sd-prism id="prism" animation="idle" color="${colorOf(4)}" size="70px" style="position:absolute;left:48%;top:76%"></sd-prism>`;
 const sceneControls = (active) => [
-  { kind: 'select', attr: 'center', label: 'Center of gravity', options: ['orb', 'ring', 'crystal', 'cube', 'knot', 'prism'], value: 'orb', target: 'scene' },
-  { kind: 'range', attr: 'gravity-strength', label: 'Gravity strength', min: 0, max: 1, step: 0.01, value: 0.6, default: 0.6, target: 'scene' },
-  ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: active.includes(i.name), target: 'scene' })),
-  { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
-  shadingControl('scene'),
+  { kind: 'select', attr: 'center', label: 'Center of gravity', options: ['orb', 'ring', 'crystal', 'cube', 'knot', 'prism'], value: 'orb', target: 'scene', group: 'Scene' },
+  { kind: 'range', attr: 'gravity-strength', label: 'Gravity strength', min: 0, max: 1, step: 0.01, value: 0.6, default: 0.6, target: 'scene', group: 'Scene' },
+  ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: active.includes(i.name), target: 'scene', group: 'Interactions' })),
+  effectControl('', 'Look'),
+  shadingControl('scene', 'Look'),
 ];
 const scenePrompt = `A solids scene holds objects on one canvas and applies interactions between them. Gravity: mark one object gravity="center"; the others orbit it by default, each on its own ring (sorted by distance in the layout, spread evenly, farther rings turn slower like real orbits), gravity="fall" drifts toward it and stops at gravity-gap, gravity="none" opts out. Change the center at runtime and everything eases to its new path.\n\n\`\`\`html\n{{markup}}\n\`\`\``;
 page('scene.html', { title: 'Scene and gravity', description: 'Objects in one scene interact. Pick the center of gravity and watch the others follow.', main: `<h1>Scene and gravity</h1><p class="lede">Objects inside one scene share a canvas and can react to each other. Pick which object is the center of gravity.</p>${preview({ sceneAttrs: 'interaction="gravity hover-lift" gravity-strength="0.6"', inner: sceneInner, controls: sceneControls(['gravity', 'hover-lift']), prompt: scenePrompt, stageClass: 'scatter' })}
@@ -277,7 +280,7 @@ ${license}` });
 interactions.forEach((i) => {
   const rows = i.params.map((p) => [`${i.name}-${kebab(p.name)}`, 'number', String(p.default), `${p.min} to ${p.max}`, p.label]);
   const prompt = `Interaction "${i.name}": ${i.description}\n\nEnable it with interaction="${i.name}" on the scene. Several can be combined, space separated.\n\n${rows.length ? optionsMd(rows) + '\n\n' : ''}\`\`\`html\n{{markup}}\n\`\`\``;
-  page(`interactions/${i.name}.html`, { title: i.name, description: i.description, main: `<h1>${esc(i.name)}</h1><p class="lede">${esc(i.description)}</p>${preview({ sceneAttrs: `interaction="${i.name}"${i.name === 'gravity' ? ' gravity-strength="0.6"' : ''}`, inner: sceneInner, controls: [...sceneControls([i.name]), ...(i.name === 'gravity' ? [] : i.params.map((p) => rangeControl(p, 'scene', `${i.name}-${kebab(p.name)}`)))], prompt, stageClass: 'scatter' })}<h2>Usage</h2><p>Set <code>interaction="${i.name}"</code> on the scene. Interactions are scene rules: they work on every object inside, whatever its type. Several run in the order written.</p>${rows.length ? `<h2>Options</h2>${optionsTable(rows)}` : ''}${license}` });
+  page(`interactions/${i.name}.html`, { title: i.name, description: i.description, main: `<h1>${esc(i.name)}</h1><p class="lede">${esc(i.description)}</p>${preview({ sceneAttrs: `interaction="${i.name}"${i.name === 'gravity' ? ' gravity-strength="0.6"' : ''}`, inner: sceneInner, controls: [...sceneControls([i.name]), ...(i.name === 'gravity' ? [] : i.params.map((p) => rangeControl(p, 'scene', `${i.name}-${kebab(p.name)}`, 'Scene')))], prompt, stageClass: 'scatter' })}<h2>Usage</h2><p>Set <code>interaction="${i.name}"</code> on the scene. Interactions are scene rules: they work on every object inside, whatever its type. Several run in the order written.</p>${rows.length ? `<h2>Options</h2>${optionsTable(rows)}` : ''}${license}` });
 });
 
 // --- Performance: sizes from the build, a live meter on the demo scene, a benchmark the visitor runs ---
@@ -307,19 +310,19 @@ ${effects.map((e) => row(`data-effect="${e.name}"`, `<a href="effects/${e.name}.
 // --- Universe page ---
 {
   const controls = [
-    { kind: 'range', attr: 'count', label: 'Count', min: 1, max: 120, step: 1, value: 36, default: 24, target: 'scene' },
-    { kind: 'range', attr: 'seed', label: 'Seed', min: 1, max: 99, step: 1, value: 1, default: 1, target: 'scene' },
-    { kind: 'check', attr: 'collide', on: 'on', label: 'Collide', value: false, target: 'scene' },
-    { kind: 'check', attr: 'camera', on: 'spin', label: 'Spin', value: true, target: 'scene' },
-    { kind: 'check', attr: 'camera', on: 'drag', label: 'Drag', value: true, target: 'scene' },
-    { kind: 'check', attr: 'camera', on: 'pointer', label: 'Pointer', value: true, target: 'scene' },
-    { kind: 'range', attr: 'speed', label: 'Speed', min: 0, max: 4, step: 0.1, value: 1, default: 1, target: 'scene' },
-    { kind: 'range', attr: 'drift', label: 'Drift', min: 0, max: 1, step: 0.05, value: 0.5, default: 0.5, target: 'scene' },
-    { kind: 'range', attr: 'perspective', label: 'Perspective', min: 0.05, max: 1, step: 0.05, value: 0.5, default: 0.5, target: 'scene' },
-    { kind: 'range', attr: 'depth', label: 'Depth', min: 0, max: 1, step: 0.05, value: 0.5, default: 0.5, target: 'scene' },
-    { kind: 'range', attr: 'focus', label: 'Focus', min: -1, max: 1, step: 0.05, value: 0, default: 0, target: 'scene' },
-    { kind: 'select', attr: 'effect', label: 'Scene effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene' },
-    shadingControl('scene'),
+    { kind: 'range', attr: 'count', label: 'Count', min: 1, max: 120, step: 1, value: 36, default: 24, target: 'scene', group: 'Universe' },
+    { kind: 'range', attr: 'seed', label: 'Seed', min: 1, max: 99, step: 1, value: 1, default: 1, target: 'scene', group: 'Universe' },
+    { kind: 'range', attr: 'drift', label: 'Drift', min: 0, max: 1, step: 0.05, value: 0.5, default: 0.5, target: 'scene', group: 'Universe' },
+    { kind: 'check', attr: 'collide', on: 'on', label: 'Collide', value: false, target: 'scene', group: 'Universe' },
+    { kind: 'check', attr: 'camera', on: 'spin', label: 'Spin', value: true, target: 'scene', group: 'Camera' },
+    { kind: 'check', attr: 'camera', on: 'drag', label: 'Drag', value: true, target: 'scene', group: 'Camera' },
+    { kind: 'check', attr: 'camera', on: 'pointer', label: 'Pointer', value: true, target: 'scene', group: 'Camera' },
+    { kind: 'range', attr: 'speed', label: 'Spin speed', min: 0, max: 4, step: 0.1, value: 1, default: 1, target: 'scene', group: 'Camera' },
+    { kind: 'range', attr: 'perspective', label: 'Perspective', min: 0.05, max: 1, step: 0.05, value: 0.5, default: 0.5, target: 'scene', group: 'Camera' },
+    { kind: 'range', attr: 'depth', label: 'Depth of field', min: 0, max: 1, step: 0.05, value: 0.5, default: 0.5, target: 'scene', group: 'Depth' },
+    { kind: 'range', attr: 'focus', label: 'Focus', min: -1, max: 1, step: 0.05, value: 0, default: 0, target: 'scene', group: 'Depth' },
+    effectControl('', 'Look'),
+    shadingControl('scene', 'Look'),
   ];
   const rows = [
     ['count', 'number', '24', '0 to 120', 'How many shapes. Changing it regenerates the children.'],
