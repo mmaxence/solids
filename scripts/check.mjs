@@ -255,8 +255,11 @@ for (const name of shadeNames) {
   await frame(); await frame();
   rm.firstElementChild.removeAttribute('cel-bands'); await frame(); await frame();
   let over = 0; { const b = read(ink); for (let i = 0; i < b.length; i += 4) if (b[i] > b[i + 3] + 1 || b[i + 1] > b[i + 3] + 1 || b[i + 2] > b[i + 3] + 1) over++; }
-  result.cases.shade.fixed = { viewLight: differ(lit, turned), paramRemoved: differ(rm, sc2), clamp: { same: differ(big, one), pixels: pixels(big) }, inkOver: over };
-  drop(lit, turned, rm, sc2, big, one, ink); }
+  // cel: outline is the parameter that removes the ink line entirely at 0; the old ink name is gone.
+  const o0 = mk({}, { shading: 'cel', 'cel-outline': '0' }), o8 = mk({}, { shading: 'cel', 'cel-outline': '0.8' }), oi = mk({}, { shading: 'cel', 'cel-ink': '0' });
+  await frame(); await frame();
+  result.cases.shade.fixed = { viewLight: differ(lit, turned), paramRemoved: differ(rm, sc2), clamp: { same: differ(big, one), pixels: pixels(big) }, inkOver: over, outline: { off: differ(o0, o8), oldName: differ(oi, o8) } };
+  drop(lit, turned, rm, sc2, big, one, ink, o0, o8, oi); }
 // Case D: animations move things; reduced motion freezes them.
 const an = document.body.appendChild(document.createElement('sd-scene')); an.className = 'small';
 const spin = document.createElement(tags[0]); spin.setAttribute('animation', 'spin'); an.appendChild(spin);
@@ -642,6 +645,7 @@ async function smoke() {
       if (!(fx.viewLight < 0.01)) fail(`shades: the key light should stay fixed to the view: a sphere turned 180 degrees differs by ${pc(fx.viewLight ?? 1)}`);
       if (!(fx.paramRemoved < 1e-6)) fail(`shades: removing an object's cel-bands should let the scene's value through, differs ${pc(fx.paramRemoved ?? 1)}`);
       if (!(fx.clamp?.same < 1e-6) || !(fx.clamp?.pixels > 100)) fail(`shades: metal-roughness="1.5" should clamp to 1: ${JSON.stringify(fx.clamp)}`);
+      if (!(fx.outline?.off > 0.02) || !(fx.outline?.oldName < 1e-6)) fail(`shades: cel-outline="0" should remove the ink line (differs ${pc(fx.outline?.off ?? 0)} from 0.8) and cel-ink should be gone (${pc(fx.outline?.oldName ?? 1)})`);
       if (fx.inkOver !== 0) fail(`shades: cel ink edge has ${fx.inkOver} pixels with rgb above alpha (invalid premultiplied color)`); }
     { const sh = r.cases.shade ?? {}; if (!(sh.glassEqualsDefault < 1e-6) || !(sh.unknownDraws > 100) || sh.unknownWarned !== 1 || !(sh.unknownEqualsDefault < 1e-6)) fail(`shades: glass vs default ${sh.glassEqualsDefault}, unknown name drew ${sh.unknownDraws} px and warned ${sh.unknownWarned} times (expected 1), unknown vs default ${sh.unknownEqualsDefault}`); }
     if (r.consoleErrors.length) fail(`console errors: ${r.consoleErrors.join(' | ').slice(0, 1200)}`);

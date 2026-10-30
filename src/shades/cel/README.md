@@ -4,7 +4,7 @@ Cartoon shading. Light falls in flat bands instead of a gradient, the highlight 
 
 - `light` (0 to 360, default 120): where the key light comes from, around the view.
 - `bands` (2 to 5, default 3): how many steps of light.
-- `ink` (0 to 1, default 0.8): how strong the rim and outline are.
+- `outline` (0 to 1, default 0.8): how strong the ink line is. 0 removes it and leaves only the bands and the highlight.
 
 ```html
 <sd-scene shading="cel" cel-bands="2">

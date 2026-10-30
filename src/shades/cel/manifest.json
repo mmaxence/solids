@@ -4,6 +4,6 @@
   "params": [
     { "name": "light", "type": "float", "default": 120, "min": 0, "max": 360, "step": 1, "label": "Light azimuth (degrees)" },
     { "name": "bands", "type": "float", "default": 3, "min": 2, "max": 5, "step": 1, "label": "Light bands" },
-    { "name": "ink", "type": "float", "default": 0.8, "min": 0, "max": 1, "step": 0.01, "label": "Ink rim strength" }
+    { "name": "outline", "type": "float", "default": 0.8, "min": 0, "max": 1, "step": 0.01, "label": "Outline (0 removes it)" }
   ]
 }
