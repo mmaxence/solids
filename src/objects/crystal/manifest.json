@@ -2,11 +2,33 @@
   "name": "crystal",
   "tag": "sd-crystal",
   "description": "A faceted octahedral gem. Hard edges, flat facets, sharp highlights.",
-  "bleed": 1.5,
   "uniforms": [
-    { "name": "facets", "type": "float", "default": 2, "min": 1, "max": 3, "step": 1, "label": "Facet cuts" },
-    { "name": "clarity", "type": "float", "default": 0.7, "min": 0, "max": 1, "step": 0.01, "label": "Clarity" },
-    { "name": "stretch", "type": "float", "default": 1.4, "min": 0.6, "max": 2, "step": 0.01, "label": "Vertical stretch" }
-  ],
-  "tags": ["gem", "faceted"]
+    {
+      "name": "facets",
+      "type": "float",
+      "default": 2,
+      "min": 1,
+      "max": 3,
+      "step": 1,
+      "label": "Facet cuts"
+    },
+    {
+      "name": "clarity",
+      "type": "float",
+      "default": 0.7,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "label": "Clarity"
+    },
+    {
+      "name": "stretch",
+      "type": "float",
+      "default": 1.4,
+      "min": 0.6,
+      "max": 2,
+      "step": 0.01,
+      "label": "Vertical stretch"
+    }
+  ]
 }

@@ -11,4 +11,4 @@ const regen = () => { clearTimeout(t); t = setTimeout(() => { run('scripts/build
 for (const d of ['src', 'site/src', 'docs']) watch(d, { recursive: true }, regen);
 const ctx = await esbuild.context({ entryPoints: [], outdir: 'site/dist' });
 const { port } = await ctx.serve({ servedir: 'site/dist', port: 4110, host: '127.0.0.1' });
-console.log(`solids site: http://127.0.0.1:${port}/  (repo root also at /?)`);
+console.log(`solids site: http://127.0.0.1:${port}/`);

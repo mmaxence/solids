@@ -18,7 +18,7 @@ export class SdObject extends HTMLElement {
 
   scene: SdScene | null = null;
   rect: DOMRect | null = null;           // layout rect relative to the scene, px
-  uniforms: Record<string, number | number[]> = {};
+  uniforms: Record<string, number> = {};
   rgb: [number, number, number] = [0.61, 0.82, 1];
   colorSrc = '#9bd1ff';                   // last accepted `color`, re-parsed once the scene's color space is known
   stateValue = 0.25; stateTarget = 0.25;
@@ -42,7 +42,7 @@ export class SdObject extends HTMLElement {
     super();
     const root = this.attachShadow({ mode: 'open' });
     root.innerHTML = `<style>:host{display:inline-block;position:relative;width:var(--sd-size,160px);aspect-ratio:1;vertical-align:middle}sd-scene{position:absolute;inset:0}</style><style></style>`;
-    for (const u of this.manifest.uniforms) this.uniforms[u.name] = coerce(u.default, u.type) ?? 0;
+    for (const u of this.manifest.uniforms) this.uniforms[u.name] = clampTo(num(String(u.default), 0), u);
   }
 
   connectedCallback() {
@@ -84,10 +84,7 @@ export class SdObject extends HTMLElement {
     }
     if (effectParam(name, v, this.effectParams) || shadeParam(name, v, this.shadeParams)) return;
     const u = this.manifest.uniforms.find((u) => kebab(u.name) === name);
-    if (u) {
-      const c = coerce(v === null || v === '' ? u.default : v, u.type);
-      if (c !== null) this.uniforms[u.name] = typeof c === 'number' ? clampTo(c, u) : c;
-    }
+    if (u) this.uniforms[u.name] = clampTo(num(v, u.default), u);
   }
 
   /** Parse `s` in the scene's color space (sRGB until attached). An unparseable string keeps the current color. */
@@ -143,13 +140,6 @@ function lerpAngle(a: number, b: number, k: number) {
   return a + d * k;
 }
 
-function coerce(v: unknown, type: 'float' | 'vec3' | 'color'): number | number[] | null {
-  if (type === 'float') { const n = typeof v === 'number' ? v : Number(v); return isNaN(n) ? null : n; }
-  if (type === 'color') { if (Array.isArray(v)) return v; const c = parseColor(String(v)); return c; }
-  if (Array.isArray(v)) return v;
-  const parts = String(v).split(/[\s,]+/).map(Number);
-  return parts.length === 3 && parts.every((n) => !isNaN(n)) ? parts : null;
-}
 
 let rmq: MediaQueryList | null = null;
 export function reducedMotion() {

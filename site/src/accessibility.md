@@ -12,7 +12,7 @@ Objects are not focusable. If an object is the visual for a control, make the co
 
 ## Contrast
 
-Objects render on a transparent canvas over your own background. The default colors are tuned for near-black and near-white backgrounds. On mid-tone backgrounds, raise `rim` or add the `glow` effect so the silhouette stays legible.
+Objects render on a transparent canvas over your own background. The default colors are tuned for near-black and near-white backgrounds. On mid-tone backgrounds, pick a shade with a darker edge (`cel` with its outline, or `matte`) or add the `glow` effect so the silhouette stays legible.
 
 ## Performance
 

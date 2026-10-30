@@ -249,15 +249,13 @@ export class SdScene extends HTMLElement {
 
   private draw(gl: WebGL2RenderingContext, o: SdObject, t: number, theme: number, f: NonNullable<typeof this.fbos>, target: FBO | null, W = this.canvas.width, H = this.canvas.height) {
     const r = o.rect!;
-    const bleed = o.manifest.bleed ?? 1.5;
     const [cx, cy] = o.drawCenter();
     // The quad follows the object's scale, in 8 device px steps so the buffer pool keys stay few; uScale keeps the shape at exactly rect × scale.
     const sz = r.width * o.anim.scale * this.pixelRatio;
-    const w = Math.ceil((sz * bleed) / 8) * 8, h = w;
+    const w = Math.ceil((sz * BLEED) / 8) * 8, h = w;
     if (!(sz > 0) || w > this.maxTex) return;
     const x = Math.round(cx * this.pixelRatio - w / 2), y = Math.round((this.height - cy) * this.pixelRatio - h / 2);
     if (x >= W || y >= H || x + w <= 0 || y + h <= 0) return; // off the canvas
-    const qw = w / this.pixelRatio, qh = h / this.pixelRatio;
     // Shade: the object's own `shading`, else the scene's, else auto (glass in dark, the light default in light).
     const shadeName = resolveShade(o.hasAttribute('shading') ? o.shadeName : this.shadeName, theme), shade = shades.get(shadeName)!;
     const shadeUniforms: Record<string, number> = {};
@@ -279,9 +277,8 @@ export class SdScene extends HTMLElement {
     }
     else this.bind(gl, target, x, y, w, h, false);
     gl.useProgram(p.prog);
-    const px = this.pointer.inside ? [((this.pointer.x - cx) / qw) * 2, -((this.pointer.y - cy) / qh) * 2] : [0, 0];
     setUniforms(gl, p, {
-      uTime: t, uResolution: [w, h], uPointer: px, uRotation: o.anim.rotation,
+      uTime: t, uResolution: [w, h], uRotation: o.anim.rotation,
       uScale: sz / w, uState: Math.min(1, Math.max(0, o.stateValue + o.anim.state)), uTheme: theme, uColor: o.rgb,
       ...shadeUniforms, ...o.uniforms,
     });
@@ -291,7 +288,9 @@ export class SdScene extends HTMLElement {
     for (const name of chain) {
       const dst = src === pair![0] ? pair![1] : pair![0];
       this.bind(gl, dst, 0, 0, w, h, true);
-      this.pass(gl, name, src, name === 'defocus' && o.blurPx >= 0.5 ? { ...o.effectParams[name], radius: o.blurPx } : o.effectParams[name], [w, h], t, theme);
+      // Params merge the scene's under the object's, like shade params; a universe's blur sets the defocus radius.
+      const params = { ...this.effectParams[name], ...o.effectParams[name], ...(name === 'defocus' && o.blurPx >= 0.5 ? { radius: o.blurPx } : {}) };
+      this.pass(gl, name, src, params, [w, h], t, theme);
       src = dst;
     }
     this.bind(gl, target, x, y, w, h, false);
@@ -300,5 +299,6 @@ export class SdScene extends HTMLElement {
 }
 
 let lightMq: MediaQueryList | null = null;
+const BLEED = 1.5; // the quad is this much larger than the element box so halos can spill; the halo reaches about 1.5x
 /** Exponential moving average, alpha 0.1; the first sample seeds it. */
 const ema = (prev: number, x: number) => (prev ? prev + (x - prev) * 0.1 : x);

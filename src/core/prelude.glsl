@@ -3,7 +3,6 @@ precision highp float;
 // Core uniforms, set every frame by <sd-scene>.
 uniform float uTime;       // seconds
 uniform vec2  uResolution; // quad size in device px
-uniform vec2  uPointer;    // quad-local, -1..1, y up
 uniform mat3  uRotation;   // object rotation from animations and interactions
 uniform float uScale;      // object scale (already divided by bleed)
 uniform float uState;      // 0..1 eased state

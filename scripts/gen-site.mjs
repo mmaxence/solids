@@ -13,10 +13,11 @@ const REPO = 'https://github.com/mmaxence/solids';
 globalThis.window = globalThis;
 globalThis.HTMLElement = class {};
 globalThis.customElements = { get: () => undefined, define: () => {} };
-if (!existsSync('dist/solids.js') || !existsSync('dist/sizes.json')) { console.error('run npm run build first'); process.exit(1); }
-const sizes = JSON.parse(readFileSync('dist/sizes.json', 'utf8'));   // gzipped bytes: { core, full }
+if (!existsSync('dist/solids.js') || !existsSync('dist/core.js')) { console.error('run npm run build first'); process.exit(1); }
+const sizes = { core: gzipSync(readFileSync('dist/core.js')).length, full: gzipSync(readFileSync('dist/solids.js')).length };   // gzipped bytes
+rmSync(OUT, { recursive: true, force: true }); // renamed pages do not linger
 const kb = (n) => (n / 1024).toFixed(1) + ' KB';
-const { registry } = await import(pathToFileURL('dist/solids.js').href + '?' + Date.now());
+const { registry, PALETTE } = await import(pathToFileURL('dist/solids.js').href);
 const objects = [...registry.objects.values()].map((o) => ({ ...o.manifest, readme: readFileSync(`src/objects/${o.manifest.name}/README.md`, 'utf8') }));
 const effects = [...registry.effects.values()].map((e) => e.manifest);
 const shades = [...registry.shades.values()].map((s) => ({ ...s.manifest, readme: readFileSync(`src/shades/${s.manifest.name}/README.md`, 'utf8') }));
@@ -29,8 +30,7 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 const kebab = (s) => s.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
 const shell = readFileSync('site/src/shell.html', 'utf8');
 // The palette, single source: Display P3 picks outside sRGB. Browsers without P3 clip them to sRGB.
-const COLORS = ['color(display-p3 0.55 0.85 1)', 'color(display-p3 0.78 0.66 1)', 'color(display-p3 1 0.55 0.8)', 'color(display-p3 0.5 1 0.85)', 'color(display-p3 1 0.8 0.5)', 'color(display-p3 0.55 1 0.6)'];
-const colorOf = (i) => COLORS[i % COLORS.length];
+const colorOf = (i) => PALETTE[i % PALETTE.length]; // the universe's palette, one source
 /** `<input type="color">` only holds sRGB hex, so its swatch is the P3 pick clipped to sRGB. */
 const swatch = (p3) => {
   const [r, g, b] = p3.match(/[\d.]+/g).slice(-3).map(Number).map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
@@ -182,7 +182,7 @@ ${layer('Interactions', 'Scene rules that react to the pointer and to each other
 <p class="chips"><span>Effects</span>${effects.map((e) => `<a href="effects/${e.name}.html">${esc(e.name)}</a>`).join('')}</p>
 <p class="chips"><span>Shades</span>${shades.map((x) => `<a href="shades/${x.name}.html">${esc(x.name)}</a>`).join('')}</p>
 <p class="chips"><span>Interactions</span>${interactions.map((i) => `<a href="interactions/${i.name}.html">${esc(i.name)}</a>`).join('')}</p>`;
-  const numbers = `<dl class="numbers"><div><dt>The whole library, gzipped</dt><dd>${(gzipSync(readFileSync('dist/solids.js')).length / 1024).toFixed(1)} KB</dd></div><div><dt>Objects on the hero, one canvas</dt><dd>${ids.length}</dd></div><div><dt>One hero frame, measured now</dt><dd id="live-frame">measuring</dd></div></dl>`;
+  const numbers = `<dl class="numbers"><div><dt>The whole library, gzipped</dt><dd>${kb(sizes.full)}</dd></div><div><dt>Objects on the hero, one canvas</dt><dd>${ids.length}</dd></div><div><dt>One hero frame, measured now</dt><dd id="live-frame">measuring</dd></div></dl>`;
   const universe = `<sd-universe class="band-universe" count="36" seed="5" collide depth="0.55" dpr="1.5" style="position:relative;height:70vh;min-height:480px"></sd-universe>`;
   // What a new shape costs an agent, from the files it reads and writes. Reads: the contract, the SDF prelude and the largest object
   // as a reference, re-read over 4 turns, plus two check runs of about 2 KB each; writes: one object of mean size. Bytes / 4 per token.

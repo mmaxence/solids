@@ -81,7 +81,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .controls label span { display: flex; justify-content: space-between; }
 .controls label span output { color: var(--fg); font-variant-numeric: tabular-nums; }
 .controls input[type="range"] { width: 100%; accent-color: var(--accent); }
-.controls select, .controls input[type="color"], .controls input[type="text"] { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 13px; height: 34px; }
+.controls select, .controls input[type="color"] { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 13px; height: 34px; }
 .controls input[type="color"] { padding: 2px 4px; width: 100%; }
 .controls .check { display: flex; align-items: center; gap: 8px; }
 .controls .check input { accent-color: var(--accent); }
@@ -99,8 +99,6 @@ th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--lin
 th { color: var(--muted); font-weight: 500; }
 td:first-child code { white-space: nowrap; }
 
-.hero { display: grid; grid-template-columns: 1fr; gap: 28px; margin-bottom: 36px; }
-.hero .stage { height: 420px; border: 1px solid var(--line); border-radius: var(--radius); }
 /* Performance page: live meter under the stage, benchmark table with a bar per row */
 .meter { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px 22px; margin: 0; padding: 16px 20px; border-top: 1px solid var(--line); }
 .meter div { display: grid; gap: 2px; min-width: 0; }
@@ -140,7 +138,6 @@ td:first-child code { white-space: nowrap; }
   .main { padding: 28px 16px 60px; }
   .main > h1 { font-size: 32px; }
   .stage { height: 280px; }
-  .hero .stage { height: 320px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
@@ -159,7 +156,6 @@ td:first-child code { white-space: nowrap; }
 .dock label.check input { margin: 0; }
 .dock select, .dock input[type="range"] { height: 30px; }
 .dock .btn { order: 99; margin-left: 6px; }
-.intro-h1 { display: none; }
 @media (max-width: 900px) {
   .hero-full { height: 70vh; min-height: 520px; }
   .hero-title { left: 16px; top: 22px; right: 16px; max-width: none; }

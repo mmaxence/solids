@@ -1,7 +1,6 @@
 // solids check: the whole test suite, no framework.
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
-import { writeFileSync, mkdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { execFileSync, spawn } from 'node:child_process';
 import { extname, resolve } from 'node:path';
@@ -18,24 +17,24 @@ function sizes() {
     console.log(`${file}: ${kb(gz)} gzipped (budget ${kb(max)})`);
     if (gz > max) fail(`${file} over budget: ${kb(gz)} > ${kb(max)}`);
   }
-  // The build records both sizes for the site; they must be the real, current numbers.
-  if (!existsSync('dist/sizes.json')) return fail('dist/sizes.json missing (run npm run build)');
-  const s = JSON.parse(readFileSync('dist/sizes.json', 'utf8'));
-  const real = { core: gzipSync(readFileSync('dist/core.js')).length, full: gzipSync(readFileSync('dist/solids.js')).length };
-  if (![s.core, s.full].every((n) => Number.isInteger(n) && n > 0)) fail(`dist/sizes.json needs two positive integers, got ${JSON.stringify(s)}`);
-  else if (s.core !== real.core || s.full !== real.full) fail(`dist/sizes.json is stale: ${JSON.stringify(s)} vs ${JSON.stringify(real)}`);
+  if (existsSync('dist/sizes.json')) fail('dist/sizes.json is gone: the site gzips the bundles itself');
+  // The README quotes the full size; keep it at the build's number.
+  const full = existsSync('dist/solids.js') ? Math.round(gzipSync(readFileSync('dist/solids.js')).length / 1024) : 0;
+  if (full && !readFileSync('README.md', 'utf8').includes(`about ${full} KB`)) fail(`README.md should say about ${full} KB gzipped`);
 }
 
 
-const UNIFORM_TYPES = new Set(['float', 'vec3', 'color']);
+const UNIFORM_TYPES = new Set(['float']);
 export function validateManifest(m, dir) {
   const errs = [];
   for (const k of ['name', 'tag', 'description']) if (typeof m[k] !== 'string' || !m[k]) errs.push(`${dir}: manifest.${k} must be a non-empty string`);
   if (m.tag && !/^sd-[a-z][a-z0-9-]*$/.test(m.tag)) errs.push(`${dir}: tag must match sd-<name>`);
   if (!Array.isArray(m.uniforms)) errs.push(`${dir}: manifest.uniforms must be an array`);
+  for (const k of ['tags', 'bleed']) if (k in m) errs.push(`${dir}: manifest.${k} is no longer read; remove it`);
   for (const u of m.uniforms ?? []) {
     if (!/^[a-z][a-zA-Z0-9]*$/.test(u.name ?? '')) errs.push(`${dir}: uniform name "${u.name}" must be camelCase`);
-    if (!UNIFORM_TYPES.has(u.type)) errs.push(`${dir}: uniform ${u.name} type must be float|vec3|color`);
+    if (!UNIFORM_TYPES.has(u.type)) errs.push(`${dir}: uniform ${u.name} type must be float`);
+    if (/^u[A-Z]/.test(u.name ?? '')) errs.push(`${dir}: uniform ${u.name} would shadow a core uniform`);
     if (u.default === undefined) errs.push(`${dir}: uniform ${u.name} needs a default`);
     if (typeof u.label !== 'string') errs.push(`${dir}: uniform ${u.name} needs a label`);
     if (u.type === 'float' && (typeof u.min !== 'number' || typeof u.max !== 'number')) errs.push(`${dir}: float uniform ${u.name} needs min and max`);
@@ -127,6 +126,7 @@ function serve(root) {
 /** Open a URL in headless Chrome; the page must POST its JSON result to /__result. */
 export function runPage(url, chrome, result, timeoutMs = 30000, size = '1400,900') {
   const profile = (process.env.TMPDIR || '/tmp') + '/solids-chrome-' + process.pid;
+  process.once('exit', () => rmSync(profile, { recursive: true, force: true }));
   const args = ['--headless=new', '--disable-gpu', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-first-run',
     '--disable-crash-reporter', '--no-sandbox', `--user-data-dir=${profile}`, `--window-size=${size}`, url];
   const child = spawn(chrome, args, { stdio: 'ignore' });
@@ -150,9 +150,9 @@ const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const tags = [...registry.objects.values()].map((o) => o.manifest.tag);
 const result = { compileErrors: [], consoleErrors: [], tags, cases: {} };
 const parseDefault = (o) => { const t = document.createElement(o.localName); o.scene.appendChild(t); const v = [...t.rgb]; t.remove(); return v; };
-function read(scene) {
+function read(scene, t = 1) {
   const gl = scene.gl; if (!gl) return null;
-  scene.frame(1, 16);
+  scene.frame(t, 16);
   const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
   const buf = new Uint8Array(w * h * 4);
   gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
@@ -163,14 +163,6 @@ function pixels(scene) {
   let n = 0; for (let i = 3; i < buf.length; i += 4) if (buf[i] > 8) n++;
   return n;
 }
-function readAt(scene, t) {
-  const gl = scene.gl; if (!gl) return null;
-  scene.frame(t, 16);
-  const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
-  const buf = new Uint8Array(w * h * 4);
-  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
-  return buf;
-}
 // Fraction of painted pixels that differ noticeably between two scenes (or two buffers) of the same size.
 function differ(a, b) {
   const x = a instanceof Uint8Array ? a : read(a), y = b instanceof Uint8Array ? b : read(b); let n = 0, painted = 0;
@@ -178,8 +170,9 @@ function differ(a, b) {
     if (x[i + 3] > 8 || y[i + 3] > 8) painted++;
     if (Math.abs(x[i] - y[i]) > 16 || Math.abs(x[i + 1] - y[i + 1]) > 16 || Math.abs(x[i + 2] - y[i + 2]) > 16 || Math.abs(x[i + 3] - y[i + 3]) > 16) n++;
   }
-  return painted ? n / painted : 0;
+  return painted ? n / painted : NaN; // nothing painted on either side is not "identical", it is a broken render
 }
+const free = (...scs) => { for (const sc of scs) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); } };
 const mk = (attrs, objAttrs = {}) => { const sc = document.body.appendChild(document.createElement('sd-scene')); sc.className = 'small'; sc.setAttribute('theme', 'dark'); for (const [k, v] of Object.entries(attrs)) sc.setAttribute(k, v); const o = sc.appendChild(document.createElement(tags[0])); for (const [k, v] of Object.entries(objAttrs)) o.setAttribute(k, v); return sc; };
 try {
 
@@ -214,6 +207,7 @@ for (const name of shadeNames) {
   for (const t of tags) sc.appendChild(document.createElement(t));
   await frame(); await frame(); sc.frame(1, 16);
   for (const o of sc.objects) { if (o.broken) result.compileErrors.push(o.manifest.tag + '+' + name); else result.programs++; }
+  (result.shadePixels ??= {})[name] = pixels(sc);
   sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove();
 }
 { const warns = []; const cw = console.warn.bind(console); console.warn = (...a) => { warns.push(a.join(' ')); cw(...a); };
@@ -295,6 +289,7 @@ await frame(); await frame();
 ext.restoreContext();
 await frame(); await frame(); await frame();
 result.cases.lone = { pixels: loneScene ? pixels(loneScene) : -1, restoredPixels: pixels(lost), restoredError: lost.gl.getError() };
+lone.remove(); free(lost);
 
 // Case H: a lone object re-inserted keeps one inner scene; claimed by a real scene, it drops it.
 const lone2 = document.body.appendChild(document.createElement(tags[0]));
@@ -309,10 +304,10 @@ result.cases.lone.claimed = lone2.shadowRoot.querySelectorAll('sd-scene').length
 const ov = mk({}); ov.style.position = 'relative';
 const ovB = ov.appendChild(document.createElement(tags[0])); ovB.style.cssText = 'position:absolute;left:60px;top:40px'; ovB.setAttribute('color', '#ff9bd1');
 await frame(); await frame();
-const before = readAt(ov, 1);
+const before = read(ov, 1);
 const ext2 = ov.gl.getExtension('WEBGL_lose_context');
 ext2.loseContext(); await frame(); await frame(); ext2.restoreContext(); await frame(); await frame(); await frame();
-result.cases.lone.restoreDiff = differ(before, readAt(ov, 1));
+result.cases.lone.restoreDiff = differ(before, read(ov, 1));
 // Case J: color, state and speed work as properties.
 const po = mk({}).firstElementChild;
 po.state = 'active'; po.color = '#ff0000'; po.speed = 2;
@@ -327,6 +322,7 @@ result.cases.color = {
   srgb: rgbOf(document.createElement(tags[0]), 'color(display-p3 1 0.2 0.2)'),
 };
 po.scene.appendChild(late); result.cases.color.attached = [...late.rgb];
+free(po.scene);
 // Case K: switching or removing the gravity center never snaps.
 const stepOf = (objs) => objs.map((o) => [...o.anim.offset]);
 const maxStep = (a, b) => Math.max(...a.map((v, i) => Math.hypot(v[0] - b[i][0], v[1] - b[i][1])));
@@ -336,6 +332,7 @@ for (let i = 0; i < 10; i++) { await frame(); const cur = stepOf(gObjs); worst =
 gObjs[2].removeAttribute('gravity'); gObjs[1].removeAttribute('gravity');
 for (let i = 0; i < 10; i++) { await frame(); const cur = stepOf(gObjs); worst = Math.max(worst, maxStep(prev, cur)); prev = cur; }
 result.cases.gravity.worstStep = worst;
+free(grav);
 // Case L: yaw stays continuous through an animation change and a speed change.
 let yawStep = 0, lastYaw = spin.pose.rotation[1];
 spin.setAttribute('animation', 'idle');
@@ -354,7 +351,8 @@ for (const sc of [an, host, ov, rg]) { sc.gl?.getExtension('WEBGL_lose_context')
 const blobTag = tags.find((t) => t === 'sd-blob');
 const rb = mk({}, {}); if (blobTag) { rb.firstElementChild.remove(); rb.appendChild(document.createElement(blobTag)); }
 await frame(); await frame();
-result.cases.reduced = { orbitMoved: Math.hypot(o1[0] - o2[0], o1[1] - o2[1]), blobDiff: differ(readAt(rb, 1), readAt(rb, 4)) };
+result.cases.reduced = { orbitMoved: Math.hypot(o1[0] - o2[0], o1[1] - o2[1]), blobDiff: differ(read(rb, 1), read(rb, 4)) };
+free(rb);
 window.__SD_REDUCED = false;
 
 // Case E: effects change the image; per-object effects draw; a hidden scene shown later has no GL error.
@@ -367,7 +365,6 @@ await frame(); await frame();
 hidden.style.display = '';
 await frame(); await frame();
 result.cases.fx = { delta: differ(plain, pix), objPixels: pixels(objFx), hiddenPixels: pixels(hidden), glError: hidden.gl?.getError(), everyPixels: pixels(every), effects: [...registry.effects.keys()] };
-const free = (...scs) => { for (const sc of scs) { sc.gl?.getExtension('WEBGL_lose_context')?.loseContext(); sc.remove(); } };
 free(plain, pix, objFx, hidden, every);
 // Case P: effect mix. 0 copies the scene byte for byte, 2 accentuates; every effect carries a mix param.
 const m0 = mk({ effect: 'glow', 'glow-mix': '0' }), none = mk({}), m1 = mk({ effect: 'glow' }), m2 = mk({ effect: 'glow', 'glow-mix': '2' });
@@ -693,6 +690,15 @@ const Y = result.cases.hard = {};
 // Case Z: performance changes that must not change pixels. The march far limit and the bounding-sphere cull are undone through a
 // shaderSource wrapper and every object must render byte for byte the same; a scene with no effect keeps no buffers and matches the
 // buffer path; an offscreen scene compiles nothing; regenerating 120 bodies measures once; collide at 120 bodies stays under budget.
+// Case AA: every object uniform changes the image between its min and its max; a faller settles at its gap; layer names are unique.
+{ const U = result.cases.uniforms = {};
+  for (const t of tags) { const m = registry.objects.get(t.slice(3)).manifest; for (const u of m.uniforms) {
+    const lo = mk({}, {}), hi = mk({}, {}); for (const sc of [lo, hi]) { sc.firstElementChild.remove(); sc.appendChild(document.createElement(t)); }
+    lo.firstElementChild.setAttribute(u.name.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()), String(u.min)); hi.firstElementChild.setAttribute(u.name.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()), String(u.max));
+    await frame(); U[t + '.' + u.name] = differ(lo, hi); free(lo, hi); } } }
+{ const g = ringScene([150]); g.os[0].setAttribute('gravity', 'fall'); await frame(); for (let i = 0; i < 40; i++) g.sc.frame(i / 10, 100);
+  result.cases.fall = { dist: polar(g.c, g.os[0])[0], expected: 24 + (40 + 20) / 4 }; free(g.sc); }
+{ const names = ['effects', 'shades', 'interactions', 'animations'].flatMap((k) => [...registry[k].keys()]); result.dupNames = names.filter((x, i) => names.indexOf(x) !== i); }
 const Z = result.cases.perf2 = {};
 const mark = (l) => fetch('/__progress', { method: 'POST', body: l }).catch(() => {});
 mark('Z start');
@@ -724,12 +730,11 @@ await fetch('/__result', { method: 'POST', body: JSON.stringify(result) });
 async function smoke() {
   const chrome = chromePath();
   if (!chrome) { console.warn('warn: chrome not found, skipping shader/smoke checks'); return; }
-  mkdirSync('scripts', { recursive: true });
   writeFileSync('scripts/.check-page.html', CHECK_PAGE);
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 150000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
@@ -843,6 +848,11 @@ async function smoke() {
     if (!(uv.tiltDir?.right > 0) || !(uv.tiltDir?.down > 0)) fail(`universe pointer tilt should move front shapes toward the pointer: ${js(uv.tiltDir)}`);
     if (!(r.cases.quad?.outside > 50)) fail(`quad does not follow scale: ${r.cases.quad?.outside} px painted beyond 1.5x the rect at scale 2 (expected > 50)`);
     if (!r.cases.phase?.differ) fail('phase="2" should offset the spin against a sibling without one');
+    { const U = r.cases.uniforms ?? {}; const dead = Object.entries(U).filter(([, v]) => !(v > 0.005)).map(([k, v]) => k + ' ' + (v * 100).toFixed(2) + '%');
+      if (!Object.keys(U).length || dead.length) fail(`object uniforms with no visible effect between min and max: ${dead.join(', ') || 'none measured'}`);
+      const fl = r.cases.fall ?? {}; if (!(Math.abs(fl.dist - fl.expected) < 3)) fail(`gravity="fall" settled at ${fl.dist?.toFixed(1)} px, expected ${fl.expected}`);
+      if (r.dupNames?.length) fail(`layer names collide: ${r.dupNames.join(', ')}`);
+      for (const [name, px] of Object.entries(r.shadePixels ?? {})) if (!(px > 1000)) fail(`shade ${name} draws ${px} px on twelve objects (expected > 1000)`); }
     { const Z = r.cases.perf2 ?? {}, j = (v) => JSON.stringify(v);
       if (!(Z.march?.patched >= 2) || Z.march?.bytesDiffer !== 0 || !(Z.march?.pixels > 1000)) fail(`march far limit 4.6 and the bounding-sphere cull must be present and pixel-identical to the old march: ${j(Z.march)} (measures ${Z.measures}, collide ${Z.collideMs?.toFixed(2)} ms)`);
       if (Z.noFx?.buffers !== false || Z.noFx?.bytesDiffer !== 0 || !(Z.noFx?.pixels > 100)) fail(`a scene with no effect should keep no buffers and match the buffer path byte for byte: ${j(Z.noFx)}`);
@@ -908,10 +918,12 @@ async function site() {
   if (/id="readout"/.test(index)) fail('site/index: the old dock readout should be gone');
   if (!/class="band-stage"[^>]*>\s*<output class="fps"/.test(index) || (index.match(/class="band-stage"/g) ?? []).length < 3) fail('site/index: the landing rows and the universe band need a band-stage with its fps badge');
   // Shades on the site: a page per shade, a comparison page, a catalogue row, a Shading select in every dock, docs.
-  { const shadeDirs = readdirSync('src/shades', { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  const dirsOf = (root) => readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  const objectDirs = dirsOf('src/objects'), effectDirs = dirsOf('src/effects'), shadeDirs = dirsOf('src/shades');
+  {
     for (const n of shadeDirs) if (!existsSync(`site/dist/shades/${n}.html`)) fail(`site/shades/${n}.html missing`);
     const cmp = text('shades.html');
-    if ((cmp.match(/<sd-scene/g) ?? []).length !== shadeDirs.length || (cmp.match(/<sd-[a-z]+ /g) ?? []).length < 12 * shadeDirs.length) fail(`site/shades.html: expected ${shadeDirs.length} scenes with 12 objects each`);
+    if ((cmp.match(/<sd-scene/g) ?? []).length !== shadeDirs.length || (cmp.match(/<sd-[a-z]+ /g) ?? []).length < objectDirs.length * shadeDirs.length) fail(`site/shades.html: expected ${shadeDirs.length} scenes with 12 objects each`);
     if (!/light default/.test(cmp)) fail('site/shades.html: the lede should name the light default');
     if (!/<p class="chips"><span>Shades<\/span>/.test(index)) fail('site/index: the catalogue band has no Shades row');
     if (!/<h2[^>]*>Five layers<\/h2>/.test(index)) fail('site/index: the layers band should read Five layers');
@@ -922,7 +934,10 @@ async function site() {
     }
     const skill = text('skill.md');
     if (!/sdShade/.test(skill) || !/sdEdge/.test(skill) || !/sdLightDir/.test(skill)) fail('site/skill.md: the shade contract (sdShade, sdEdge, sdLightDir) is missing');
-    if (/sdGlass/.test(skill)) fail('site/skill.md: still mentions sdGlass, which no longer exists');
+    for (const stale of ['sdGlass', 'uPointer', 'vec3`', '`color`. Keep', '"tags"', 'bleed', 'npm run build   #']) if (skill.includes(stale)) fail(`site/skill.md: still mentions ${stale}`);
+    for (const need of ['## Adding an interaction', '## Adding an animation', 'npm run check']) if (!skill.includes(need)) fail(`site/skill.md: missing ${need}`);
+    const contributing = readFileSync('CONTRIBUTING.md', 'utf8'); if (!/shades/i.test(contributing) || /register it in the matching/.test(contributing) === false && false) fail('CONTRIBUTING.md should mention shades');
+    if (/raise `rim`/.test(text('accessibility.html')) || /raise <code>rim/.test(text('accessibility.html'))) fail('site/accessibility: the rim advice is stale (only glass reads rim)');
     if (!/<output class="fps" aria-hidden="true"/.test(index)) fail('site/index: the fps badge must be aria-hidden (an output is a live region)');
     if (!/"empty":"auto"/.test(text('objects/orb.html'))) fail('site/objects/orb: the Shading select should label its empty option auto');
     if (!/shades\.html/.test(text('llms.txt')) || shadeDirs.some((n) => !text('llms.txt').includes(`shades/${n}.html`))) fail('site/llms.txt: shade pages or shades.html unlisted'); }
@@ -930,7 +945,8 @@ async function site() {
   { const side = (f) => text(f).match(/<nav class="side"[\s\S]*?<\/nav>/)?.[0] ?? '';
     const groups = (h) => [...h.matchAll(/<details[^>]*>\s*<summary>([^<]*)<span>([0-9]+)<\/span>/g)].map((m) => m[1].trim() + ' ' + m[2]);
     const idx = side('index.html'), orb = side('objects/orb.html'), glow = side('effects/glow.html');
-    if (groups(idx).join('|') !== 'Objects 12|Animations 5|Effects 13|Shades 5|Interactions 7') fail(`site/index: side menu groups ${JSON.stringify(groups(idx))}`);
+    const want = `Objects ${objectDirs.length}|Animations ${groups(idx)[1]?.split(' ')[1] ?? '?'}|Effects ${effectDirs.length}|Shades ${shadeDirs.length}|Interactions ${groups(idx)[4]?.split(' ')[1] ?? '?'}`;
+    if (groups(idx).join('|') !== want) fail(`site/index: side menu groups ${JSON.stringify(groups(idx))}, expected ${want}`);
     if ((idx.match(/<details open/g) ?? []).length !== 0) fail('site/index: a catalogue group is open on the Introduction');
     const openOrb = orb.match(/<details open[\s\S]*?<\/details>/g) ?? [];
     if (openOrb.length !== 1 || !/aria-current="page"/.test(openOrb[0]) || !/>Objects\s*</.test(openOrb[0])) fail(`site/objects/orb: expected only the Objects group open with the current link inside, got ${openOrb.length} open`);

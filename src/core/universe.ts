@@ -8,7 +8,7 @@ type V3 = [number, number, number];
 export type Body = { el: SdObject; p: V3; v: V3; r: number; tilt: Mat3; wob: number[] };
 
 // The site's six Display P3 picks; browsers without P3 clip them to sRGB.
-const PALETTE = ['color(display-p3 0.55 0.85 1)', 'color(display-p3 0.78 0.66 1)', 'color(display-p3 1 0.55 0.8)', 'color(display-p3 0.5 1 0.85)', 'color(display-p3 1 0.8 0.5)', 'color(display-p3 0.55 1 0.6)'];
+export const PALETTE = ['color(display-p3 0.55 0.85 1)', 'color(display-p3 0.78 0.66 1)', 'color(display-p3 1 0.55 0.8)', 'color(display-p3 0.5 1 0.85)', 'color(display-p3 1 0.8 0.5)', 'color(display-p3 0.55 1 0.6)'];
 const ANIMS = ['idle', 'float', 'spin'];
 const OWN = ['count', 'seed', 'collide', 'camera', 'speed', 'drift', 'perspective', 'depth', 'focus', 'shapes', 'palette'];
 const REGEN = ['count', 'seed', 'shapes', 'palette'];

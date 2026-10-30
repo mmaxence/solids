@@ -3,16 +3,14 @@ import type { SdScene } from './scene';
 
 export type UniformDef = {
   name: string;
-  type: 'float' | 'vec3' | 'color';
-  default: number | number[] | string;
+  type: 'float';
+  default: number;
   min?: number; max?: number; step?: number;
   label: string;
 };
 export type Manifest = {
   name: string; tag: string; description: string;
-  bleed?: number;
   uniforms: UniformDef[];
-  tags?: string[];
 };
 export type Meta = { name: string; description: string; params: UniformDef[] };
 

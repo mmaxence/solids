@@ -2,10 +2,24 @@
   "name": "orb",
   "tag": "sd-orb",
   "description": "A glassy sphere with a fresnel rim and a soft halo. The simplest object and the reference for the others.",
-  "bleed": 1.5,
   "uniforms": [
-    { "name": "glow", "type": "float", "default": 0.6, "min": 0, "max": 1, "step": 0.01, "label": "Halo strength" },
-    { "name": "rim", "type": "float", "default": 1.0, "min": 0, "max": 2, "step": 0.01, "label": "Fresnel rim" }
-  ],
-  "tags": ["sphere", "basic"]
+    {
+      "name": "glow",
+      "type": "float",
+      "default": 0.6,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "label": "Halo strength"
+    },
+    {
+      "name": "rim",
+      "type": "float",
+      "default": 1.0,
+      "min": 0,
+      "max": 2,
+      "step": 0.01,
+      "label": "Fresnel rim"
+    }
+  ]
 }
