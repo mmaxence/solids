@@ -805,6 +805,9 @@ const AF = result.cases.v9 = {};
 { const sc = textScene('<sd-text style="font:700 96px ui-monospace, Menlo, monospace">O</sd-text>'); await frame(); await frame();
   const f = sc.firstElementChild.field; let sub = 0; if (f) for (let i = 0; i < f.data.length; i++) { const d = Math.abs(f.data[i] - 128); if (d >= 1 && d <= 5) sub++; } // within a texel of the edge: only coverage seeding gives sub-texel distances (one texel is about 8 steps)
   AF.text = { em: f ? f.height - 2 * f.range : 0, subTexel: sub }; free(sc); }
+{ const sc = textScene('<sd-text style="font:700 64px ui-monospace, Menlo, monospace;padding:36px 40px">Solids</sd-text>'); await frame(); await frame();
+  const buf = read(sc); let faint = 0, solid = 0; for (let i = 3; i < buf.length; i += 4) { if (buf[i] >= 2 && buf[i] <= 15) faint++; else if (buf[i] > 15) solid++; }
+  AF.textHalo = { faint, solid }; free(sc); }
 mark('Case AE');
 // Case AE: review fixes. Poke hits the drawn spot (after collide's push) and the shape drawn on top; enabling a tap rule after a tap
 // does not fire on the stale tap; a wide box turned toward the camera is not sliced by the march start; a narrow text keeps its em;
@@ -1033,7 +1036,8 @@ async function smoke() {
     { const V = r.cases.v9 ?? {}, j = (v) => JSON.stringify(v);
       if (V.exempt?.bytesDiffer !== 0 || !(V.exempt?.pixels > 100) || !(V.exempt?.siblingChanged > 0.05)) fail(`effect="none" should exempt an object from the scene effect while siblings take it: ${j(V.exempt)}`);
       if (!(V.ownEffect > 0.02)) fail(`an exempt object should still take its own effect (differs ${((V.ownEffect ?? 0) * 100).toFixed(2)}%)`);
-      if (V.text?.em !== 160 || !(V.text?.subTexel > 50)) fail(`smooth text should raster at 160 texels per em with coverage-seeded distances: ${j(V.text)}`); }
+      if (V.text?.em !== 160 || !(V.text?.subTexel > 50)) fail(`smooth text should raster at 160 texels per em with coverage-seeded distances: ${j(V.text)}`);
+      if (!(V.textHalo?.faint < V.textHalo?.solid * 0.25)) fail(`text should have no halo fading across its box (the quad edge would show): ${j(V.textHalo)}`); }
     { const E = r.cases.fixes ?? {}, j = (v) => JSON.stringify(v);
       if (E.pushedPoke?.bTurned !== true || E.pushedPoke?.aTurned !== false) fail(`poke should hit the shape where it is drawn, after collide moved it: ${j(E.pushedPoke)}`);
       if (E.topPoke?.firstTurned !== true || E.topPoke?.lastTurned !== false) fail(`poke should hit the shape drawn on top, not the last in DOM order: ${j(E.topPoke)}`);
@@ -1142,13 +1146,20 @@ async function site() {
     // Hero: presets, a Tweak panel with the grouped controls and Copy prompt, the Solids wordmark as the heading.
     { const hs = JSON.parse(text('index.html').match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}');
       const names = (hs.presets ?? []).map((p) => p.name);
-      if (names.join('|') !== 'Orbit|Neon|Ink|Pixel|Storm') fail(`site/index: hero presets ${JSON.stringify(names)}`);
+      if (names.join('|') !== 'Float|Orbit|Neon|Ink|Storm') fail(`site/index: hero presets ${JSON.stringify(names)}`);
+      const hero = index.match(/<section class="hero-full">[\s\S]*?<\/section>/)?.[0] ?? '';
+      if (/<form[^>]*class="controls dock"[\s\S]*?class="tune-body"[\s\S]*?<\/form>/.test(hero)) fail('site/index: the Tweak panel must not live inside the dock (its backdrop blur would blur nothing)');
+      if (!/class="tune-body"/.test(hero)) fail('site/index: the Tweak panel is missing');
+      if ((hero.match(/animation="float"/g) ?? []).length < 8) fail('site/index: at least eight hero shapes should float');
+      if ((hero.match(/effect="defocus"/g) ?? []).length < 3) fail('site/index: at least three hero shapes should carry defocus');
+      if (!/<sd-text id="mark"[^>]*effect="none"/.test(hero) || /<sd-text id="mark"[^>]*pixel="[1-9]/.test(hero)) fail('site/index: the wordmark should be exempt from scene effects and smooth (no pixel cells)');
+      const css = readFileSync('site/src/styles.css', 'utf8'); if (!/\.controls select[^{]*\{[^}]*appearance: none[^}]*background-image/.test(css)) fail('site/styles: selects should draw their own chevron (appearance none plus a background image)');
       const hg = [...new Set((hs.controls ?? []).map((c) => c.group ?? ''))];
       if (hg.includes('') || !['Scene', 'Rules', 'Look', 'Text'].every((g) => hg.includes(g))) fail(`site/index: hero controls should all sit in the Tweak groups Scene, Rules, Look, Text: ${JSON.stringify(hg)}`);
-      if (!/<form[^>]*class="controls dock"[\s\S]*?<fieldset class="presets"[\s\S]*?<details class="tweak">[\s\S]*?id="copy-prompt"[\s\S]*?<\/details>[\s\S]*?id="copy-code"/.test(index)) fail('site/index: the dock should be presets, a Tweak details holding Copy prompt, then Copy code');
+      if (!/<form[^>]*class="controls hero-controls"[\s\S]*?<div class="tune-body"[\s\S]*?id="copy-prompt"[\s\S]*?<\/div><div class="dock">[\s\S]*?<fieldset class="presets"[\s\S]*?<details class="tweak">[\s\S]*?<\/details>[\s\S]*?id="copy-code"/.test(index)) fail('site/index: the hero form should hold the Tweak panel (with Copy prompt) and then the dock: presets, Tweak, Copy code');
       if (!/<sd-text id="mark"[^>]*>\s*<h1>Solids<\/h1>\s*<\/sd-text>/.test(index)) fail('site/index: the hero heading should be <sd-text id="mark"><h1>Solids</h1></sd-text>');
       if (/class="hero-title"><h1>/.test(index)) fail('site/index: the old hero h1 should be gone (the wordmark is the heading)');
-      if (!/interaction="gravity pointer-follow hover-lift shockwave poke"/.test(index)) fail('site/index: the hero default interactions should be gravity pointer-follow hover-lift shockwave poke'); }
+      if (!/<sd-scene id="demo"[^>]*interaction="pointer-follow hover-lift shockwave poke"/.test(index)) fail('site/index: the hero default interactions should be pointer-follow hover-lift shockwave poke (no gravity)'); }
     const css = readFileSync('site/src/styles.css', 'utf8');
     if (!/\.codebar pre \{[^}]*overflow-x: auto/.test(css)) fail('site/styles: the live markup should scroll horizontally (.codebar pre overflow-x: auto)');
     if (!/\.fps b \{[^}]*font-size: 20px/.test(css)) fail('site/styles: the fps figure should be 20 px');
@@ -1197,7 +1208,7 @@ async function site() {
   { const band = index.slice(index.indexOf('id="catalogue"'), index.indexOf('id="performance"'));
     if (!/about [0-9]+ K tokens/.test(band) || !/\$[0-9]+\.[0-9]{2}/.test(band) || !band.includes('2026-10-06') || !/before the agent/.test(band)) fail('site/index: the catalogue band should say what a shape costs an agent (K tokens, dollars, price date)'); }
   if (h2s.join('|') !== ORDER.join('|')) fail(`site/index: sections ${JSON.stringify(h2s)}, expected ${JSON.stringify(ORDER)}`);
-  const dock = index.match(/class="controls dock"[\s\S]*?<\/form>/)?.[0] ?? '';
+  const dock = index.match(/class="controls hero-controls"[\s\S]*?<\/form>/)?.[0] ?? '';
   const heroPrompt = JSON.parse(index.match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}').prompt ?? '';
   if (!dock.includes('id="copy-prompt"') || !heroPrompt.includes('{{markup}}') || !heroPrompt.includes('skill.md')) fail('site/index: the dock needs a Copy prompt with the scene markup and the skill.md link');
   // Sizes reach the page from dist/sizes.json: the hero pitch and the Performance page.
@@ -1217,8 +1228,8 @@ async function site() {
       if (f === 'index.html') {
         if (!(r.objects >= 13)) fail(`site/index (${size ?? 'desktop'}): hero has ${r.objects} objects, expected 13 with the wordmark`);
         if (!r.storm || !/repel.*shockwave.*poke.*pull.*collide/.test(r.storm.interaction ?? '') || r.storm.gravity !== '0' || r.storm.checked !== 'Storm') fail(`site/index (${size ?? 'desktop'}): the Storm preset should drive the controls: ${JSON.stringify(r.storm)}`);
-        if (r.orbitAttr !== 'gravity pointer-follow hover-lift shockwave poke') fail(`site/index (${size ?? 'desktop'}): clicking Orbit should leave the shipped interaction order, got "${r.orbitAttr}"`);
-        if (r.pixelEffect !== 'pixelate') fail(`site/index (${size ?? 'desktop'}): the Pixel mood should set effect="pixelate", got "${r.pixelEffect}"`);
+        if (r.orbitAttr !== 'pointer-follow hover-lift shockwave poke') fail(`site/index (${size ?? 'desktop'}): clicking Float should leave the shipped interaction order, got "${r.orbitAttr}"`);
+        if (r.tweakClosed !== true) fail(`site/index (${size ?? 'desktop'}): a click outside should close the Tweak panel`);
         if (!(r.radioPills >= 5)) fail(`site/index (${size ?? 'desktop'}): mood pills should be native radio inputs, found ${r.radioPills}`);
         if (r.manualClears !== 0) fail(`site/index (${size ?? 'desktop'}): a manual change should clear the active preset, ${r.manualClears} still checked`);
         if (!/<sd-text[^>]*>[\s\S]*Solids[\s\S]*<\/sd-text>/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code should carry the wordmark with its text`);

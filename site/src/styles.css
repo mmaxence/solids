@@ -92,6 +92,8 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .controls label span output { color: var(--fg); font-variant-numeric: tabular-nums; }
 .controls input[type="range"] { width: 100%; accent-color: var(--accent); }
 .controls select, .controls input[type="color"], .controls input[type="text"] { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 13px; height: 34px; }
+/* Selects draw their own chevron, inset from the edge */
+.controls select { appearance: none; -webkit-appearance: none; padding-right: 30px; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5'/></svg>"); background-repeat: no-repeat; background-position: right 12px center; }
 .controls input[type="color"] { padding: 2px 4px; width: 100%; }
 .controls .check input { accent-color: var(--accent); }
 .codebar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--line); }
@@ -171,7 +173,12 @@ td:first-child code { white-space: nowrap; }
 .tweak summary::-webkit-details-marker { display: none; }
 .tweak summary::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 8px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: translateY(-2px) rotate(-135deg); }
 .tweak[open] summary::after { transform: translateY(-4px) rotate(45deg); }
-.tune-body { position: absolute; left: 0; right: 0; bottom: calc(100% + 10px); display: grid; gap: 14px; padding: 16px 18px; max-height: 55vh; overflow: auto; background: color-mix(in srgb, var(--bg) 80%, transparent); border: 1px solid var(--line); border-radius: 18px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35); }
+/* The hero controls: a dock pill at the bottom and, above it, the Tweak panel as a sibling (a backdrop filter inside a filtered
+   element blurs nothing), shown while the details is open */
+.hero-controls { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 2; width: max-content; max-width: calc(100% - 48px); padding: 0; border: 0; margin: 0; display: block; }
+.hero-controls .dock { position: static; transform: none; max-width: none; width: auto; }
+.tune-body { display: none; position: absolute; left: 0; right: 0; bottom: calc(100% + 10px); gap: 14px; padding: 16px 18px; max-height: 55vh; overflow: auto; background: color-mix(in srgb, var(--bg) 72%, transparent); border: 1px solid var(--line); border-radius: 18px; backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35); }
+.hero-controls:has(.tweak[open]) .tune-body { display: grid; }
 .tune-body fieldset { padding-top: 0; border-top: 0; }
 .tune-body fieldset + fieldset { padding-top: 12px; border-top: 1px solid var(--line); }
 .tune-body #copy-prompt { justify-self: start; }
@@ -182,12 +189,13 @@ td:first-child code { white-space: nowrap; }
   .hero-full { height: 70vh; min-height: 520px; }
   .hero-lede { left: 16px; top: 18px; right: 156px; max-width: none; } /* clear of the fps badge */
   .hero-lede p { font-size: 14px; }
-  .dock { left: 12px; right: 12px; bottom: 12px; transform: none; width: auto; max-width: none; gap: 8px 10px; padding: 10px 12px; }
+  .hero-controls { left: 12px; right: 12px; bottom: 12px; transform: none; width: auto; max-width: none; }
+  .dock { gap: 8px 10px; padding: 10px 12px; }
   .presets { flex: 1 1 100%; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-right: 24px; } /* the last pill is cut: the affordance to scroll */
   .presets::-webkit-scrollbar { display: none; }
   .dock > .btn { margin-left: auto; }
   .hero-full #disc { display: none; }
-  .hero-full #mark { font-size: 13vmin !important; top: 44% !important; } /* clear of the two-row dock */
+  .hero-full #mark { font-size: 9vmin !important; top: 44% !important; } /* clear of the two-row dock */
 }
 
 /* Landing under the hero: one band per job. Inside a live row the canvas sits above

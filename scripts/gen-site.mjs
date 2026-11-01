@@ -87,7 +87,7 @@ function hero({ sceneAttrs, inner, controls, presets, pitch, prompt }) {
   return `<section class="hero-full">
   <div class="stage scatter hero-stage">${badge()}<sd-scene id="demo" data-keep-style style="position:relative;height:100%;min-height:560px" ${sceneAttrs}>${inner}</sd-scene></div>
   <div class="hero-lede"><p>${esc(pitch)}</p></div>
-  <form id="controls" class="controls dock" onsubmit="return false"><fieldset class="presets"><legend class="sr">Mood</legend></fieldset><details class="tweak"><summary>Tweak</summary><div class="tune-body"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button></div></details><button type="button" class="btn" id="copy-code">Copy code</button></form>
+  <form id="controls" class="controls hero-controls" onsubmit="return false"><div class="tune-body" id="tune"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button></div><div class="dock"><fieldset class="presets"><legend class="sr">Mood</legend></fieldset><details class="tweak"><summary>Tweak</summary></details><button type="button" class="btn" id="copy-code">Copy code</button></div></form>
   <script type="application/json" id="spec">${spec}</script>
 </section>`;
 }
@@ -142,39 +142,42 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
   const sz = (px) => `clamp(${Math.round(px * 0.6)}px, ${(px / 6.5).toFixed(1)}vmin, ${Math.round(px * 1.3)}px)`;
   const orbit = (tag, id, size, dx, dy, color, anim) => `<${tag} id="${id}" size="${sz(size)}" color="${color}" animation="${anim}" style="position:absolute;left:calc(50% + ${dx}vmin - ${sz(size)} / 2);top:calc(50% + ${dy}vmin - ${sz(size)} / 2)"></${tag}>`;
   const edge = (tag, id, size, left, top, color, anim) => `<${tag} id="${id}" gravity="none" size="${sz(size)}" color="${color}" animation="${anim}" style="position:absolute;left:${left}%;top:${top}%"></${tag}>`;
+  // Twelve shapes float around the word, nothing in the middle: near ones sharp and lit, far ones blurred and dimmed. The orb sits
+  // off center and keeps the gravity center role for the Orbit mood.
+  const drift = (tag, id, size, left, top, color, speed, phase, far = 0) => `<${tag} id="${id}" size="${sz(size)}" color="${color}" animation="float" speed="${speed}" phase="${phase}"${far ? ` effect="defocus" defocus-radius="${far}" state="off"` : ''} style="position:absolute;left:${left}%;top:${top}%;translate:-50% -50%"></${tag}>`;
   const heroInner = [
-    `<sd-orb id="orb" gravity="center" size="${sz(200)}" color="${colorOf(0)}" animation="breathe" glow="0.8" style="position:absolute;left:calc(50% - ${sz(200)} / 2);top:calc(50% - ${sz(200)} / 2)"></sd-orb>`,
-    orbit('sd-ring', 'ring', 90, 22.2, -5.9, colorOf(1), 'spin'),
-    orbit('sd-crystal', 'crystal', 80, -23.9, 10.2, colorOf(2), 'idle'),
-    orbit('sd-knot', 'knot', 84, 20, 21, colorOf(3), 'spin'),
-    orbit('sd-capsule', 'capsule', 70, -25.2, -19.7, colorOf(4), 'idle'),
-    orbit('sd-star', 'star', 72, 3.9, -19.6, colorOf(5), 'spin'),
-    edge('sd-cube', 'cube', 64, 9, 60, colorOf(5), 'idle'),
-    edge('sd-coil', 'coil', 80, 84, 12, colorOf(3), 'spin'),
-    edge('sd-blob', 'blob', 76, 86, 56, colorOf(4), 'float'),
-    edge('sd-prism', 'prism', 70, 5, 40, colorOf(1), 'idle'),
-    edge('sd-shell', 'shell', 72, 70, 68, colorOf(2), 'float'),
-    edge('sd-disc', 'disc', 60, 60, 4, colorOf(0), 'spin'),
-    // The wordmark: the page heading, lifted into 3D over the center. Last so it draws on top of ties; orbiters swing in front and behind.
-    `<sd-text id="mark" data-subject gravity="none" pixel="6" depth="0.5" animation="float" speed="0.6" color="${colorOf(0)}" style="position:absolute;left:50%;top:50%;translate:-50% -50%;font:700 clamp(56px, 18vmin, 180px)/1 ui-monospace, Menlo, Consolas, monospace;letter-spacing:0.04em"><h1>Solids</h1></sd-text>`,
+    `<sd-orb id="orb" size="${sz(120)}" color="${colorOf(0)}" animation="float" speed="0.7" phase="3" glow="0.8" style="position:absolute;left:22%;top:38%;translate:-50% -50%"></sd-orb>`,
+    drift('sd-ring', 'ring', 96, 66, 22, colorOf(1), 0.8, 1),
+    drift('sd-crystal', 'crystal', 86, 80, 60, colorOf(2), 0.6, 5),
+    drift('sd-knot', 'knot', 90, 36, 76, colorOf(3), 0.7, 9),
+    drift('sd-capsule', 'capsule', 72, 50, 14, colorOf(4), 0.9, 2),
+    drift('sd-star', 'star', 78, 14, 68, colorOf(5), 0.8, 7),
+    drift('sd-cube', 'cube', 70, 88, 30, colorOf(5), 0.6, 4),
+    drift('sd-coil', 'coil', 84, 60, 84, colorOf(3), 0.7, 11),
+    drift('sd-blob', 'blob', 64, 30, 20, colorOf(4), 0.9, 6, 6),
+    drift('sd-prism', 'prism', 60, 72, 44, colorOf(1), 0.5, 8, 8),
+    drift('sd-shell', 'shell', 58, 8, 44, colorOf(2), 0.6, 13, 5),
+    drift('sd-disc', 'disc', 56, 90, 82, colorOf(0), 0.8, 10, 9),
+    // The wordmark: the page heading, lifted into 3D at the center, smooth, apart from the scene's effects.
+    `<sd-text id="mark" data-subject gravity="none" effect="none" depth="0.5" animation="float" speed="0.5" color="${colorOf(0)}" style="position:absolute;left:50%;top:50%;translate:-50% -50%;font:700 clamp(48px, 14vmin, 150px)/1 ui-monospace, Menlo, Consolas, monospace;letter-spacing:0.04em"><h1>Solids</h1></sd-text>`,
   ].join('\n');
   const ids = ['orb', 'ring', 'crystal', 'knot', 'capsule', 'star', 'cube', 'coil', 'blob', 'prism', 'shell', 'disc', 'mark'];
-  const HERO_RULES = 'gravity pointer-follow hover-lift shockwave poke';
+  const HERO_RULES = 'pointer-follow hover-lift shockwave poke';
   const heroControls = [
-    { kind: 'select', attr: 'center', label: 'Center', options: ids.slice(0, 6), value: 'orb', target: 'scene', group: 'Scene' },
+    { kind: 'select', attr: 'center', label: 'Center of gravity', options: ids.slice(0, 6), value: 'orb', target: 'scene', group: 'Scene' },
     { kind: 'range', attr: 'gravity-strength', label: 'Gravity', min: 0, max: 1, step: 0.01, value: 0.35, default: 0.6, target: 'scene', group: 'Scene' },
     ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: HERO_RULES.split(' ').includes(i.name), target: 'scene', group: 'Rules' })),
     shadingControl('scene', 'Look'),
     { kind: 'select', attr: 'effect', label: 'Effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene', group: 'Look' },
     { kind: 'range', attr: 'depth', label: 'Depth', min: 0.02, max: 1, step: 0.01, value: 0.5, default: 0.35, target: 'object', group: 'Text' },
-    { kind: 'range', attr: 'pixel', label: 'Pixel', min: 0, max: 24, step: 1, value: 6, default: 0, target: 'object', group: 'Text' },
+    { kind: 'range', attr: 'pixel', label: 'Pixel', min: 0, max: 24, step: 1, value: 0, default: 0, target: 'object', group: 'Text' },
   ];
   // A mood is a record of control values applied through the controls themselves, so Tweak and Copy code stay truthful.
   const heroPresets = [
-    { name: 'Orbit', set: { center: 'orb', effect: '', shading: '', 'gravity-strength': '0.35', interaction: HERO_RULES } },
-    { name: 'Neon', set: { center: 'orb', effect: 'glow', shading: 'glass', 'gravity-strength': '0.5', interaction: HERO_RULES } },
-    { name: 'Ink', set: { center: 'orb', effect: 'outline', shading: 'cel', 'gravity-strength': '0.35', interaction: 'gravity pointer-follow hover-lift poke' } },
-    { name: 'Pixel', set: { center: 'orb', effect: 'pixelate', shading: 'matte', 'gravity-strength': '0.35', interaction: 'gravity pointer-follow shockwave' } },
+    { name: 'Float', set: { center: 'orb', effect: '', shading: '', 'gravity-strength': '0.35', interaction: HERO_RULES } },
+    { name: 'Orbit', set: { center: 'orb', effect: '', shading: '', 'gravity-strength': '0.35', interaction: 'gravity ' + HERO_RULES } },
+    { name: 'Neon', set: { center: 'orb', effect: 'glow', shading: 'glass', 'gravity-strength': '0.35', interaction: HERO_RULES } },
+    { name: 'Ink', set: { center: 'orb', effect: 'outline', shading: 'cel', 'gravity-strength': '0.35', interaction: 'pointer-follow hover-lift poke' } },
     { name: 'Storm', set: { center: 'orb', effect: '', shading: 'metal', 'gravity-strength': '0', interaction: 'repel shockwave poke pull collide' } },
   ];
   const heroHtml = hero({

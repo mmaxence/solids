@@ -18,4 +18,4 @@ float map(vec3 p) {
   vec2 w = vec2(d2, abs(p.z) - depth * 0.3) + r;
   return min(max(w.x, w.y), 0.0) + length(max(w, 0.0)) - r;  // rounded extrusion, a true lower bound
 }
-void main() { fragColor = sdRender(0.9, 0.3); }
+void main() { fragColor = sdRender(0.9, 0.0); } // no halo: a word's box is tight, so a glow fading across it would end at the quad edge
