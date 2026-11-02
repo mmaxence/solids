@@ -1,0 +1,53 @@
+{
+  "kb": 27,
+  "objects": {
+    "orb": {
+      "description": "A glassy sphere with a fresnel rim and a soft halo. The simplest object and the reference for the others.",
+      "color": "color(display-p3 0.55 0.85 1)"
+    },
+    "ring": {
+      "description": "A glassy torus, tilted toward the viewer. Spin it, or put it in orbit around something.",
+      "color": "color(display-p3 0.78 0.66 1)"
+    },
+    "crystal": {
+      "description": "A faceted octahedral gem. Hard edges, flat facets, sharp highlights.",
+      "color": "color(display-p3 1 0.55 0.8)"
+    },
+    "coil": {
+      "description": "A helix of glassy tube, like a spring seen from the side.",
+      "color": "color(display-p3 0.5 1 0.85)"
+    },
+    "blob": {
+      "description": "A soft sphere that wobbles like liquid. The most organic object in the set.",
+      "color": "color(display-p3 1 0.8 0.5)"
+    },
+    "cube": {
+      "description": "A rounded glass cube. Calm and architectural, a good center of gravity.",
+      "color": "color(display-p3 0.55 1 0.6)"
+    },
+    "knot": {
+      "description": "A glassy torus knot: one tube that winds around a ring and through itself.",
+      "color": "color(display-p3 0.55 0.85 1)"
+    },
+    "prism": {
+      "description": "A glass prism with flat faces and crisp edges, from a triangle to an octagon.",
+      "color": "color(display-p3 0.78 0.66 1)"
+    },
+    "capsule": {
+      "description": "A rounded glass pill lying on a diagonal. Soft and friendly, it reads well small.",
+      "color": "color(display-p3 1 0.55 0.8)"
+    },
+    "star": {
+      "description": "A glass star with beveled edges, like a cut ornament.",
+      "color": "color(display-p3 0.5 1 0.85)"
+    },
+    "shell": {
+      "description": "A spiral shell: glass beads that grow along a logarithmic spiral, like a nautilus.",
+      "color": "color(display-p3 1 0.8 0.5)"
+    },
+    "disc": {
+      "description": "A glass coin with a beveled edge and a gently domed face, turned to catch the light.",
+      "color": "color(display-p3 0.55 1 0.6)"
+    }
+  }
+}

@@ -4,7 +4,7 @@ Your HTML text as a solid. `<sd-text>` reads the text it wraps (its own text, or
 
 - `depth` (0.02 to 1, default 0.35): half the thickness of the extrusion.
 - `bevel` (0 to 1, default 0.25): rounding of the edges.
-- `pixel` (0 to 24, default 0): rasterize at that cell size in px for a pixel-font look from any monospace. 0 keeps the glyphs smooth.
+- `pixel` (0 to 24, default 0): rasterize at that cell size in px for a pixel-font look from any monospace. 0 keeps the glyphs smooth. The field is at most 2048 texels wide, so a line too long for it gets a coarser cell (smooth text shrinks its texels the same way).
 
 The font, size and spacing come from CSS (`font-size` rules; `size` does nothing here). One line of text.
 

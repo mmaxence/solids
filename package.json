@@ -9,6 +9,7 @@
     "build": "node scripts/build.mjs",
     "check": "node scripts/build.mjs && node scripts/gen-site.mjs && node scripts/check.mjs",
     "site": "node scripts/gen-site.mjs",
+    "covers": "node scripts/covers.mjs",
     "dev": "node scripts/dev.mjs"
   },
   "devDependencies": {

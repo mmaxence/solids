@@ -791,6 +791,30 @@ const T1 = '<sd-text style="font:700 64px ui-monospace, Menlo, monospace">Solids
 { const dark = textScene(T1, {}, 'dark'), light = textScene(T1, {}, 'light'); await frame(); await frame();
   const lum = (sc) => { const b = read(sc); let sum = 0, n = 0; for (let i = 0; i < b.length; i += 4) { const a = b[i + 3]; if (a > 200) { sum += (0.299 * b[i] + 0.587 * b[i + 1] + 0.114 * b[i + 2]) / a; n++; } } return n ? sum / n : NaN; };
   AD.theme = { dark: lum(dark), light: lum(light) }; free(dark, light); }
+mark('Case AF');
+// Case AF: v9. An object with effect="none" is exempt from the scene's effect chain (drawn after it, byte for byte as without the
+// effect) while its siblings take it; it still takes its own effect; the smooth text field is 160 texels per em and coverage-seeded.
+const AF = result.cases.v9 = {};
+{ const plain = mk({}), fx = mk({ effect: 'pixelate', 'pixelate-size': '12' }); for (const sc of [plain, fx]) { sc.firstElementChild.setAttribute('effect', 'none'); sc.firstElementChild.setAttribute('size', '80px'); }
+  const sib = mk({ effect: 'pixelate', 'pixelate-size': '12' }), sibPlain = mk({}); for (const sc of [sib, sibPlain]) sc.firstElementChild.setAttribute('size', '80px');
+  await frame(); await frame();
+  const x = read(plain), y = read(fx); let diff = 0; for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) diff++;
+  AF.exempt = { bytesDiffer: diff, pixels: pixels(fx), siblingChanged: differ(sib, sibPlain) };
+  const own = mk({ effect: 'pixelate', 'pixelate-size': '12' }); own.firstElementChild.setAttribute('effect', 'none glow'); own.firstElementChild.setAttribute('size', '80px'); await frame(); await frame();
+  const ownRef = mk({}); ownRef.firstElementChild.setAttribute('effect', 'glow'); ownRef.firstElementChild.setAttribute('size', '80px'); await frame(); await frame();
+  const oa = read(own), ob = read(ownRef); let ownDiff = 0; for (let i = 0; i < oa.length; i++) if (oa[i] !== ob[i]) ownDiff++;
+  AF.ownEffect = differ(own, fx); AF.ownExempt = ownDiff; free(plain, fx, sib, sibPlain, own, ownRef); }
+{ const sc = textScene('<sd-text style="font:700 96px ui-monospace, Menlo, monospace">O</sd-text>'); await frame(); await frame();
+  const f = sc.firstElementChild.field; let sub = 0; if (f) for (let i = 0; i < f.data.length; i++) { const d = Math.abs(f.data[i] - 128); if (d >= 1 && d <= 5) sub++; } // within a texel of the edge: only coverage seeding gives sub-texel distances (one texel is about 8 steps)
+  AF.text = { em: f ? f.height - 2 * f.range : 0, subTexel: sub }; free(sc); }
+{ const sc = textScene('<sd-text style="font:700 64px ui-monospace, Menlo, monospace;padding:36px 40px">Solids</sd-text>'); await frame(); await frame();
+  const buf = read(sc); let faint = 0, solid = 0; for (let i = 3; i < buf.length; i += 4) { if (buf[i] >= 2 && buf[i] <= 15) faint++; else if (buf[i] > 15) solid++; }
+  AF.textHalo = { faint, solid }; free(sc); }
+{ const sc = textScene('<sd-text style="font:700 96px ui-monospace, Menlo, monospace;letter-spacing:0.04em">Lightweight objects for the web</sd-text>'); await frame(); await frame();
+  const f = sc.firstElementChild.field; let lo = 1e9, hi = -1; if (f) for (let y = 0; y < f.height; y++) for (let x = 0; x < f.width; x++) if (f.data[y * f.width + x] < 128) { if (x < lo) lo = x; if (x > hi) hi = x; }
+  const cx = document.createElement('canvas').getContext('2d'); cx.font = '700 96px ui-monospace, Menlo, monospace'; cx.letterSpacing = (0.04 * 96) + 'px';
+  const want = cx.measureText('Lightweight objects for the web').width / 96, em = f ? f.height - 2 * f.range : 1, got = (hi - lo + 1) / em;
+  AF.longText = f ? { width: f.width, em, inkEms: +got.toFixed(2), lineEms: +want.toFixed(2), clipped: got < want * 0.9 ? 1 : 0 } : null; free(sc); }
 mark('Case AE');
 // Case AE: review fixes. Poke hits the drawn spot (after collide's push) and the shape drawn on top; enabling a tap rule after a tap
 // does not fire on the stale tap; a wide box turned toward the camera is not sliced by the march start; a narrow text keeps its em;
@@ -894,7 +918,7 @@ async function smoke() {
   const { srv, port, result } = await serve('.');
   try {
     const r = await runPage(`http://127.0.0.1:${port}/scripts/.check-page.html`, chrome, result, 240000);
-    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms', 'taps', 'boxes', 'text', 'fixes']) r.cases[k] ??= {};
+    for (const k of ['all', 'empty', 'odd', 'dyn', 'anim', 'fx', 'gravity', 'lone', 'props', 'reduced', 'color', 'interact', 'mix', 'perf', 'universe', 'look', 'pool', 'rings', 'shade', 'hard', 'perf2', 'uniforms', 'taps', 'boxes', 'text', 'fixes', 'v9']) r.cases[k] ??= {};
     const objCount = readdirSync('src/objects', { withFileTypes: true }).filter((d) => d.isDirectory()).length;
     if (r.tags.length !== objCount) fail(`registered ${r.tags.length} objects, expected ${objCount}`);
     if (r.compileErrors.length) fail(`shader compile failed: ${r.compileErrors.join(', ')}`); else console.log(`shaders ok (${r.programs} programs, ${r.tags.length} objects x ${r.shades?.length ?? 0} shades)`);
@@ -1016,6 +1040,13 @@ async function smoke() {
       const fl = r.cases.fall ?? {}; if (!(Math.abs(fl.dist - fl.expected) < 3)) fail(`gravity="fall" settled at ${fl.dist?.toFixed(1)} px, expected ${fl.expected}`);
       if (r.dupNames?.length) fail(`layer names collide: ${r.dupNames.join(', ')}`);
       for (const [name, px] of Object.entries(r.shadePixels ?? {})) if (!(px > 1000)) fail(`shade ${name} draws ${px} px on twelve objects (expected > 1000)`); }
+    { const V = r.cases.v9 ?? {}, j = (v) => JSON.stringify(v);
+      if (V.exempt?.bytesDiffer !== 0 || !(V.exempt?.pixels > 100) || !(V.exempt?.siblingChanged > 0.05)) fail(`effect="none" should exempt an object from the scene effect while siblings take it: ${j(V.exempt)}`);
+      if (!(V.ownEffect > 0.02)) fail(`an exempt object should still take its own effect (differs ${((V.ownEffect ?? 0) * 100).toFixed(2)}%)`);
+      if (V.ownExempt !== 0) fail(`none glow under a scene chain should draw exactly as glow in a scene without one (${V.ownExempt} bytes differ)`);
+      if (!(V.longText?.width <= 2048) || V.longText?.clipped !== 0) fail(`a long smooth heading should fit the 2048 texel field, not clip: ${j(V.longText)}`);
+      if (V.text?.em !== 160 || !(V.text?.subTexel > 50)) fail(`smooth text should raster at 160 texels per em with coverage-seeded distances: ${j(V.text)}`);
+      if (!(V.textHalo?.faint < V.textHalo?.solid * 0.25)) fail(`text should have no halo fading across its box (the quad edge would show): ${j(V.textHalo)}`); }
     { const E = r.cases.fixes ?? {}, j = (v) => JSON.stringify(v);
       if (E.pushedPoke?.bTurned !== true || E.pushedPoke?.aTurned !== false) fail(`poke should hit the shape where it is drawn, after collide moved it: ${j(E.pushedPoke)}`);
       if (E.topPoke?.firstTurned !== true || E.topPoke?.lastTurned !== false) fail(`poke should hit the shape drawn on top, not the last in DOM order: ${j(E.topPoke)}`);
@@ -1086,6 +1117,7 @@ async function smoke() {
 }
 
 
+const BASE_URL = 'https://mmaxence.github.io/solids/';
 async function site() {
   if (!existsSync('site/dist/index.html')) return fail('site/dist missing (run npm run site)');
   const pages = readdirSync('site/dist', { recursive: true }).filter((f) => f.endsWith('.html'));
@@ -1098,6 +1130,38 @@ async function site() {
     if (fx && !html.includes(`${fx[1]}-mix`)) fail(`site/${f}: no ${fx[1]}-mix option`);
     if (/\u2014/.test(html)) fail(`site/${f}: contains an em dash`);
   }
+  // Sharing: every page carries a canonical URL, Open Graph and Twitter tags with an absolute 1200 by 630 cover that exists, and the icons.
+  const imageSize = (b) => { if (b.length > 24 && b.readUInt32BE(0) === 0x89504e47) return [b.readUInt32BE(16), b.readUInt32BE(20)];
+    for (let i = 2; i + 9 < b.length;) { const m = b[i + 1], len = b.readUInt16BE(i + 2); if (b[i] !== 0xff) break; if (m >= 0xc0 && m <= 0xc3) return [b.readUInt16BE(i + 7), b.readUInt16BE(i + 5)]; i += 2 + len; }
+    return [0, 0]; };
+  const covers = new Set();
+  for (const f of pages) {
+    const html = readFileSync(`site/dist/${f}`, 'utf8'), url = BASE_URL + (f === 'index.html' ? '' : f);
+    const meta = (k) => html.match(new RegExp(`<meta (?:property|name)="${k}" content="([^"]*)"`))?.[1];
+    const miss = ['og:title', 'og:description', 'og:image', 'og:image:alt', 'twitter:title', 'twitter:description', 'twitter:image'].filter((k) => !meta(k));
+    if (miss.length) { fail(`site/${f}: missing share tags ${miss.join(', ')}`); continue; }
+    if (meta('og:url') !== url || !html.includes(`<link rel="canonical" href="${url}">`)) fail(`site/${f}: og:url and canonical should be ${url}`);
+    if (meta('og:type') !== 'website' || meta('og:site_name') !== 'solids' || meta('twitter:card') !== 'summary_large_image') fail(`site/${f}: og:type website, og:site_name solids and twitter:card summary_large_image expected`);
+    const img = meta('og:image');
+    if (!img.startsWith(BASE_URL + 'og/') || meta('twitter:image') !== img || meta('og:image:width') !== '1200' || meta('og:image:height') !== '630') { fail(`site/${f}: the cover should be an absolute 1200 by 630 image under ${BASE_URL}og/, the same for Twitter: ${img}`); continue; }
+    covers.add(img.slice(BASE_URL.length));
+    const obj = f.match(/^objects\/(.+)\.html$/); if (obj && !img.endsWith(`og/objects/${obj[1]}.jpg`)) fail(`site/${f}: an object page should share its own cover, got ${img}`);
+    if (!/<link rel="icon" href="[^"]*favicon\.svg" type="image\/svg\+xml">/.test(html) || !/<link rel="apple-touch-icon" href="[^"]*apple-touch-icon\.png">/.test(html)) fail(`site/${f}: favicon and apple-touch-icon links expected`);
+  }
+  for (const c of covers) { const p = `site/dist/${c}`; if (!existsSync(p)) { fail(`site: cover ${c} is missing`); continue; }
+    const b = readFileSync(p), [w, h] = imageSize(b); if (w !== 1200 || h !== 630) fail(`site: cover ${c} is ${w} by ${h}, expected 1200 by 630`); if (b.length > 250 * 1024) fail(`site: cover ${c} is ${Math.round(b.length / 1024)} KB, keep it under 250 KB`); }
+  for (const [p, w] of [['site/dist/favicon.svg', 0], ['site/dist/og/apple-touch-icon.png', 180]]) { if (!existsSync(p)) fail(`site: ${p} is missing`); else if (w && imageSize(readFileSync(p))[0] !== w) fail(`site: ${p} should be ${w} px wide`); }
+  { const idx = readFileSync('site/dist/index.html', 'utf8'); if (!/<meta property="og:title" content="solids: lightweight 3D objects for the web">/.test(idx)) fail('site/index: og:title should read solids: lightweight 3D objects for the web'); }
+  { const knot = existsSync('site/dist/objects/knot.html') ? readFileSync('site/dist/objects/knot.html', 'utf8') : ''; if (!/<meta property="og:image:alt" content="[^"]*&lt;sd-knot&gt;[^"]*A glassy torus knot/.test(knot)) fail('site/objects/knot: the cover alt should give the tag and the description shown on the cover'); }
+  // The covers bake in the bundle size, each description and each object's page color: covers.json records them, and they must match.
+  { const stamp = existsSync('site/src/og/covers.json') ? JSON.parse(readFileSync('site/src/og/covers.json', 'utf8')) : null;
+    if (!stamp) fail('site: site/src/og/covers.json is missing (run npm run covers)');
+    else {
+      const kbNow = Math.round(gzipSync(readFileSync('dist/solids.js')).length / 1024); if (stamp.kb !== kbNow) fail(`site: the covers say about ${stamp.kb} KB, the bundle is about ${kbNow} KB now (run npm run covers)`);
+      for (const d of readdirSync('src/objects')) { if (!existsSync(`src/objects/${d}/manifest.json`)) continue;
+        const m = JSON.parse(readFileSync(`src/objects/${d}/manifest.json`, 'utf8')), pg = existsSync(`site/dist/objects/${d}.html`) ? readFileSync(`site/dist/objects/${d}.html`, 'utf8') : '';
+        const color = pg.slice(pg.indexOf('<main')).match(new RegExp(`<sd-${d}[^>]*color="([^"]+)"`))?.[1], c = stamp.objects?.[d];
+        if (!c || c.description !== m.description || c.color !== color) fail(`site: the ${d} cover is stale: ${JSON.stringify(c)} vs page color ${color} (run npm run covers)`); } } }
   // Agent-first outputs: skill.md is the contract verbatim, llms.txt indexes every library page.
   const text = (f) => (existsSync(`site/dist/${f}`) ? readFileSync(`site/dist/${f}`, 'utf8') : '');
   if (!existsSync('site/dist/skill.md') || !readFileSync('site/dist/skill.md').equals(readFileSync('docs/SKILL.md'))) fail('site/skill.md is not a byte copy of docs/SKILL.md');
@@ -1122,15 +1186,24 @@ async function site() {
     const expect = { 'objects/orb.html': ['Shape', 'Motion', 'Look'], 'scene.html': ['Scene', 'Interactions', 'Look'], 'universe.html': ['Universe', 'Camera', 'Depth', 'Look'], 'effects/glow.html': ['Scene', 'Effect', 'Look'], 'shades/cel.html': ['Scene', 'Shade', 'Look'], 'interactions/repel.html': ['Scene', 'Interactions', 'Look'] };
     for (const [f, want] of Object.entries(expect)) { const got = groupsOf(f); if (want.some((g) => !got.includes(g)) || got.includes('')) fail(`site/${f}: dock groups ${JSON.stringify(got)}, expected ${JSON.stringify(want)} with every control grouped`); }
     // Hero: presets, a Tweak panel with the grouped controls and Copy prompt, the Solids wordmark as the heading.
-    { const hs = JSON.parse(text('index.html').match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}');
+    { const css = readFileSync('site/src/styles.css', 'utf8');
+      const hs = JSON.parse(text('index.html').match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}');
       const names = (hs.presets ?? []).map((p) => p.name);
-      if (names.join('|') !== 'Orbit|Neon|Ink|Pixel|Storm') fail(`site/index: hero presets ${JSON.stringify(names)}`);
+      if (names.join('|') !== 'Float|Orbit|Neon|Ink|Storm') fail(`site/index: hero presets ${JSON.stringify(names)}`);
+      const hero = index.match(/<section class="hero-full"[^>]*>[\s\S]*?<\/section>/)?.[0] ?? '';
+      if (!/class="tune-body"/.test(hero)) fail('site/index: the Tweak panel is missing');
+      if ((hero.match(/animation="float"/g) ?? []).length < 8) fail('site/index: at least eight hero shapes should float');
+      if ((hero.match(/effect="defocus"/g) ?? []).length < 3) fail('site/index: at least three hero shapes should carry defocus');
+      if (/<sd-text/.test(hero)) fail('site/index: the hero should carry no 3D text');
+      if (!/<sd-orb id="orb"[^>]*gravity="center"/.test(hero)) fail('site/index: the orb should be the gravity center from the start, so the gravity chip works before any mood');
+      if (!/\.controls select[^{]*\{[^}]*appearance: none[^}]*background-image/.test(css)) fail('site/styles: selects should draw their own chevron (appearance none plus a background image)');
       const hg = [...new Set((hs.controls ?? []).map((c) => c.group ?? ''))];
-      if (hg.includes('') || !['Scene', 'Rules', 'Look', 'Text'].every((g) => hg.includes(g))) fail(`site/index: hero controls should all sit in the Tweak groups Scene, Rules, Look, Text: ${JSON.stringify(hg)}`);
-      if (!/<form[^>]*class="controls dock"[\s\S]*?<fieldset class="presets"[\s\S]*?<details class="tweak">[\s\S]*?id="copy-prompt"[\s\S]*?<\/details>[\s\S]*?id="copy-code"/.test(index)) fail('site/index: the dock should be presets, a Tweak details holding Copy prompt, then Copy code');
-      if (!/<sd-text id="mark"[^>]*>\s*<h1>Solids<\/h1>\s*<\/sd-text>/.test(index)) fail('site/index: the hero heading should be <sd-text id="mark"><h1>Solids</h1></sd-text>');
-      if (/class="hero-title"><h1>/.test(index)) fail('site/index: the old hero h1 should be gone (the wordmark is the heading)');
-      if (!/interaction="gravity pointer-follow hover-lift shockwave poke"/.test(index)) fail('site/index: the hero default interactions should be gravity pointer-follow hover-lift shockwave poke'); }
+      if (hg.includes('') || hg.join('|') !== 'Scene|Rules|Look') fail(`site/index: hero controls should all sit in the Tweak groups Scene, Rules, Look: ${JSON.stringify(hg)}`);
+      if (!/<div class="dock">[\s\S]*?<fieldset class="presets"[\s\S]*?<details class="tweak"><summary>Tweak<\/summary><div class="tune-body"[\s\S]*?id="copy-prompt"[\s\S]*?<\/details>[\s\S]*?id="copy-code"/.test(index)) fail('site/index: the Tweak panel should sit inside its details, right after the summary, so Tab from Tweak enters the panel; then Copy code');
+      { const dockRule = css.match(/\n\.dock \{[^}]*\}/)?.[0] ?? ''; if (/backdrop-filter/.test(dockRule) || !/\.dock::before \{[^}]*backdrop-filter/.test(css)) fail('site/styles: the dock blur should live on .dock::before, so the dock is not a backdrop root and the nested panel can blur the scene'); }
+      if (!/<a class="skip" href="#hero">/.test(index) || !/<section class="hero-full" id="hero">/.test(index)) fail('site/index: Skip to content should land on the hero, which holds the page heading');
+      if (!/<div class="hero-title"><h1>Lightweight 3D objects for the web<\/h1><p>/.test(index)) fail('site/index: the hero heading should be the top-left title, Lightweight 3D objects for the web');
+      if (!/<sd-scene id="demo"[^>]*interaction="pointer-follow hover-lift shockwave poke"/.test(index)) fail('site/index: the hero default interactions should be pointer-follow hover-lift shockwave poke (no gravity)'); }
     const css = readFileSync('site/src/styles.css', 'utf8');
     if (!/\.codebar pre \{[^}]*overflow-x: auto/.test(css)) fail('site/styles: the live markup should scroll horizontally (.codebar pre overflow-x: auto)');
     if (!/\.fps b \{[^}]*font-size: 20px/.test(css)) fail('site/styles: the fps figure should be 20 px');
@@ -1179,7 +1252,7 @@ async function site() {
   { const band = index.slice(index.indexOf('id="catalogue"'), index.indexOf('id="performance"'));
     if (!/about [0-9]+ K tokens/.test(band) || !/\$[0-9]+\.[0-9]{2}/.test(band) || !band.includes('2026-10-06') || !/before the agent/.test(band)) fail('site/index: the catalogue band should say what a shape costs an agent (K tokens, dollars, price date)'); }
   if (h2s.join('|') !== ORDER.join('|')) fail(`site/index: sections ${JSON.stringify(h2s)}, expected ${JSON.stringify(ORDER)}`);
-  const dock = index.match(/class="controls dock"[\s\S]*?<\/form>/)?.[0] ?? '';
+  const dock = index.match(/class="controls hero-controls"[\s\S]*?<\/form>/)?.[0] ?? '';
   const heroPrompt = JSON.parse(index.match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}').prompt ?? '';
   if (!dock.includes('id="copy-prompt"') || !heroPrompt.includes('{{markup}}') || !heroPrompt.includes('skill.md')) fail('site/index: the dock needs a Copy prompt with the scene markup and the skill.md link');
   // Sizes reach the page from dist/sizes.json: the hero pitch and the Performance page.
@@ -1197,19 +1270,23 @@ async function site() {
     try {
       const r = await runPage(`http://127.0.0.1:${port}/${f}?__check`, chrome, result, 30000, size);
       if (f === 'index.html') {
-        if (!(r.objects >= 13)) fail(`site/index (${size ?? 'desktop'}): hero has ${r.objects} objects, expected 13 with the wordmark`);
+        if (r.objects !== 12) fail(`site/index (${size ?? 'desktop'}): hero has ${r.objects} objects, expected the 12 floating shapes`);
         if (!r.storm || !/repel.*shockwave.*poke.*pull.*collide/.test(r.storm.interaction ?? '') || r.storm.gravity !== '0' || r.storm.checked !== 'Storm') fail(`site/index (${size ?? 'desktop'}): the Storm preset should drive the controls: ${JSON.stringify(r.storm)}`);
-        if (r.orbitAttr !== 'gravity pointer-follow hover-lift shockwave poke') fail(`site/index (${size ?? 'desktop'}): clicking Orbit should leave the shipped interaction order, got "${r.orbitAttr}"`);
-        if (r.pixelEffect !== 'pixelate') fail(`site/index (${size ?? 'desktop'}): the Pixel mood should set effect="pixelate", got "${r.pixelEffect}"`);
+        if (r.orbitAttr !== 'pointer-follow hover-lift shockwave poke') fail(`site/index (${size ?? 'desktop'}): clicking Float should leave the shipped interaction order, got "${r.orbitAttr}"`);
+        if (r.tweakClosed !== true) fail(`site/index (${size ?? 'desktop'}): a click outside should close the Tweak panel`);
+        if (r.tweakKept !== true) fail(`site/index (${size ?? 'desktop'}): a click inside the panel or on a mood pill should keep the Tweak panel open`);
+        if (r.tweakEscFocus !== true) fail(`site/index (${size ?? 'desktop'}): Escape should close the panel and return focus to Tweak`);
+        if (r.escOutside !== true) fail(`site/index (${size ?? 'desktop'}): Escape with focus elsewhere on the page should close the panel without moving focus`);
         if (!(r.radioPills >= 5)) fail(`site/index (${size ?? 'desktop'}): mood pills should be native radio inputs, found ${r.radioPills}`);
         if (r.manualClears !== 0) fail(`site/index (${size ?? 'desktop'}): a manual change should clear the active preset, ${r.manualClears} still checked`);
-        if (!/<sd-text[^>]*>[\s\S]*Solids[\s\S]*<\/sd-text>/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code should carry the wordmark with its text`);
+        if (/<sd-text/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code should carry no 3D text`);
         if (!r.hasCenter) fail(`site/index (${size ?? 'desktop'}): dock has no Center control`);
         if (r.scrollWidth > r.innerWidth) fail(`site/index (${size ?? 'desktop'}): horizontal overflow ${r.scrollWidth} > ${r.innerWidth}`);
+        if (!r.dockBox || r.dockBox[0] < 0 || r.dockBox[1] > r.innerWidth || Math.abs((r.dockBox[0] + r.dockBox[1]) / 2 - r.innerWidth / 2) > 2) fail(`site/index (${size ?? 'desktop'}): the dock should sit centered inside the viewport, got ${JSON.stringify(r.dockBox)} in ${r.innerWidth}`);
         if (!(r.h1Bottom < r.dockTop)) fail(`site/index (${size ?? 'desktop'}): title bottom ${r.h1Bottom} is not above the dock top ${r.dockTop}`);
         const styled = (r.markup?.match(/style="position:\s*absolute;/g) || []).length;
         if (styled < 12 || !/<sd-scene[^>]*style="[^"]*height/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code markup does not reproduce the layout (${styled} positioned objects)`);
-        if (!r.centerOptions || r.centerOptions.length !== 6 || r.centerOptions.includes('cube')) fail(`site/index (${size ?? 'desktop'}): Center options should be the orb and its five orbiters, got ${JSON.stringify(r.centerOptions)}`);
+        if (r.centerOptions?.join('|') !== 'orb|ring|crystal|capsule|coil') fail(`site/index (${size ?? 'desktop'}): Center options should be the orb and its four orbiters, got ${JSON.stringify(r.centerOptions)}`);
         if (r.interactionAttr && !/gravity.*shockwave.*collide/.test(r.interactionAttr)) fail(`site/index (${size ?? 'desktop'}): toggling reordered interactions to "${r.interactionAttr}"`);
         if (!/<section class="band" id="performance">[\s\S]*?href="performance.html"/.test(index)) fail('site/index: the Performance band has no link to performance.html');
         if (!size && !/\d+(\.\d+)? ms/.test(r.liveFrame ?? '')) fail(`site/index: the Performance band's live frame number reads ${JSON.stringify(r.liveFrame)}`);

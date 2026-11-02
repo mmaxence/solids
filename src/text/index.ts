@@ -68,33 +68,40 @@ export class SdText extends SdObject {
     const text = (this.textContent ?? '').replace(/\s+/g, ' ').trim() || 'Aa';
     const cs = getComputedStyle(this.firstElementChild ?? this);
     const fontPx = parseFloat(cs.fontSize) || 16;
-    const em = this.cell > 0 ? Math.max(4, Math.round(fontPx / this.cell)) : 96; // em height in texels
+    let em = this.cell > 0 ? Math.max(4, Math.round(fontPx / this.cell)) : 160; // em height in texels
     const range = this.cell > 0 ? 3 : 16;
     const c = (canvas ??= document.createElement('canvas'));
     const ctx = c.getContext('2d', { willReadFrequently: true })!;
-    const font = `${cs.fontStyle} ${cs.fontWeight} ${em}px ${cs.fontFamily}`;
-    const spacing = (parseFloat(cs.letterSpacing) || 0) / fontPx * em;
-    const setFont = () => { ctx.font = font; if ('letterSpacing' in ctx) (ctx as any).letterSpacing = spacing + 'px'; };
+    const setFont = () => { ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${em}px ${cs.fontFamily}`; if ('letterSpacing' in ctx) (ctx as any).letterSpacing = ((parseFloat(cs.letterSpacing) || 0) / fontPx) * em + 'px'; };
     setFont();
-    const m = ctx.measureText(text);
+    let m = ctx.measureText(text);
+    // A long line would pass the 2048 texel cap and clip: shrink the em until it fits (the shader takes the em from the field height).
+    if (Math.ceil(m.width) + 2 * range > 2048) { em = Math.max(4, Math.floor((em * (2048 - 2 * range)) / Math.ceil(m.width + 1))); setFont(); m = ctx.measureText(text); }
     const asc = m.fontBoundingBoxAscent ?? em * 0.8, desc = m.fontBoundingBoxDescent ?? em * 0.2;
     const w = Math.min(2048, Math.ceil(m.width) + 2 * range), h = em + 2 * range;
     c.width = w; c.height = h; setFont();
     ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#fff'; ctx.textBaseline = 'alphabetic';
     ctx.fillText(text, range, range + (em - asc - desc) / 2 + asc); // the CSS line box centers the font's content area in the em
     const img = ctx.getImageData(0, 0, w, h).data;
-    const inside = new Uint8Array(w * h);
-    for (let i = 0; i < w * h; i++) inside[i] = img[i * 4 + 3] >= 102 ? 1 : 0;
-    const data = sdf(inside, w, h, range);
+    const alpha = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) alpha[i] = this.cell > 0 ? (img[i * 4 + 3] >= 102 ? 255 : 0) : img[i * 4 + 3]; // pixel mode thresholds; smooth keeps coverage
+    const data = sdf(alpha, w, h, range);
     this.field = { data, width: w, height: h, range, version: ++this.version };
   }
 }
 
-/** Exact signed Euclidean distance (texels, positive outside) of a mask, packed to bytes over +-range: 128 is the edge. */
-function sdf(inside: Uint8Array, w: number, h: number, range: number): Uint8Array {
+/** Exact signed Euclidean distance (texels, positive outside) of a coverage raster, packed to bytes over +-range: 128 is the edge.
+ * A partly covered texel seeds both transforms at a sub-texel distance (coverage 0.5 is the edge), so curves keep their position
+ * between texels instead of a staircase. */
+function sdf(alpha: Uint8Array, w: number, h: number, range: number): Uint8Array {
   const INF = 1e20, n = w * h;
   const dIn = new Float32Array(n), dOut = new Float32Array(n);
-  for (let i = 0; i < n; i++) { dIn[i] = inside[i] ? 0 : INF; dOut[i] = inside[i] ? INF : 0; }
+  for (let i = 0; i < n; i++) {
+    const a = alpha[i] / 255;
+    if (a >= 1) { dIn[i] = 0; dOut[i] = INF; }
+    else if (a <= 0) { dIn[i] = INF; dOut[i] = 0; }
+    else { const d = 0.5 - a; dIn[i] = d > 0 ? d * d : 0; dOut[i] = d < 0 ? d * d : 0; }
+  }
   for (const g of [dIn, dOut]) edt2d(g, w, h);
   const out = new Uint8Array(n);
   for (let i = 0; i < n; i++) { const d = Math.sqrt(dIn[i]) - Math.sqrt(dOut[i]); out[i] = Math.max(0, Math.min(255, Math.round(128 + (d / range) * 127))); }
