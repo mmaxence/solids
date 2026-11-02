@@ -175,7 +175,7 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
   const ids = ['orb', 'ring', 'crystal', 'knot', 'capsule', 'star', 'cube', 'coil', 'blob', 'prism', 'shell', 'disc'];
   const HERO_RULES = 'pointer-follow hover-lift shockwave poke'; // the moods' base rules
   // The hero loads in its own default, no mood selected: orbits around the orb, pointer play, collisions, matte, rgb-split.
-  const DEFAULT = { interaction: 'gravity pointer-follow hover-lift repel magnet collide scroll', gravity: '0.39', shading: 'matte', effect: 'rgb-split' };
+  const DEFAULT = { interaction: 'gravity pointer-follow hover-lift repel magnet poke collide scroll', gravity: '0.39', shading: 'matte', effect: 'rgb-split' };
   const heroControls = [
     { kind: 'select', attr: 'center', label: 'Center of gravity', options: ['orb', 'ring', 'crystal', 'capsule', 'coil'], value: 'orb', target: 'scene', group: 'Scene' }, // the orb and its orbiters
     { kind: 'range', attr: 'gravity-strength', label: 'Gravity', min: 0, max: 1, step: 0.01, value: +DEFAULT.gravity, default: 0.6, target: 'scene', group: 'Scene' },
