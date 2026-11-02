@@ -1282,7 +1282,7 @@ async function site() {
         if (/<sd-text/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code should carry no 3D text`);
         if (!r.hasCenter) fail(`site/index (${size ?? 'desktop'}): dock has no Center control`);
         if (r.scrollWidth > r.innerWidth) fail(`site/index (${size ?? 'desktop'}): horizontal overflow ${r.scrollWidth} > ${r.innerWidth}`);
-        if (!r.dockBox || r.dockBox[0] < 0 || r.dockBox[1] > r.innerWidth || Math.abs((r.dockBox[0] + r.dockBox[1]) / 2 - r.innerWidth / 2) > 2) fail(`site/index (${size ?? 'desktop'}): the dock should sit centered inside the viewport, got ${JSON.stringify(r.dockBox)} in ${r.innerWidth}`);
+        if (!r.dockBox || r.dockBox[0] < 0 || r.dockBox[1] > r.clientWidth || Math.abs((r.dockBox[0] + r.dockBox[1]) / 2 - r.clientWidth / 2) > 2) fail(`site/index (${size ?? 'desktop'}): the dock should sit centered inside the page, got ${JSON.stringify(r.dockBox)} in ${r.clientWidth}`); // clientWidth: Linux Chrome draws a scrollbar
         if (!(r.h1Bottom < r.dockTop)) fail(`site/index (${size ?? 'desktop'}): title bottom ${r.h1Bottom} is not above the dock top ${r.dockTop}`);
         const styled = (r.markup?.match(/style="position:\s*absolute;/g) || []).length;
         if (styled < 12 || !/<sd-scene[^>]*style="[^"]*height/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code markup does not reproduce the layout (${styled} positioned objects)`);
