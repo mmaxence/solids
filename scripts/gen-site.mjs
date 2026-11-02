@@ -1,5 +1,5 @@
 // Generates site/dist from src/objects, src/effects, the bundle's meta, and site/src.
-import { statSync, readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
+import { statSync, readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync, cpSync, existsSync, rmSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
@@ -67,9 +67,20 @@ function nav(root, current) {
 <h2>Catalogue</h2>${group('Objects', 'objects', objects)}${group('Animations', 'animations', animations)}${group('Effects', 'effects', effects)}${group('Shades', 'shades', shades)}${group('Interactions', 'interactions', interactions)}`;
 }
 
+// Share covers: rendered by scripts/covers.mjs into site/src/og (committed), one for the site and one per object.
+const COVER_ALT = 'Glassy 3D shapes floating on a dark background beside the words Lightweight 3D objects for the web.';
 function page(path, { title, description, main, hero = '' }) {
   const root = path.includes('/') ? '../' : './';
-  const html = shell.replace(/{{root}}/g, root).replace('{{title}}', () => esc(title)).replace('{{description}}', () => esc(description)).replace('{{nav}}', () => nav(root, path)).replace('{{main}}', () => main).replace('{{hero}}', () => hero);
+  const obj = path.match(/^objects\/(.+)\.html$/)?.[1];
+  const head = {
+    title: path === 'index.html' ? 'solids: lightweight 3D objects for the web' : `${title} | solids`,
+    description, url: BASE + (path === 'index.html' ? '' : path),
+    image: BASE + (obj ? `og/objects/${obj}.jpg` : 'og/solids.jpg'),
+    imageAlt: obj ? `The ${obj} object from solids, a glassy 3D shape on a dark background, with its tag and description.` : COVER_ALT,
+  };
+  let html = shell.replace(/{{root}}/g, root);
+  for (const [k, v] of Object.entries(head)) html = html.replace(new RegExp(`{{${k}}}`, 'g'), () => esc(v));
+  html = html.replace('{{nav}}', () => nav(root, path)).replace('{{main}}', () => main).replace('{{hero}}', () => hero);
   mkdirSync(`${OUT}/${path}`.replace(/\/[^/]+$/, ''), { recursive: true });
   writeFileSync(`${OUT}/${path}`, html);
 }
@@ -80,14 +91,14 @@ const badge = () => `<output class="fps" aria-hidden="true" title="Frames per se
 const bandStage = (html) => `<div class="band-stage">${badge()}${html}</div>`;
 
 /** Full-viewport hero: the scene fills the first screen; title top-left, control dock at the bottom. */
-function hero({ sceneAttrs, inner, controls, presets, pitch, prompt }) {
+function hero({ sceneAttrs, inner, controls, presets, title, pitch, prompt }) {
   const spec = JSON.stringify({ controls, presets, prompt }).replace(/</g, '\\u003c');
-  // The dock: five moods, one Tweak disclosure holding the grouped controls and Copy prompt, and Copy code. The wordmark in the
-  // scene is the page heading.
+  // Title top left. The dock: five moods, a Tweak disclosure and Copy code; the Tweak panel follows the dock in the DOM (so Tab from
+  // Tweak enters it) and sits above it on screen, outside the dock's own backdrop filter.
   return `<section class="hero-full">
   <div class="stage scatter hero-stage">${badge()}<sd-scene id="demo" data-keep-style style="position:relative;height:100%;min-height:560px" ${sceneAttrs}>${inner}</sd-scene></div>
-  <div class="hero-lede"><p>${esc(pitch)}</p></div>
-  <form id="controls" class="controls hero-controls" onsubmit="return false"><div class="tune-body" id="tune"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button></div><div class="dock"><fieldset class="presets"><legend class="sr">Mood</legend></fieldset><details class="tweak"><summary>Tweak</summary></details><button type="button" class="btn" id="copy-code">Copy code</button></div></form>
+  <div class="hero-title"><h1>${esc(title)}</h1><p>${esc(pitch)}</p></div>
+  <form id="controls" class="controls hero-controls" onsubmit="return false"><div class="dock"><fieldset class="presets"><legend class="sr">Mood</legend></fieldset><details class="tweak"><summary>Tweak</summary></details><button type="button" class="btn" id="copy-code">Copy code</button></div><div class="tune-body" id="tune"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button></div></form>
   <script type="application/json" id="spec">${spec}</script>
 </section>`;
 }
@@ -142,35 +153,32 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
   const sz = (px) => `clamp(${Math.round(px * 0.6)}px, ${(px / 6.5).toFixed(1)}vmin, ${Math.round(px * 1.3)}px)`;
   const orbit = (tag, id, size, dx, dy, color, anim) => `<${tag} id="${id}" size="${sz(size)}" color="${color}" animation="${anim}" style="position:absolute;left:calc(50% + ${dx}vmin - ${sz(size)} / 2);top:calc(50% + ${dy}vmin - ${sz(size)} / 2)"></${tag}>`;
   const edge = (tag, id, size, left, top, color, anim) => `<${tag} id="${id}" gravity="none" size="${sz(size)}" color="${color}" animation="${anim}" style="position:absolute;left:${left}%;top:${top}%"></${tag}>`;
-  // Twelve shapes float around the word, nothing in the middle: near ones sharp and lit, far ones blurred and dimmed. The orb sits
-  // off center and keeps the gravity center role for the Orbit mood.
-  const drift = (tag, id, size, left, top, color, speed, phase, far = 0) => `<${tag} id="${id}" size="${sz(size)}" color="${color}" animation="float" speed="${speed}" phase="${phase}"${far ? ` effect="defocus" defocus-radius="${far}" state="off"` : ''} style="position:absolute;left:${left}%;top:${top}%;translate:-50% -50%"></${tag}>`;
+  // Twelve shapes float around an open middle: near ones sharp and lit, far ones blurred and dimmed. The orb sits right of center
+  // and is the gravity center for the Orbit mood and the gravity chip; only the four shapes near it orbit (gravity rings run out to
+  // the farthest orbiter, so edge and far shapes keep floating with gravity="none").
+  const drift = (tag, id, size, left, top, color, speed, phase, far = 0, orbits = false) => `<${tag} id="${id}"${orbits ? '' : ' gravity="none"'} size="${sz(size)}" color="${color}" animation="float" speed="${speed}" phase="${phase}"${far ? ` effect="defocus" defocus-radius="${far}" state="off"` : ''} style="position:absolute;left:${left}%;top:${top}%;translate:-50% -50%"></${tag}>`;
   const heroInner = [
-    `<sd-orb id="orb" size="${sz(120)}" color="${colorOf(0)}" animation="float" speed="0.7" phase="3" glow="0.8" style="position:absolute;left:22%;top:38%;translate:-50% -50%"></sd-orb>`,
-    drift('sd-ring', 'ring', 96, 66, 22, colorOf(1), 0.8, 1),
-    drift('sd-crystal', 'crystal', 86, 80, 60, colorOf(2), 0.6, 5),
+    `<sd-orb id="orb" gravity="center" size="${sz(120)}" color="${colorOf(0)}" animation="float" speed="0.7" phase="3" glow="0.8" style="position:absolute;left:64%;top:50%;translate:-50% -50%"></sd-orb>`,
+    drift('sd-ring', 'ring', 96, 66, 22, colorOf(1), 0.8, 1, 0, true),
+    drift('sd-crystal', 'crystal', 86, 80, 60, colorOf(2), 0.6, 5, 0, true),
     drift('sd-knot', 'knot', 90, 36, 76, colorOf(3), 0.7, 9),
-    drift('sd-capsule', 'capsule', 72, 50, 14, colorOf(4), 0.9, 2),
+    drift('sd-capsule', 'capsule', 72, 50, 14, colorOf(4), 0.9, 2, 0, true),
     drift('sd-star', 'star', 78, 14, 68, colorOf(5), 0.8, 7),
     drift('sd-cube', 'cube', 70, 88, 30, colorOf(5), 0.6, 4),
-    drift('sd-coil', 'coil', 84, 60, 84, colorOf(3), 0.7, 11),
-    drift('sd-blob', 'blob', 64, 30, 20, colorOf(4), 0.9, 6, 6),
+    drift('sd-coil', 'coil', 84, 60, 84, colorOf(3), 0.7, 11, 0, true),
+    drift('sd-blob', 'blob', 64, 40, 56, colorOf(4), 0.9, 6, 6),
     drift('sd-prism', 'prism', 60, 72, 44, colorOf(1), 0.5, 8, 8),
-    drift('sd-shell', 'shell', 58, 8, 44, colorOf(2), 0.6, 13, 5),
+    drift('sd-shell', 'shell', 58, 5, 88, colorOf(2), 0.6, 13, 5),
     drift('sd-disc', 'disc', 56, 90, 82, colorOf(0), 0.8, 10, 9),
-    // The wordmark: the page heading, lifted into 3D at the center, smooth, apart from the scene's effects.
-    `<sd-text id="mark" data-subject gravity="none" effect="none" depth="0.5" animation="float" speed="0.5" color="${colorOf(0)}" style="position:absolute;left:50%;top:50%;translate:-50% -50%;font:700 clamp(48px, 14vmin, 150px)/1 ui-monospace, Menlo, Consolas, monospace;letter-spacing:0.04em"><h1>Solids</h1></sd-text>`,
   ].join('\n');
-  const ids = ['orb', 'ring', 'crystal', 'knot', 'capsule', 'star', 'cube', 'coil', 'blob', 'prism', 'shell', 'disc', 'mark'];
+  const ids = ['orb', 'ring', 'crystal', 'knot', 'capsule', 'star', 'cube', 'coil', 'blob', 'prism', 'shell', 'disc'];
   const HERO_RULES = 'pointer-follow hover-lift shockwave poke';
   const heroControls = [
-    { kind: 'select', attr: 'center', label: 'Center of gravity', options: ids.slice(0, 6), value: 'orb', target: 'scene', group: 'Scene' },
+    { kind: 'select', attr: 'center', label: 'Center of gravity', options: ['orb', 'ring', 'crystal', 'capsule', 'coil'], value: 'orb', target: 'scene', group: 'Scene' }, // the orb and its orbiters
     { kind: 'range', attr: 'gravity-strength', label: 'Gravity', min: 0, max: 1, step: 0.01, value: 0.35, default: 0.6, target: 'scene', group: 'Scene' },
     ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: HERO_RULES.split(' ').includes(i.name), target: 'scene', group: 'Rules' })),
     shadingControl('scene', 'Look'),
     { kind: 'select', attr: 'effect', label: 'Effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene', group: 'Look' },
-    { kind: 'range', attr: 'depth', label: 'Depth', min: 0.02, max: 1, step: 0.01, value: 0.5, default: 0.35, target: 'object', group: 'Text' },
-    { kind: 'range', attr: 'pixel', label: 'Pixel', min: 0, max: 24, step: 1, value: 0, default: 0, target: 'object', group: 'Text' },
   ];
   // A mood is a record of control values applied through the controls themselves, so Tweak and Copy code stay truthful.
   const heroPresets = [
@@ -183,7 +191,8 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
   const heroHtml = hero({
     sceneAttrs: `interaction="${HERO_RULES}" gravity-strength="0.35" dpr="1.5"`,
     inner: heroInner, controls: heroControls, presets: heroPresets,
-    pitch: `Lightweight 3D objects for the web. One script tag, no dependencies, about ${Math.round(sizes.full / 1024)} KB. Tap the scene, pick a mood, copy the code.`,
+    title: 'Lightweight 3D objects for the web',
+    pitch: `Glassy shapes you drop into HTML. One script tag, no dependencies, about ${Math.round(sizes.full / 1024)} KB. Tap the scene, pick a mood, copy the code.`,
     prompt: `This is a solids scene: glassy 3D objects as web components, one script tag, no dependencies.\n\n\`\`\`html\n<script type="module" src="${SCRIPT}"></script>\n{{markup}}\n\`\`\`\n\nThe contract for adding an object is ${SKILL}. Read it, clone https://github.com/mmaxence/solids, add the object under src/objects there, run npm run check until it prints ok, then use the new tag in this scene.`,
   });
 
@@ -219,7 +228,7 @@ ${layer('Interactions', 'Scene rules that react to the pointer and to each other
     const h = s.match(/^## (.*)/)[1];
     return `<section class="band" id="${h.toLowerCase().replace(/\s+/g, '-')}">${md(s)}${live[h] ?? ''}</section>`;
   }).join('\n')}</div>`;
-  page('index.html', { title: 'solids', description: 'Lightweight 3D objects for the web. Zero dependencies.', main, hero: heroHtml });
+  page('index.html', { title: 'solids', description: `Glassy 3D shapes as web components. One script tag, no dependencies, about ${Math.round(sizes.full / 1024)} KB.`, main, hero: heroHtml });
   page('accessibility.html', { title: 'Accessibility', description: 'How solids objects behave for assistive tech, reduced motion, and low-end devices.', main: md(readFileSync('site/src/accessibility.md', 'utf8')) });
 }
 
@@ -391,6 +400,8 @@ copyFileSync('site/src/site.js', `${OUT}/site.js`);
 copyFileSync('dist/solids.js', `${OUT}/solids.js`);
 copyFileSync('dist/solids.js.map', `${OUT}/solids.js.map`);
 copyFileSync('docs/SKILL.md', `${OUT}/skill.md`);
+copyFileSync('site/src/favicon.svg', `${OUT}/favicon.svg`);
+if (existsSync('site/src/og')) cpSync('site/src/og', `${OUT}/og`, { recursive: true });
 // llms.txt (llmstxt.org shape): title, a one-paragraph summary, then one link line per page.
 const entries = (dir, list) => list.map((x) => `- [${x.name}](${BASE}${dir}/${x.name}.html): ${x.description}`).join('\n');
 writeFileSync(`${OUT}/llms.txt`, `# solids

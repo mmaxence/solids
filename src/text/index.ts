@@ -68,15 +68,15 @@ export class SdText extends SdObject {
     const text = (this.textContent ?? '').replace(/\s+/g, ' ').trim() || 'Aa';
     const cs = getComputedStyle(this.firstElementChild ?? this);
     const fontPx = parseFloat(cs.fontSize) || 16;
-    const em = this.cell > 0 ? Math.max(4, Math.round(fontPx / this.cell)) : 160; // em height in texels
+    let em = this.cell > 0 ? Math.max(4, Math.round(fontPx / this.cell)) : 160; // em height in texels
     const range = this.cell > 0 ? 3 : 16;
     const c = (canvas ??= document.createElement('canvas'));
     const ctx = c.getContext('2d', { willReadFrequently: true })!;
-    const font = `${cs.fontStyle} ${cs.fontWeight} ${em}px ${cs.fontFamily}`;
-    const spacing = (parseFloat(cs.letterSpacing) || 0) / fontPx * em;
-    const setFont = () => { ctx.font = font; if ('letterSpacing' in ctx) (ctx as any).letterSpacing = spacing + 'px'; };
+    const setFont = () => { ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${em}px ${cs.fontFamily}`; if ('letterSpacing' in ctx) (ctx as any).letterSpacing = ((parseFloat(cs.letterSpacing) || 0) / fontPx) * em + 'px'; };
     setFont();
-    const m = ctx.measureText(text);
+    let m = ctx.measureText(text);
+    // A long line would pass the 2048 texel cap and clip: shrink the em until it fits (the shader takes the em from the field height).
+    if (Math.ceil(m.width) + 2 * range > 2048) { em = Math.max(4, Math.floor((em * (2048 - 2 * range)) / Math.ceil(m.width + 1))); setFont(); m = ctx.measureText(text); }
     const asc = m.fontBoundingBoxAscent ?? em * 0.8, desc = m.fontBoundingBoxDescent ?? em * 0.2;
     const w = Math.min(2048, Math.ceil(m.width) + 2 * range), h = em + 2 * range;
     c.width = w; c.height = h; setFont();

@@ -101,11 +101,12 @@ if (specEl) {
     holder(c).append(label);
   }
   for (const g of groups.values()) if ([...g.children].every((el) => el.tagName === 'LEGEND' || el.classList.contains('check'))) g.classList.add('chips');
-  // Tweak: a click or tap outside the panel and its button closes it; so does Escape.
+  // Tweak: a click or tap outside the hero controls closes the panel (moods and the panel keep it open); Escape closes it and
+  // returns focus to Tweak.
   const tweak = $('.tweak', form);
   if (tweak) {
-    document.addEventListener('pointerdown', (e) => { if (tweak.open && !tune.contains(e.target) && !tweak.contains(e.target)) tweak.open = false; });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') tweak.open = false; });
+    document.addEventListener('pointerdown', (e) => { if (tweak.open && !form.contains(e.target)) tweak.open = false; });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && tweak.open) { tweak.open = false; tweak.querySelector('summary').focus(); } });
   }
   // Moods: native radios (one tab stop, arrow keys), each applying its record through the controls (checks by membership, the rest by value).
   const presets = $('.presets', form);
@@ -262,12 +263,14 @@ if (location.search.includes('__check')) {
       manualClears = $$('.presets input:checked').length;
       pill('Float')?.click(); var orbitAttr = $('#demo').getAttribute('interaction'); var radioPills = $$('.presets input[type="radio"]').length;
       const tw = $('.tweak'); tw.open = true; $('.hero-stage').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); var tweakClosed = tw.open === false;
+      tw.open = true; $('.tune-body select')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); pill('Ink')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); var tweakKept = tw.open === true;
+      $('.tune-body select')?.focus(); document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); var tweakEscFocus = tw.open === false && document.activeElement === $('.tweak summary');
       toggle('collide', true); toggle('gravity', false); toggle('gravity', true); interactionAttr = $('#demo').getAttribute('interaction'); }
     if ($('sd-universe#demo')) { toggle('Spin', false); toggle('Drag', false); toggle('Pointer', false); }
     const demo = $('#demo');
     fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene, sd-universe').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent,
       objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top,
-      markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr, storm, manualClears, tweakClosed: typeof tweakClosed === 'undefined' ? undefined : tweakClosed, orbitAttr: typeof orbitAttr === 'undefined' ? undefined : orbitAttr, radioPills: typeof radioPills === 'undefined' ? undefined : radioPills,
+      markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr, storm, manualClears, tweakClosed: typeof tweakClosed === 'undefined' ? undefined : tweakClosed, tweakKept: typeof tweakKept === 'undefined' ? undefined : tweakKept, tweakEscFocus: typeof tweakEscFocus === 'undefined' ? undefined : tweakEscFocus, orbitAttr: typeof orbitAttr === 'undefined' ? undefined : orbitAttr, radioPills: typeof radioPills === 'undefined' ? undefined : radioPills,
 contexts: $$('sd-scene, sd-universe').length + $$('*').filter((e) => e.shadowRoot?.querySelector('sd-scene')).length, sceneObjects: $$('sd-scene, sd-universe').map((s) => s.objects?.size), liveFrame: $('#live-frame')?.textContent,
       badge: $('.fps')?.textContent, legends: $$('#controls legend').map((l) => l.textContent), liveEscaped: (() => { const o = $('#demo > *'); if (!o) return null; o.setAttribute('title', 'a"b&c'); const txt = serialize($('#demo')); o.removeAttribute('title'); return txt.includes('title="a&quot;b&amp;c"'); })(), meter: meter?.textContent, bench, benchRow: benchRowText, noTimerRow, scenesBeforeBench }) });
   };

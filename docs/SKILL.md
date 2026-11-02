@@ -128,7 +128,7 @@ vec4 sdEffect() {
 
 It receives `uScene` (the previous pass, premultiplied), `uResolution`, `uTime`, `uTheme`, `sdLuma(rgb)`, and `sdBayer(px)` for jittering sparse kernels. Params become `<effect>-<param>` attributes on a scene or an object.
 
-An object whose `effect` list holds the token `none` is exempt from the scene's effect chain: it is drawn after the chain, straight onto the canvas, above the others, with its own per-object effects if any (`effect="none glow"`). Text usually wants this; the hero wordmark carries it.
+When the scene has an effect chain, an object whose `effect` list holds the token `none` is exempt from it: it is drawn after the chain, straight onto the canvas, so it also lands above the chained objects, with its own per-object effects if any (`effect="none glow"`). Without a scene chain the token does nothing and draw order is unchanged. Text usually wants this.
 
 Every effect also gets a `mix` param (0 to 2, default 1) without declaring it: the core blends your result with the incoming scene, `mix(scene, sdEffect(), mix)`, and clamps to valid premultiplied color (`a` in 0..1, `rgb` at most `a`). 0 is a plain copy, 1 is the effect as designed, 2 pushes it further. Return the look as designed and let `<effect>-mix` dial it. Keep to one pass; sample at most a few dozen taps.
 
