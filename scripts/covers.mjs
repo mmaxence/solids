@@ -7,6 +7,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { resolve, extname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { gzipSync } from 'node:zlib';
+import { pathToFileURL } from 'node:url';
 
 if (!existsSync('site/dist/solids.js')) { console.error('run npm run site first'); process.exit(1); }
 const chrome = [process.env.CHROME, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', 'google-chrome', 'chromium'].filter(Boolean)
@@ -15,10 +16,9 @@ if (!chrome) { console.error('Chrome not found (set CHROME)'); process.exit(1); 
 
 // The palette and the object list, as the site uses them.
 globalThis.window = globalThis; globalThis.HTMLElement = class {}; globalThis.customElements = { get: () => undefined, define: () => {} };
-const { PALETTE } = await import(resolve('dist/solids.js'));
+const { PALETTE, registry } = await import(pathToFileURL(resolve('dist/solids.js')).href);
 const color = (i) => PALETTE[i % PALETTE.length];
-const objects = readdirSync('src/objects').filter((d) => existsSync(`src/objects/${d}/manifest.json`)).sort()
-  .map((d) => JSON.parse(readFileSync(`src/objects/${d}/manifest.json`, 'utf8')));
+const objects = [...registry.objects.values()].map((o) => o.manifest); // registry order, so each cover matches its page's color
 const size = gzipSync(readFileSync('dist/solids.js')).length; // as the site states it
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -67,6 +67,7 @@ const port = srv.address().port, dport = 9800 + Math.floor(Math.random() * 150),
 const proc = spawn(chrome, ['--headless=new', '--disable-gpu', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-first-run', '--hide-scrollbars',
   `--user-data-dir=${profile}`, `--remote-debugging-port=${dport}`, 'about:blank'], { stdio: 'ignore' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+setTimeout(() => { console.error('covers: timed out'); done(1); }, 180000).unref?.();
 const done = (code) => { proc.kill('SIGKILL'); srv.close(); rmSync('site/dist/.covers', { recursive: true, force: true }); try { rmSync(profile, { recursive: true, force: true }); } catch {} process.exit(code); };
 let target;
 for (let i = 0; i < 75 && !target; i++) { await sleep(200); try { target = (await (await fetch(`http://127.0.0.1:${dport}/json`)).json()).find((t) => t.type === 'page'); } catch {} }
@@ -88,4 +89,6 @@ for (const [i, p] of pages.entries()) {
   writeFileSync(`site/src/${p.out}`, Buffer.from(shot.result.data, 'base64'));
   console.log(`site/src/${p.out}`);
 }
+// What the covers bake in; the check compares it with the bundle, the manifests and the object pages.
+writeFileSync('site/src/og/covers.json', JSON.stringify({ kb: Math.round(size / 1024), objects: Object.fromEntries(objects.map((o, i) => [o.name, { description: o.description, color: color(i) }])) }, null, 2) + '\n');
 done(0);

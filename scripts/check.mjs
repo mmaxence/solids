@@ -1152,6 +1152,16 @@ async function site() {
     const b = readFileSync(p), [w, h] = imageSize(b); if (w !== 1200 || h !== 630) fail(`site: cover ${c} is ${w} by ${h}, expected 1200 by 630`); if (b.length > 250 * 1024) fail(`site: cover ${c} is ${Math.round(b.length / 1024)} KB, keep it under 250 KB`); }
   for (const [p, w] of [['site/dist/favicon.svg', 0], ['site/dist/og/apple-touch-icon.png', 180]]) { if (!existsSync(p)) fail(`site: ${p} is missing`); else if (w && imageSize(readFileSync(p))[0] !== w) fail(`site: ${p} should be ${w} px wide`); }
   { const idx = readFileSync('site/dist/index.html', 'utf8'); if (!/<meta property="og:title" content="solids: lightweight 3D objects for the web">/.test(idx)) fail('site/index: og:title should read solids: lightweight 3D objects for the web'); }
+  { const knot = existsSync('site/dist/objects/knot.html') ? readFileSync('site/dist/objects/knot.html', 'utf8') : ''; if (!/<meta property="og:image:alt" content="[^"]*&lt;sd-knot&gt;[^"]*A glassy torus knot/.test(knot)) fail('site/objects/knot: the cover alt should give the tag and the description shown on the cover'); }
+  // The covers bake in the bundle size, each description and each object's page color: covers.json records them, and they must match.
+  { const stamp = existsSync('site/src/og/covers.json') ? JSON.parse(readFileSync('site/src/og/covers.json', 'utf8')) : null;
+    if (!stamp) fail('site: site/src/og/covers.json is missing (run npm run covers)');
+    else {
+      const kbNow = Math.round(gzipSync(readFileSync('dist/solids.js')).length / 1024); if (stamp.kb !== kbNow) fail(`site: the covers say about ${stamp.kb} KB, the bundle is about ${kbNow} KB now (run npm run covers)`);
+      for (const d of readdirSync('src/objects')) { if (!existsSync(`src/objects/${d}/manifest.json`)) continue;
+        const m = JSON.parse(readFileSync(`src/objects/${d}/manifest.json`, 'utf8')), pg = existsSync(`site/dist/objects/${d}.html`) ? readFileSync(`site/dist/objects/${d}.html`, 'utf8') : '';
+        const color = pg.slice(pg.indexOf('<main')).match(new RegExp(`<sd-${d}[^>]*color="([^"]+)"`))?.[1], c = stamp.objects?.[d];
+        if (!c || c.description !== m.description || c.color !== color) fail(`site: the ${d} cover is stale: ${JSON.stringify(c)} vs page color ${color} (run npm run covers)`); } } }
   // Agent-first outputs: skill.md is the contract verbatim, llms.txt indexes every library page.
   const text = (f) => (existsSync(`site/dist/${f}`) ? readFileSync(`site/dist/${f}`, 'utf8') : '');
   if (!existsSync('site/dist/skill.md') || !readFileSync('site/dist/skill.md').equals(readFileSync('docs/SKILL.md'))) fail('site/skill.md is not a byte copy of docs/SKILL.md');
@@ -1176,20 +1186,22 @@ async function site() {
     const expect = { 'objects/orb.html': ['Shape', 'Motion', 'Look'], 'scene.html': ['Scene', 'Interactions', 'Look'], 'universe.html': ['Universe', 'Camera', 'Depth', 'Look'], 'effects/glow.html': ['Scene', 'Effect', 'Look'], 'shades/cel.html': ['Scene', 'Shade', 'Look'], 'interactions/repel.html': ['Scene', 'Interactions', 'Look'] };
     for (const [f, want] of Object.entries(expect)) { const got = groupsOf(f); if (want.some((g) => !got.includes(g)) || got.includes('')) fail(`site/${f}: dock groups ${JSON.stringify(got)}, expected ${JSON.stringify(want)} with every control grouped`); }
     // Hero: presets, a Tweak panel with the grouped controls and Copy prompt, the Solids wordmark as the heading.
-    { const hs = JSON.parse(text('index.html').match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}');
+    { const css = readFileSync('site/src/styles.css', 'utf8');
+      const hs = JSON.parse(text('index.html').match(/<script type="application\/json" id="spec">([^<]*)<\/script>/)?.[1] ?? '{}');
       const names = (hs.presets ?? []).map((p) => p.name);
       if (names.join('|') !== 'Float|Orbit|Neon|Ink|Storm') fail(`site/index: hero presets ${JSON.stringify(names)}`);
-      const hero = index.match(/<section class="hero-full">[\s\S]*?<\/section>/)?.[0] ?? '';
-      if (/<div class="dock">(?:(?!<\/form>)[\s\S])*?class="tune-body"(?:(?!<\/form>)[\s\S])*?<\/div><\/form>/.test(hero) && !/<\/div><div class="tune-body"/.test(hero)) fail('site/index: the Tweak panel must not live inside the dock (its backdrop blur would blur nothing)');
+      const hero = index.match(/<section class="hero-full"[^>]*>[\s\S]*?<\/section>/)?.[0] ?? '';
       if (!/class="tune-body"/.test(hero)) fail('site/index: the Tweak panel is missing');
       if ((hero.match(/animation="float"/g) ?? []).length < 8) fail('site/index: at least eight hero shapes should float');
       if ((hero.match(/effect="defocus"/g) ?? []).length < 3) fail('site/index: at least three hero shapes should carry defocus');
       if (/<sd-text/.test(hero)) fail('site/index: the hero should carry no 3D text');
       if (!/<sd-orb id="orb"[^>]*gravity="center"/.test(hero)) fail('site/index: the orb should be the gravity center from the start, so the gravity chip works before any mood');
-      const css = readFileSync('site/src/styles.css', 'utf8'); if (!/\.controls select[^{]*\{[^}]*appearance: none[^}]*background-image/.test(css)) fail('site/styles: selects should draw their own chevron (appearance none plus a background image)');
+      if (!/\.controls select[^{]*\{[^}]*appearance: none[^}]*background-image/.test(css)) fail('site/styles: selects should draw their own chevron (appearance none plus a background image)');
       const hg = [...new Set((hs.controls ?? []).map((c) => c.group ?? ''))];
       if (hg.includes('') || hg.join('|') !== 'Scene|Rules|Look') fail(`site/index: hero controls should all sit in the Tweak groups Scene, Rules, Look: ${JSON.stringify(hg)}`);
-      if (!/<form[^>]*class="controls hero-controls"[^>]*><div class="dock">[\s\S]*?<fieldset class="presets"[\s\S]*?<details class="tweak">[\s\S]*?<\/details>[\s\S]*?id="copy-code"[\s\S]*?<\/div><div class="tune-body"[\s\S]*?id="copy-prompt"/.test(index)) fail('site/index: the hero form should hold the dock (presets, Tweak, Copy code) and then the Tweak panel, so Tab from Tweak enters the panel');
+      if (!/<div class="dock">[\s\S]*?<fieldset class="presets"[\s\S]*?<details class="tweak"><summary>Tweak<\/summary><div class="tune-body"[\s\S]*?id="copy-prompt"[\s\S]*?<\/details>[\s\S]*?id="copy-code"/.test(index)) fail('site/index: the Tweak panel should sit inside its details, right after the summary, so Tab from Tweak enters the panel; then Copy code');
+      { const dockRule = css.match(/\n\.dock \{[^}]*\}/)?.[0] ?? ''; if (/backdrop-filter/.test(dockRule) || !/\.dock::before \{[^}]*backdrop-filter/.test(css)) fail('site/styles: the dock blur should live on .dock::before, so the dock is not a backdrop root and the nested panel can blur the scene'); }
+      if (!/<a class="skip" href="#hero">/.test(index) || !/<section class="hero-full" id="hero">/.test(index)) fail('site/index: Skip to content should land on the hero, which holds the page heading');
       if (!/<div class="hero-title"><h1>Lightweight 3D objects for the web<\/h1><p>/.test(index)) fail('site/index: the hero heading should be the top-left title, Lightweight 3D objects for the web');
       if (!/<sd-scene id="demo"[^>]*interaction="pointer-follow hover-lift shockwave poke"/.test(index)) fail('site/index: the hero default interactions should be pointer-follow hover-lift shockwave poke (no gravity)'); }
     const css = readFileSync('site/src/styles.css', 'utf8');
@@ -1264,11 +1276,13 @@ async function site() {
         if (r.tweakClosed !== true) fail(`site/index (${size ?? 'desktop'}): a click outside should close the Tweak panel`);
         if (r.tweakKept !== true) fail(`site/index (${size ?? 'desktop'}): a click inside the panel or on a mood pill should keep the Tweak panel open`);
         if (r.tweakEscFocus !== true) fail(`site/index (${size ?? 'desktop'}): Escape should close the panel and return focus to Tweak`);
+        if (r.escOutside !== true) fail(`site/index (${size ?? 'desktop'}): Escape with focus elsewhere on the page should close the panel without moving focus`);
         if (!(r.radioPills >= 5)) fail(`site/index (${size ?? 'desktop'}): mood pills should be native radio inputs, found ${r.radioPills}`);
         if (r.manualClears !== 0) fail(`site/index (${size ?? 'desktop'}): a manual change should clear the active preset, ${r.manualClears} still checked`);
         if (/<sd-text/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code should carry no 3D text`);
         if (!r.hasCenter) fail(`site/index (${size ?? 'desktop'}): dock has no Center control`);
         if (r.scrollWidth > r.innerWidth) fail(`site/index (${size ?? 'desktop'}): horizontal overflow ${r.scrollWidth} > ${r.innerWidth}`);
+        if (!r.dockBox || r.dockBox[0] < 0 || r.dockBox[1] > r.innerWidth || Math.abs((r.dockBox[0] + r.dockBox[1]) / 2 - r.innerWidth / 2) > 2) fail(`site/index (${size ?? 'desktop'}): the dock should sit centered inside the viewport, got ${JSON.stringify(r.dockBox)} in ${r.innerWidth}`);
         if (!(r.h1Bottom < r.dockTop)) fail(`site/index (${size ?? 'desktop'}): title bottom ${r.h1Bottom} is not above the dock top ${r.dockTop}`);
         const styled = (r.markup?.match(/style="position:\s*absolute;/g) || []).length;
         if (styled < 12 || !/<sd-scene[^>]*style="[^"]*height/.test(r.markup || '')) fail(`site/index (${size ?? 'desktop'}): Copy code markup does not reproduce the layout (${styled} positioned objects)`);

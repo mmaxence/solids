@@ -76,7 +76,8 @@ function page(path, { title, description, main, hero = '' }) {
     title: path === 'index.html' ? 'solids: lightweight 3D objects for the web' : `${title} | solids`,
     description, url: BASE + (path === 'index.html' ? '' : path),
     image: BASE + (obj ? `og/objects/${obj}.jpg` : 'og/solids.jpg'),
-    imageAlt: obj ? `The ${obj} object from solids, a glassy 3D shape on a dark background, with its tag and description.` : COVER_ALT,
+    imageAlt: obj ? `<sd-${obj}> and its description, ${description.replace(/\.$/, '')}, beside a glassy ${obj} on a dark background, from solids.` : COVER_ALT,
+    skip: hero ? 'hero' : 'main',
   };
   let html = shell.replace(/{{root}}/g, root);
   for (const [k, v] of Object.entries(head)) html = html.replace(new RegExp(`{{${k}}}`, 'g'), () => esc(v));
@@ -93,12 +94,12 @@ const bandStage = (html) => `<div class="band-stage">${badge()}${html}</div>`;
 /** Full-viewport hero: the scene fills the first screen; title top-left, control dock at the bottom. */
 function hero({ sceneAttrs, inner, controls, presets, title, pitch, prompt }) {
   const spec = JSON.stringify({ controls, presets, prompt }).replace(/</g, '\\u003c');
-  // Title top left. The dock: five moods, a Tweak disclosure and Copy code; the Tweak panel follows the dock in the DOM (so Tab from
-  // Tweak enters it) and sits above it on screen, outside the dock's own backdrop filter.
-  return `<section class="hero-full">
+  // Title top left. The dock: five moods, a Tweak disclosure whose panel opens above the dock (Tab from Tweak enters it), and Copy
+  // code. The dock's blur sits on a pseudo-element, so the dock is not a backdrop root and the nested panel blurs the scene.
+  return `<section class="hero-full" id="hero">
   <div class="stage scatter hero-stage">${badge()}<sd-scene id="demo" data-keep-style style="position:relative;height:100%;min-height:560px" ${sceneAttrs}>${inner}</sd-scene></div>
   <div class="hero-title"><h1>${esc(title)}</h1><p>${esc(pitch)}</p></div>
-  <form id="controls" class="controls hero-controls" onsubmit="return false"><div class="dock"><fieldset class="presets"><legend class="sr">Mood</legend></fieldset><details class="tweak"><summary>Tweak</summary></details><button type="button" class="btn" id="copy-code">Copy code</button></div><div class="tune-body" id="tune"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button></div></form>
+  <form id="controls" class="controls hero-controls" onsubmit="return false"><div class="dock"><fieldset class="presets"><legend class="sr">Mood</legend></fieldset><details class="tweak"><summary>Tweak</summary><div class="tune-body" id="tune"><button type="button" class="btn quiet" id="copy-prompt">Copy prompt</button></div></details><button type="button" class="btn" id="copy-code">Copy code</button></div></form>
   <script type="application/json" id="spec">${spec}</script>
 </section>`;
 }
