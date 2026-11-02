@@ -173,13 +173,15 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
     drift('sd-disc', 'disc', 56, 90, 82, colorOf(0), 0.8, 10, 9),
   ].join('\n');
   const ids = ['orb', 'ring', 'crystal', 'knot', 'capsule', 'star', 'cube', 'coil', 'blob', 'prism', 'shell', 'disc'];
-  const HERO_RULES = 'pointer-follow hover-lift shockwave poke';
+  const HERO_RULES = 'pointer-follow hover-lift shockwave poke'; // the moods' base rules
+  // The hero loads in its own default, no mood selected: orbits around the orb, pointer play, collisions, matte, rgb-split.
+  const DEFAULT = { interaction: 'gravity pointer-follow hover-lift repel magnet collide scroll', gravity: '0.39', shading: 'matte', effect: 'rgb-split' };
   const heroControls = [
     { kind: 'select', attr: 'center', label: 'Center of gravity', options: ['orb', 'ring', 'crystal', 'capsule', 'coil'], value: 'orb', target: 'scene', group: 'Scene' }, // the orb and its orbiters
-    { kind: 'range', attr: 'gravity-strength', label: 'Gravity', min: 0, max: 1, step: 0.01, value: 0.35, default: 0.6, target: 'scene', group: 'Scene' },
-    ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: HERO_RULES.split(' ').includes(i.name), target: 'scene', group: 'Rules' })),
-    shadingControl('scene', 'Look'),
-    { kind: 'select', attr: 'effect', label: 'Effect', options: ['', ...effects.map((x) => x.name)], value: '', target: 'scene', group: 'Look' },
+    { kind: 'range', attr: 'gravity-strength', label: 'Gravity', min: 0, max: 1, step: 0.01, value: +DEFAULT.gravity, default: 0.6, target: 'scene', group: 'Scene' },
+    ...interactions.map((i) => ({ kind: 'check', attr: 'interaction', on: i.name, label: i.name, value: DEFAULT.interaction.split(' ').includes(i.name), target: 'scene', group: 'Rules' })),
+    { ...shadingControl('scene', 'Look'), value: DEFAULT.shading },
+    { kind: 'select', attr: 'effect', label: 'Effect', options: ['', ...effects.map((x) => x.name)], value: DEFAULT.effect, target: 'scene', group: 'Look' },
   ];
   // A mood is a record of control values applied through the controls themselves, so Tweak and Copy code stay truthful.
   const heroPresets = [
@@ -190,7 +192,7 @@ const license = `<h2>License</h2><p>MIT. Use it anywhere, credit appreciated.</p
     { name: 'Storm', set: { center: 'orb', effect: '', shading: 'metal', 'gravity-strength': '0', interaction: 'repel shockwave poke pull collide' } },
   ];
   const heroHtml = hero({
-    sceneAttrs: `interaction="${HERO_RULES}" gravity-strength="0.35" dpr="1.5"`,
+    sceneAttrs: `interaction="${DEFAULT.interaction}" gravity-strength="${DEFAULT.gravity}" shading="${DEFAULT.shading}" effect="${DEFAULT.effect}" dpr="1.5"`,
     inner: heroInner, controls: heroControls, presets: heroPresets,
     title: 'Lightweight 3D objects for the web',
     pitch: `Glassy shapes you drop into HTML. One script tag, no dependencies, about ${Math.round(sizes.full / 1024)} KB. Tap the scene, pick a mood, copy the code.`,

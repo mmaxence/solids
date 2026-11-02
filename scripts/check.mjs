@@ -1203,7 +1203,7 @@ async function site() {
       { const dockRule = css.match(/\n\.dock \{[^}]*\}/)?.[0] ?? ''; if (/backdrop-filter/.test(dockRule) || !/\.dock::before \{[^}]*backdrop-filter/.test(css)) fail('site/styles: the dock blur should live on .dock::before, so the dock is not a backdrop root and the nested panel can blur the scene'); }
       if (!/<a class="skip" href="#hero">/.test(index) || !/<section class="hero-full" id="hero">/.test(index)) fail('site/index: Skip to content should land on the hero, which holds the page heading');
       if (!/<div class="hero-title"><h1>Lightweight 3D objects for the web<\/h1><p>/.test(index)) fail('site/index: the hero heading should be the top-left title, Lightweight 3D objects for the web');
-      if (!/<sd-scene id="demo"[^>]*interaction="pointer-follow hover-lift shockwave poke"/.test(index)) fail('site/index: the hero default interactions should be pointer-follow hover-lift shockwave poke (no gravity)'); }
+      if (!/<sd-scene id="demo"[^>]*interaction="gravity pointer-follow hover-lift repel magnet collide scroll" gravity-strength="0.39" shading="matte" effect="rgb-split"/.test(index)) fail('site/index: the hero default should be gravity pointer-follow hover-lift repel magnet collide scroll at 0.39, matte, rgb-split'); }
     const css = readFileSync('site/src/styles.css', 'utf8');
     if (!/\.codebar pre \{[^}]*overflow-x: auto/.test(css)) fail('site/styles: the live markup should scroll horizontally (.codebar pre overflow-x: auto)');
     if (!/\.fps b \{[^}]*font-size: 20px/.test(css)) fail('site/styles: the fps figure should be 20 px');
@@ -1274,6 +1274,7 @@ async function site() {
         if (!r.storm || !/repel.*shockwave.*poke.*pull.*collide/.test(r.storm.interaction ?? '') || r.storm.gravity !== '0' || r.storm.checked !== 'Storm') fail(`site/index (${size ?? 'desktop'}): the Storm preset should drive the controls: ${JSON.stringify(r.storm)}`);
         if (r.orbitAttr !== 'pointer-follow hover-lift shockwave poke') fail(`site/index (${size ?? 'desktop'}): clicking Float should leave the shipped interaction order, got "${r.orbitAttr}"`);
         if (r.tweakClosed !== true) fail(`site/index (${size ?? 'desktop'}): a click outside should close the Tweak panel`);
+        { const L = r.atLoad ?? {}; if (L.moods !== 0 || L.rules !== 'gravity pointer-follow hover-lift repel magnet collide scroll' || L.strength !== '0.39' || L.shading !== 'matte' || L.effect !== 'rgb-split' || L.attrs?.join('|') !== 'gravity pointer-follow hover-lift repel magnet collide scroll|0.39|matte|rgb-split') fail(`site/index (${size ?? 'desktop'}): at load the Tweak controls and the scene should both show the default (no mood picked): ${JSON.stringify(L)}`); }
         if (r.tweakKept !== true) fail(`site/index (${size ?? 'desktop'}): a click inside the panel or on a mood pill should keep the Tweak panel open`);
         if (r.tweakEscFocus !== true) fail(`site/index (${size ?? 'desktop'}): Escape should close the panel and return focus to Tweak`);
         if (r.escOutside !== true) fail(`site/index (${size ?? 'desktop'}): Escape with focus elsewhere on the page should close the panel without moving focus`);

@@ -111,7 +111,7 @@ if (specEl) {
   // Moods: native radios (one tab stop, arrow keys), each applying its record through the controls (checks by membership, the rest by value).
   const presets = $('.presets', form);
   if (presets && spec.presets) for (const p of spec.presets) {
-    const label = document.createElement('label'), input = Object.assign(document.createElement('input'), { type: 'radio', name: 'mood', checked: p === spec.presets[0] });
+    const label = document.createElement('label'), input = Object.assign(document.createElement('input'), { type: 'radio', name: 'mood', checked: false });
     label.append(input, document.createTextNode(p.name));
     input.addEventListener('change', () => {
       applyingPreset = true;
@@ -233,6 +233,9 @@ if (location.search.includes('__check')) {
   let n = 0;
   const report = async () => {
     const scenesBeforeBench = $$('sd-scene').length;
+    const ctl = (name) => $$('#controls label').find((l) => l.querySelector('span')?.firstChild?.textContent === name)?.querySelector('select, input');
+    const atLoad = $('.presets') ? { moods: $$('.presets input:checked').length, rules: $$('#controls label.check input:checked').map((i) => i.closest('label').textContent.trim()).join(' '),
+      strength: ctl('Gravity')?.value, shading: ctl('Shading')?.value, effect: ctl('Effect')?.value, attrs: ['interaction', 'gravity-strength', 'shading', 'effect'].map((k) => $('#demo').getAttribute(k)) } : undefined;
     let bench, benchRowText, noTimerRow;
     if ($('#bench')) {
       try {
@@ -271,7 +274,7 @@ if (location.search.includes('__check')) {
     const demo = $('#demo');
     fetch('/__result', { method: 'POST', body: JSON.stringify({ errors, scenes: $$('sd-scene, sd-universe').length, theme: document.documentElement.dataset.theme, subject: $('#demo > *')?.localName, live: $('#live')?.textContent,
       objects: $$('#demo > *').length, hasCenter: !!center, scrollWidth: document.documentElement.scrollWidth, innerWidth, h1Bottom: h1?.bottom, dockTop: dock?.top, dockBox: dock && [Math.round(dock.left), Math.round(dock.right)], clientWidth: document.documentElement.clientWidth,
-      markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr, storm, manualClears, tweakClosed: typeof tweakClosed === 'undefined' ? undefined : tweakClosed, tweakKept: typeof tweakKept === 'undefined' ? undefined : tweakKept, tweakEscFocus: typeof tweakEscFocus === 'undefined' ? undefined : tweakEscFocus, escOutside: typeof escOutside === 'undefined' ? undefined : escOutside, orbitAttr: typeof orbitAttr === 'undefined' ? undefined : orbitAttr, radioPills: typeof radioPills === 'undefined' ? undefined : radioPills,
+      markup: demo && serialize(demo), centerOptions: center && [...center.options].map((o) => o.value), interactionAttr, storm, manualClears, tweakClosed: typeof tweakClosed === 'undefined' ? undefined : tweakClosed, tweakKept: typeof tweakKept === 'undefined' ? undefined : tweakKept, tweakEscFocus: typeof tweakEscFocus === 'undefined' ? undefined : tweakEscFocus, escOutside: typeof escOutside === 'undefined' ? undefined : escOutside, atLoad, orbitAttr: typeof orbitAttr === 'undefined' ? undefined : orbitAttr, radioPills: typeof radioPills === 'undefined' ? undefined : radioPills,
 contexts: $$('sd-scene, sd-universe').length + $$('*').filter((e) => e.shadowRoot?.querySelector('sd-scene')).length, sceneObjects: $$('sd-scene, sd-universe').map((s) => s.objects?.size), liveFrame: $('#live-frame')?.textContent,
       badge: $('.fps')?.textContent, legends: $$('#controls legend').map((l) => l.textContent), liveEscaped: (() => { const o = $('#demo > *'); if (!o) return null; o.setAttribute('title', 'a"b&c'); const txt = serialize($('#demo')); o.removeAttribute('title'); return txt.includes('title="a&quot;b&amp;c"'); })(), meter: meter?.textContent, bench, benchRow: benchRowText, noTimerRow, scenesBeforeBench }) });
   };
