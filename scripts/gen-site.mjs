@@ -74,6 +74,7 @@ function page(path, { title, description, main, hero = '' }) {
   const obj = path.match(/^objects\/(.+)\.html$/)?.[1];
   const head = {
     title: path === 'index.html' ? 'solids: lightweight 3D objects for the web' : `${title} | solids`,
+    analyticsPath: path === 'index.html' ? '' : path,
     description, url: BASE + (path === 'index.html' ? '' : path),
     image: BASE + (obj ? `og/objects/${obj}.jpg` : 'og/solids.jpg'),
     imageAlt: obj ? `<sd-${obj}> and its description, ${description.replace(/\.$/, '')}, beside a glassy ${obj} on a dark background, from solids.` : COVER_ALT,
