@@ -83,6 +83,8 @@ function page(path, { title, description, main, hero = '' }) {
   let html = shell.replace(/{{root}}/g, root);
   for (const [k, v] of Object.entries(head)) html = html.replace(new RegExp(`{{${k}}}`, 'g'), () => esc(v));
   html = html.replace('{{nav}}', () => nav(root, path)).replace('{{main}}', () => main).replace('{{hero}}', () => hero);
+  const schema={'@context':'https://schema.org','@type':'SoftwareSourceCode',name:'Solids',description,url:head.url,codeRepository:REPO,programmingLanguage:'JavaScript',runtimePlatform:'Web browser',license:BASE+'LICENSE',author:{'@type':'Person',name:'Maxence Mauduit',url:'https://mmaxence.me/'}};
+  html=html.replace('</head>',`<script type="application/ld+json">${JSON.stringify(schema).replace(/</g,'\\u003c')}</script></head>`);
   mkdirSync(`${OUT}/${path}`.replace(/\/[^/]+$/, ''), { recursive: true });
   writeFileSync(`${OUT}/${path}`, html);
 }
@@ -453,3 +455,7 @@ ${entries('interactions', interactions)}
 writeFileSync(`${OUT}/.nojekyll`, '');
 const count = readdirSync(OUT, { recursive: true }).filter((f) => f.endsWith('.html')).length;
 console.log(`site: ${count} pages in ${OUT}`);
+
+copyFileSync('LICENSE',`${OUT}/LICENSE`);
+const urls=readdirSync(OUT,{recursive:true}).filter(f=>f.endsWith('.html')).sort().map(f=>BASE+(f==='index.html'?'':f));
+writeFileSync(`${OUT}/sitemap.xml`,'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+urls.map(url=>`<url><loc>${url}</loc></url>`).join('')+'</urlset>\n');
