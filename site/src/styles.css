@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap");
 :root {
   --bg: #0a0a0c;
   --fg: #f2f2f5;
@@ -268,3 +269,6 @@ td:first-child code { white-space: nowrap; }
 .compare-rows h2 { margin: 0 0 4px; font-size: 20px; }
 .compare-rows > li > p { margin: 0 0 12px; color: var(--muted); }
 .catalogue.compare li { display: grid; place-items: center; padding: 14px 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--glass); }
+
+/* A shared visual family with Materia and Prisma, retaining the object-library layout. */
+:root:not([data-theme="light"]){--bg:#080c12;--fg:#e1e9f2;--muted:#97a9bf;--accent:#99b9e5;--line:#2b3a4d;--code:#111b28}html{font-family:'DM Sans',system-ui,sans-serif}.top{padding:22px 5vw;min-height:82px;gap:24px}.brand{font-size:28px;font-weight:700;letter-spacing:-1.5px}.top-links{gap:28px;font-size:11px}.theme{font-size:11px;border-radius:2px;min-height:30px}.side{top:82px;height:calc(100vh - 82px)}.foot{padding:28px 5vw;align-items:center;font-size:11px}.foot nav{display:flex;gap:24px;flex-wrap:wrap}.foot .creator{color:var(--muted)}@media(max-width:700px){.top{flex-wrap:wrap;gap:12px;padding:18px 5vw}.top-links{width:100%;justify-content:space-between;gap:12px}.brand{font-size:25px}.side{top:auto;height:auto}.foot{align-items:flex-start;flex-direction:column;gap:18px}.foot nav{gap:18px}}
