@@ -401,6 +401,7 @@ ${license}` });
 // --- static files ---
 copyFileSync('site/src/styles.css', `${OUT}/styles.css`);
 copyFileSync('site/src/site.js', `${OUT}/site.js`);
+copyFileSync('site/src/product-nav.js', `${OUT}/product-nav.js`);
 copyFileSync('dist/solids.js', `${OUT}/solids.js`);
 copyFileSync('dist/solids.js.map', `${OUT}/solids.js.map`);
 copyFileSync('docs/SKILL.md', `${OUT}/skill.md`);
