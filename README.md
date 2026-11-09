@@ -63,3 +63,5 @@ npm run check   # manifests, shader compile, pixel smoke tests, size budgets, si
 MIT
 
 The website loads DM Sans from Google Fonts; font binaries are not bundled and retain their own license.
+
+The site wordmark reuses Materia’s MIT-licensed animation. Its source and license are retained in `site/src/brand/`.

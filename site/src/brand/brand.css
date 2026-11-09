@@ -1,0 +1,18 @@
+.brand {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  flex-shrink: 0;
+  isolation: isolate;
+}
+.brand .brand-word {
+  display: block;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+.brand > span {
+  display: inline-block;
+}
+/* Give the travelling crest room above, below, and beyond the letter edges. */
+.brand {padding: 6px 24px 6px 8px; margin: -6px -24px -6px -8px;}

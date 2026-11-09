@@ -32,16 +32,10 @@
 <script data-goatcounter="https://solids.goatcounter.com/count"
   data-goatcounter-settings='{"path":"/{{analyticsPath}}","referrer":"","no_events":true}'
   async src="https://gc.zgo.at/count.js" referrerpolicy="no-referrer"></script>
-<script type="module" src="{{root}}product-nav.js?v=family-20261109"></script></head>
+<script type="module" src="{{root}}product-nav.js?v=direct-links"></script><script type="module" src="{{root}}brand/brand.js"></script><link rel="stylesheet" href="{{root}}brand/brand.css"><link rel="stylesheet" href="{{root}}family-nav.css?v=split-nav"></head>
 <body>
 <a class="skip" href="#{{skip}}">Skip to content</a>
-<header class="top">
-  <a class="brand" href="{{root}}index.html"><sd-orb size="22px" color="#9bd1ff" glow="0.4"></sd-orb><span>solids</span></a>
-  <nav class="top-links" aria-label="Site"><product-navigation current="solids"></product-navigation>
-    <a href="https://github.com/mmaxence/solids">GitHub</a>
-    <button type="button" class="theme" aria-label="Switch theme">Theme</button>
-  </nav>
-</header>
+<header class="top family-header"><div class="nav-left"><a class="brand" href="{{root}}index.html" aria-label="Solids home"><b class="brand-word">solids</b></a><nav class="local-nav" aria-label="On this site"><a href="{{root}}index.html#hero">Playground</a><a href="{{root}}index.html#main">Library</a></nav></div><nav class="service-nav" aria-label="Products and source"><product-navigation current="solids"></product-navigation><a href="https://github.com/mmaxence/solids">GitHub</a><button type="button" class="theme" aria-label="Switch theme">Theme</button></nav></header>
 {{hero}}
 <div class="frame">
   <nav class="side" aria-label="Library">{{nav}}</nav>
