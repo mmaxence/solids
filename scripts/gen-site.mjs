@@ -459,3 +459,5 @@ console.log(`site: ${count} pages in ${OUT}`);
 copyFileSync('LICENSE',`${OUT}/LICENSE`);
 const urls=readdirSync(OUT,{recursive:true}).filter(f=>f.endsWith('.html')).sort().map(f=>BASE+(f==='index.html'?'':f));
 writeFileSync(`${OUT}/sitemap.xml`,'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+urls.map(url=>`<url><loc>${url}</loc></url>`).join('')+'</urlset>\n');
+
+copyFileSync('site/src/facet-consent.js', `${OUT}/facet-consent.js`);
