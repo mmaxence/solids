@@ -27,6 +27,9 @@ jobs:
       - run: npm run check
         env:
           CHROME: google-chrome
+      - run: npm run check:package
+        env:
+          CHROME: google-chrome
       - run: git diff --exit-code -- dist
       - uses: actions/upload-pages-artifact@v4
         with:

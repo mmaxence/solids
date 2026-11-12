@@ -39,7 +39,47 @@ Each object is a web component drawn by a fragment shader. Add one script tag, t
 
 Living Object is distributed as browser ES modules from this repository and the site. The local package is private; **`npm install solids` installs an unrelated package**, not Living Object. No npm release or ownership of that registry name is claimed.
 
-For a local tarball, the current browser entry is `node_modules/solids/dist/solids.js`. The manifest does not yet expose a bare `solids` entry or exported TypeScript declarations. The default tarball includes development material; it is not a curated release package. Package entry points, declarations and a file allowlist must be settled before registry distribution. Existing `solids.js`, `core.js` and `sd-*` APIs stay unchanged.
+## Local package and TypeScript
+
+Build and pack from the checkout (packing also builds fresh JS and declarations):
+
+```sh
+npm ci
+npm pack
+# In a separate browser application; use the tarball path printed above:
+npm install /absolute/path/to/solids-0.1.0.tgz
+```
+
+This installs a local artifact, not the unrelated registry package. The manifest stays `private: true` while registry identity and publication are unresolved.
+
+```ts
+import { SdScene, SdObject, registry } from 'solids';
+// Existing explicit package path also works:
+import { defineObject } from 'solids/dist/solids.js';
+
+const scene: SdScene = document.createElement('sd-scene');
+const orb: SdObject = document.createElement('sd-orb');
+orb.setAttribute('animation', 'spin');
+scene.append(orb);
+document.body.append(scene);
+// Disconnecting releases observers, scheduling and the WebGL context:
+scene.remove();
+```
+
+Native browser imports still use a served module URL or an import map; a browser does not resolve npm names by itself. Hosted `solids.js`/`core.js` URLs and `sd-*` tags are unchanged. Runtime modules require browser DOM APIs; these entry points are not SSR renderers.
+
+| Import | Runtime | Types and registration |
+| --- | --- | --- |
+| `solids` | `dist/solids.js` | Emitted declarations; full shape/text element registration |
+| `solids/core` | `dist/core.js` | Emitted core declarations; scene/universe only, no shape catalogue |
+| `solids/dist/solids.js` | Same full file | Compatible explicit import with the same types |
+| `solids/dist/core.js` | Same core file | Compatible explicit core import with the same types |
+
+Full and core are alternative entry bundles with separate registries; choose one per application realm rather than mixing them. The core entry is for custom registration with `defineObject`; its empty object registry is intentional. Custom dynamic tags and reflected attributes use `setAttribute` or explicit consumer types. Known `document.createElement` tags are typed for the entry that actually registers them. Shape parameters remain attributes, not invented constructor options.
+
+The tarball contains the built JS/source maps, emitted declaration graph, README, MIT license and extension guide. It excludes the site, scratch pages, internal plans, source/build scripts and tests. Custom-shape development uses the repository and [extension guide](docs/SKILL.md); copying the tarball alone is not a shader-source development checkout.
+
+`npm run check:package` builds and packs, installs into a fresh temporary project, checks contents, typechecks NodeNext and Bundler consumers, then checks bundled browser registration for root/core and explicit paths. It requires Chrome (`CHROME` can select it). This contract is validated locally; it does not claim authenticated registry ownership, a registry release, or broad browser/device certification.
 
 ## Five layers
 
