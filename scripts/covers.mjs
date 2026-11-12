@@ -34,7 +34,7 @@ sd-scene{position:absolute;top:0;bottom:0;right:0;left:540px}
 sd-scene>*{position:absolute;translate:-50% -50%}`;
 const at = (l, t) => `style="left:${l}%;top:${t}%"`;
 const shell = (copy, scene, title) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${CSS}</style>
-<script type="module" src="../solids.js"></script></head><body><div class="copy"><div class="brand"><img src="../favicon.svg" width="32" height="32" alt="">solids</div>${copy}<div class="url">mmaxence.github.io/solids</div></div>
+<script type="module" src="../solids.js"></script></head><body><div class="copy"><div class="brand"><span style="border:1px solid currentColor;border-radius:8px;padding:8px 12px;font-size:21px">Living</span> Object</div>${copy}<div class="url">mmaxence.github.io/solids</div></div>
 <sd-scene theme="dark" dpr="2">${scene}</sd-scene></body></html>`;
 const far = (r) => ` effect="defocus" defocus-radius="${r}" state="off"`;
 

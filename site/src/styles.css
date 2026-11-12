@@ -268,3 +268,24 @@ td:first-child code { white-space: nowrap; }
 .compare-rows h2 { margin: 0 0 4px; font-size: 20px; }
 .compare-rows > li > p { margin: 0 0 12px; color: var(--muted); }
 .catalogue.compare li { display: grid; place-items: center; padding: 14px 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--glass); }
+
+/* Object's wordmark: a shallow solid face, with one slow turn into the light. */
+.brand.living-brand { perspective: 420px; }
+.brand.living-brand .object-word {
+  display: inline-block;
+  transform-origin: 50% 55%;
+  text-shadow: 0 1px 0 color-mix(in srgb, currentColor 65%, transparent),
+    0 2px 0 color-mix(in srgb, currentColor 32%, transparent),
+    0 3px 0 color-mix(in srgb, currentColor 15%, transparent);
+  animation: object-word-turn 7s cubic-bezier(.4,0,.2,1) infinite;
+}
+@keyframes object-word-turn {
+  0%, 10%, 72%, 100% { transform: rotateX(0deg) rotateY(0deg) translateY(0); }
+  26% { transform: rotateX(10deg) rotateY(-14deg) translateY(-1px); }
+  44% { transform: rotateX(-6deg) rotateY(12deg) translateY(-1px); }
+  60% { transform: rotateX(0deg) rotateY(0deg) translateY(0); }
+}
+html[data-brand-paused] .object-word { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .brand.living-brand .object-word { animation: none; transform: none; }
+}

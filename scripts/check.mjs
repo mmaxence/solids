@@ -1141,7 +1141,7 @@ async function site() {
     const miss = ['og:title', 'og:description', 'og:image', 'og:image:alt', 'twitter:title', 'twitter:description', 'twitter:image'].filter((k) => !meta(k));
     if (miss.length) { fail(`site/${f}: missing share tags ${miss.join(', ')}`); continue; }
     if (meta('og:url') !== url || !html.includes(`<link rel="canonical" href="${url}">`)) fail(`site/${f}: og:url and canonical should be ${url}`);
-    if (meta('og:type') !== 'website' || meta('og:site_name') !== 'solids' || meta('twitter:card') !== 'summary_large_image') fail(`site/${f}: og:type website, og:site_name solids and twitter:card summary_large_image expected`);
+    if (meta('og:type') !== 'website' || meta('og:site_name') !== 'Living Object' || meta('twitter:card') !== 'summary_large_image') fail(`site/${f}: og:type website, og:site_name Living Object and twitter:card summary_large_image expected`);
     const img = meta('og:image');
     if (!img.startsWith(BASE_URL + 'og/') || meta('twitter:image') !== img || meta('og:image:width') !== '1200' || meta('og:image:height') !== '630') { fail(`site/${f}: the cover should be an absolute 1200 by 630 image under ${BASE_URL}og/, the same for Twitter: ${img}`); continue; }
     covers.add(img.slice(BASE_URL.length));
@@ -1151,7 +1151,7 @@ async function site() {
   for (const c of covers) { const p = `site/dist/${c}`; if (!existsSync(p)) { fail(`site: cover ${c} is missing`); continue; }
     const b = readFileSync(p), [w, h] = imageSize(b); if (w !== 1200 || h !== 630) fail(`site: cover ${c} is ${w} by ${h}, expected 1200 by 630`); if (b.length > 250 * 1024) fail(`site: cover ${c} is ${Math.round(b.length / 1024)} KB, keep it under 250 KB`); }
   for (const [p, w] of [['site/dist/favicon.svg', 0], ['site/dist/og/apple-touch-icon.png', 180]]) { if (!existsSync(p)) fail(`site: ${p} is missing`); else if (w && imageSize(readFileSync(p))[0] !== w) fail(`site: ${p} should be ${w} px wide`); }
-  { const idx = readFileSync('site/dist/index.html', 'utf8'); if (!/<meta property="og:title" content="solids: lightweight 3D objects for the web">/.test(idx)) fail('site/index: og:title should read solids: lightweight 3D objects for the web'); }
+  { const idx = readFileSync('site/dist/index.html', 'utf8'); if (!/<meta property="og:title" content="Living Object: lightweight 3D objects for the web">/.test(idx)) fail('site/index: og:title should read Living Object: lightweight 3D objects for the web'); }
   { const knot = existsSync('site/dist/objects/knot.html') ? readFileSync('site/dist/objects/knot.html', 'utf8') : ''; if (!/<meta property="og:image:alt" content="[^"]*&lt;sd-knot&gt;[^"]*A glassy torus knot/.test(knot)) fail('site/objects/knot: the cover alt should give the tag and the description shown on the cover'); }
   // The covers bake in the bundle size, each description and each object's page color: covers.json records them, and they must match.
   { const stamp = existsSync('site/src/og/covers.json') ? JSON.parse(readFileSync('site/src/og/covers.json', 'utf8')) : null;
@@ -1168,7 +1168,7 @@ async function site() {
   const llms = text('llms.txt');
   const unlisted = pages.filter((f) => /^(objects|effects|shades|interactions)\//.test(f) && !llms.includes(f));
   for (const extra of ['universe.html', 'performance.html']) if (existsSync(`site/dist/${extra}`) && !llms.includes(extra)) unlisted.push(extra);
-  if (!llms.startsWith('# solids') || !llms.includes('skill.md') || unlisted.length) fail(`site/llms.txt: title, skill.md and every object, effect and interaction page expected; missing ${unlisted.join(', ') || 'none'}`);
+  if (!llms.startsWith('# Living Object') || !llms.includes('skill.md') || unlisted.length) fail(`site/llms.txt: title, skill.md and every object, effect and interaction page expected; missing ${unlisted.join(', ') || 'none'}`);
   for (const f of ['skill.md', 'llms.txt']) if (/\u2014/.test(text(f))) fail(`site/${f}: contains an em dash`);
   // Landing: the sections under the hero, in the spec order, and a Copy prompt in the dock.
   const index = text('index.html');

@@ -1,4 +1,7 @@
-# solids
+# Living Object
+
+Part of **Living Things — Libraries for a living web**. Formerly **Solids**. Existing repository URLs, package names, imports and APIs remain unchanged.
+
 
 Lightweight 3D objects for the web. Zero dependencies, about 27 KB gzipped for the whole library.
 

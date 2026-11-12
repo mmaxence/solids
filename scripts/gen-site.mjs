@@ -73,11 +73,11 @@ function page(path, { title, description, main, hero = '' }) {
   const root = path.includes('/') ? '../' : './';
   const obj = path.match(/^objects\/(.+)\.html$/)?.[1];
   const head = {
-    title: path === 'index.html' ? 'solids: lightweight 3D objects for the web' : `${title} | solids`,
+    title: path === 'index.html' ? 'Living Object: lightweight 3D objects for the web' : `${title} | Living Object`,
     analyticsPath: path === 'index.html' ? '' : path,
     description, url: BASE + (path === 'index.html' ? '' : path),
     image: BASE + (obj ? `og/objects/${obj}.jpg` : 'og/solids.jpg'),
-    imageAlt: obj ? `<sd-${obj}> and its description, ${description.replace(/\.$/, '')}, beside a glassy ${obj} on a dark background, from solids.` : COVER_ALT,
+    imageAlt: obj ? `<sd-${obj}> and its description, ${description.replace(/\.$/, '')}, beside a glassy ${obj} on a dark background, from Living Object.` : COVER_ALT,
     skip: hero ? 'hero' : 'main',
   };
   let html = shell.replace(/{{root}}/g, root);
@@ -232,8 +232,8 @@ ${layer('Interactions', 'Scene rules that react to the pointer and to each other
     const h = s.match(/^## (.*)/)[1];
     return `<section class="band" id="${h.toLowerCase().replace(/\s+/g, '-')}">${md(s)}${live[h] ?? ''}</section>`;
   }).join('\n')}</div>`;
-  page('index.html', { title: 'solids', description: `Glassy 3D shapes as web components. One script tag, no dependencies, about ${Math.round(sizes.full / 1024)} KB.`, main, hero: heroHtml });
-  page('accessibility.html', { title: 'Accessibility', description: 'How solids objects behave for assistive tech, reduced motion, and low-end devices.', main: md(readFileSync('site/src/accessibility.md', 'utf8')) });
+  page('index.html', { title: 'Living Object', description: `Glassy 3D shapes as web components. One script tag, no dependencies, about ${Math.round(sizes.full / 1024)} KB.`, main, hero: heroHtml });
+  page('accessibility.html', { title: 'Accessibility', description: 'How Living Object objects behave for assistive tech, reduced motion, and low-end devices.', main: md(readFileSync('site/src/accessibility.md', 'utf8')) });
 }
 
 // --- Object pages ---
@@ -356,7 +356,7 @@ ${objects.map((o) => row(`data-tag="${o.tag}"`, `<a href="objects/${o.name}.html
 ${effects.map((e) => row(`data-effect="${e.name}"`, `<a href="effects/${e.name}.html">${e.name}</a> on an orb`)).join('\n')}
 </tbody></table>`;
   const main = `${md(head).replace('<p>', '<p class="lede">')}\n${md(sizesMd)}${sizesTable}\n${md(meterMd)}${meter}\n${md(benchMd)}${bench}`;
-  page('performance.html', { title: 'Performance', description: 'What solids costs: bundle sizes, a live frame meter, and a benchmark that runs in your browser.', main });
+  page('performance.html', { title: 'Performance', description: 'What Living Object costs: bundle sizes, a live frame meter, and a benchmark that runs in your browser.', main });
 }
 
 // --- Universe page ---
@@ -400,6 +400,8 @@ ${license}` });
 
 // --- static files ---
 copyFileSync('site/src/styles.css', `${OUT}/styles.css`);
+copyFileSync('site/src/living-brand.css', `${OUT}/living-brand.css`);
+copyFileSync('site/src/product-nav.js', `${OUT}/product-nav.js`);
 copyFileSync('site/src/site.js', `${OUT}/site.js`);
 copyFileSync('dist/solids.js', `${OUT}/solids.js`);
 copyFileSync('dist/solids.js.map', `${OUT}/solids.js.map`);
@@ -408,7 +410,7 @@ copyFileSync('site/src/favicon.svg', `${OUT}/favicon.svg`);
 if (existsSync('site/src/og')) cpSync('site/src/og', `${OUT}/og`, { recursive: true });
 // llms.txt (llmstxt.org shape): title, a one-paragraph summary, then one link line per page.
 const entries = (dir, list) => list.map((x) => `- [${x.name}](${BASE}${dir}/${x.name}.html): ${x.description}`).join('\n');
-writeFileSync(`${OUT}/llms.txt`, `# solids
+writeFileSync(`${OUT}/llms.txt`, `# Living Object
 
 > Lightweight 3D objects for the web: glassy shapes as web components such as <sd-orb>, each drawn by a fragment shader. Load ${SCRIPT} as a module, then use the tags in HTML; objects can animate, take post effects, and interact inside an <sd-scene>; <sd-universe> fills a box with a cloud of shapes in 3D behind a camera you can spin and drag. To add an object or an effect, read skill.md: it is the whole contract, written for coding agents, and npm run check validates the result.
 

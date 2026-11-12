@@ -1,3 +1,8 @@
+// Keep the decorative wordmark at rest while the page is out of sight.
+const syncBrandMotion = () => document.documentElement.toggleAttribute('data-brand-paused', document.hidden);
+document.addEventListener('visibilitychange', syncBrandMotion);
+syncBrandMotion();
+
 // Page behavior: theme toggle, tabs, generated controls, live markup, copy buttons.
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];

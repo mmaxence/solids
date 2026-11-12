@@ -1,13 +1,13 @@
 ## Built for agents
 
-solids is made to be extended by a coding agent. Every object follows one short contract, a manifest, a shader with a `map()` function and a README, so an agent that reads it can add a shape that fits the family. The new object gets its own page here, with the shared controls.
+Living Object is made to be extended by a coding agent. Every object follows one short contract, a manifest, a shader with a `map()` function and a README, so an agent that reads it can add a shape that fits the family. The new object gets its own page here, with the shared controls.
 
 1. Clone the repo and give your agent [skill.md](skill.md), the contract.
 2. Describe the shape you want in a sentence or two.
 3. Run `npm run check`. When it prints `ok`, the object compiles, draws and fits the size budget.
 
 ```text
-Read https://mmaxence.github.io/solids/skill.md, then add an object to solids:
+Read https://mmaxence.github.io/solids/skill.md, then add an object to Living Object (the solids repository):
 a pebble, a flattened stone with a soft edge, with one parameter for how flat it is.
 Run npm run check until it prints ok.
 ```

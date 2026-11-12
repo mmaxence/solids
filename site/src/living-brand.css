@@ -1,0 +1,11 @@
+/* Living Things: shared identity, independently shipped by every library. */
+.brand.living-brand{display:inline-flex;align-items:center;gap:10px;white-space:nowrap;text-decoration:none;flex-shrink:0;line-height:1;margin:0;padding:4px 0;letter-spacing:-.035em;font-size:22px;font-weight:600}
+.brand.living-brand .living-block{display:inline-flex;align-items:center;justify-content:center;position:relative;isolation:isolate;overflow:hidden;padding:9px 11px;border:1px solid currentColor;border-radius:7px;font:600 14px/1 system-ui,sans-serif;letter-spacing:-.04em;color:inherit;background:color-mix(in srgb,currentColor 5%,transparent)}
+.living-block::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(110deg,transparent 20%,currentColor 50%,transparent 80%);opacity:0;transform:translateX(-130%);transition:transform .8s ease,opacity .8s ease}
+.living-brand:hover .living-block::after,.living-brand:focus-visible .living-block::after{transform:translateX(130%);opacity:.12}
+.living-brand .brand-word{font:inherit;letter-spacing:inherit;color:inherit}
+.living-brand .strata-mark,.living-brand>sd-orb{display:none}
+.living-family-note{font:400 12px/1.6 system-ui,sans-serif;opacity:.7;letter-spacing:0}
+product-navigation{display:inline-flex;flex-shrink:0}
+@media(max-width:680px){.brand.living-brand{font-size:20px;gap:8px}.brand.living-brand .living-block{font-size:13px;padding:8px 9px}.public-nav,.family-header,.top{flex-wrap:wrap;gap:12px}.public-nav>nav{flex-wrap:wrap;gap:14px}.family-header .brand-group,.family-header .nav-left{gap:18px;flex-wrap:wrap}.top-links{gap:12px}}
+@media(prefers-reduced-motion:reduce){.living-block::after{transition:none;display:none}}
