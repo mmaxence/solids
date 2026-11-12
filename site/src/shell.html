@@ -5,13 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{title}}</title>
 <meta name="description" content="{{description}}">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="alternate" type="text/plain" href="https://mmaxence.github.io/solids/llms.txt" title="Living Object agent documentation index">
+<link rel="sitemap" type="application/xml" href="https://mmaxence.github.io/solids/sitemap.xml">
 <link rel="canonical" href="{{url}}">
 <link rel="icon" href="{{root}}favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="{{root}}og/apple-touch-icon.png">
 <meta name="theme-color" content="#0a0a0c" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f4f7" media="(prefers-color-scheme: light)">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="Living Object">
+<meta property="og:site_name" content="solids">
 <meta property="og:title" content="{{title}}">
 <meta property="og:description" content="{{description}}">
 <meta property="og:url" content="{{url}}">
@@ -24,34 +27,34 @@
 <meta name="twitter:description" content="{{description}}">
 <meta name="twitter:image" content="{{image}}">
 <meta name="twitter:image:alt" content="{{imageAlt}}">
-<link rel="stylesheet" href="{{root}}styles.css">
+<link rel="stylesheet" href="{{root}}styles.css?v=family-20261109">
 <script>try{var t=localStorage.getItem('sd-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <script type="module" src="{{root}}solids.js"></script>
 <script type="module" src="{{root}}site.js"></script>
-<!-- Dedicated Solids counter; generated paths exclude queries and playground inputs. -->
+<!-- Dedicated Living Object counter; generated paths exclude queries and playground inputs. -->
 <script data-goatcounter="https://solids.goatcounter.com/count"
   data-goatcounter-settings='{"path":"/{{analyticsPath}}","referrer":"","no_events":true}'
   async src="https://gc.zgo.at/count.js" referrerpolicy="no-referrer"></script>
-<link rel="stylesheet" href="{{root}}living-brand.css">
-</head>
+<script type="module" src="{{root}}product-nav.js?v=direct-links"></script><link rel="stylesheet" href="{{root}}brand/brand.css"><link rel="stylesheet" href="{{root}}family-nav.css?v=split-nav"><link rel="stylesheet" href="{{root}}living-brand.css"></head>
 <body>
 <a class="skip" href="#{{skip}}">Skip to content</a>
-<header class="top">
-  <a class="brand living-brand" href="{{root}}index.html"><span class="living-block">Living</span> <sd-orb size="22px" color="#9bd1ff" glow="0.4"></sd-orb><span class="brand-word object-word">Object</span></a>
-  <nav class="top-links" aria-label="Site"><product-navigation current="solids"></product-navigation>
-    <a href="https://github.com/mmaxence/solids">GitHub</a>
-    <button type="button" class="theme" aria-label="Switch theme">Theme</button>
-  </nav>
-</header>
+<header class="top family-header"><div class="nav-left"><a class="brand living-brand" href="{{root}}index.html" aria-label="Living Object home"><span class="living-block">Living</span> <b class="brand-word object-word">Object</b></a><nav class="local-nav" aria-label="On this site"><a href="{{root}}index.html#hero">Playground</a><a href="{{root}}index.html#main">Library</a></nav></div><nav class="service-nav" aria-label="Products and source"><product-navigation current="solids"></product-navigation><a href="https://github.com/mmaxence/solids">GitHub</a><button type="button" class="theme" aria-label="Switch theme">Theme</button></nav></header>
 {{hero}}
 <div class="frame">
   <nav class="side" aria-label="Library">{{nav}}</nav>
   <main id="main" class="main">{{main}}</main>
 </div>
-<footer class="foot"><p class="living-family-note">Living Things · Libraries for a living web</p>
-  <span>Living Object is MIT licensed.</span>
-  <span>Built by <a href="https://mmaxence.me">Maxence Mauduit</a>. Also exploring <a href="https://mmaxence.github.io/materia/">Living Type: living typography</a>.</span>
-</footer>
-<script type="module" src="{{root}}product-nav.js"></script>
+<footer class="foot"><span>Living Object · MIT open source</span><nav aria-label="Projects by Maxence"><a href="https://mmaxence.github.io/materia/">Living Type</a><a href="https://mmaxence.github.io/prisma/">Living Frame</a><a class="creator" href="https://mmaxence.me/">Meet Maxence</a></nav><a href="{{root}}llms.txt">Agent docs</a></footer>
+<aside class="facet-choice" aria-label="Optional Facet analytics"><details><summary>Optional analytics: your choice</summary>
+<p>Facet helps us understand which public pages people read and how they find this site. It stays off unless you allow it. Declining does not change your access.</p>
+<p>If allowed, Facet records page views, their time, the configured public page path, limited source categories and approved referring domains. It does not collect country, browser, operating system or device categories in this trial.</p>
+<p>Facet event records do not contain raw IP addresses, raw browser identification strings, full referring URLs, URL queries, precise location, visitor IDs or linked activity across websites. A random key identifies each event to prevent duplicate delivery, not to recognize you. Blockers and network failures can prevent recording.</p>
+<p>Active events are scheduled for deletion after 30 days. Cloudflare D1 recovery can retain deleted records for up to seven additional days. Outages may delay deletion; collection pauses when retention checks become stale. Cloudflare processes network information to deliver this service.</p>
+<p>Your choice is saved separately for this app in this browser. Withdraw permission to stop future collection; previously sent events remain until scheduled deletion. Browser privacy signals override permission. A new notice version requires a new choice. This controls Facet only; existing <a href="https://www.goatcounter.com/privacy">GoatCounter analytics</a> remains separate.</p>
+<p>Questions or requests: <a href="mailto:contact@mmaxence.me">contact@mmaxence.me</a>.</p>
+<p id="fn-consent-status" role="status">Facet is off. Your choice does not affect access.</p>
+<div class="facet-choices"><button id="fn-allow" type="button">Allow Facet</button><button id="fn-decline" type="button">Decline</button><button id="fn-withdraw" type="button">Withdraw permission</button></div><noscript>Facet is off because JavaScript is unavailable.</noscript></details></aside>
+<script defer src="/solids/facet-consent.js?v=pages-v1" data-site="solids" data-page="/solids/{{analyticsPath}}" data-route-consent="pages-v1" data-collector="https://fieldnotes-pilot.holy-waterfall-a8d6.workers.dev"></script>
+<style>.facet-choice{max-width:72rem;margin:2rem auto;padding:1rem 1.5rem;font-size:.875rem;line-height:1.6}.facet-choice summary{cursor:pointer;text-decoration:underline}.facet-choice p{max-width:75ch;margin:.8rem 0}.facet-choices{display:flex;flex-wrap:wrap;gap:.6rem}.facet-choices button{font:inherit;color:inherit;background:transparent;border:1px solid currentColor;border-radius:.4rem;padding:.6rem .9rem;cursor:pointer}.facet-choice :focus-visible{outline:2px solid currentColor;outline-offset:4px}</style>
 </body>
 </html>
