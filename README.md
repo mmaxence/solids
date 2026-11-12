@@ -35,6 +35,12 @@ Each object is a web component drawn by a fragment shader. Add one script tag, t
 </sd-scene>
 ```
 
+## Delivery status
+
+Living Object is distributed as browser ES modules from this repository and the site. The local package is private; **`npm install solids` installs an unrelated package**, not Living Object. No npm release or ownership of that registry name is claimed.
+
+For a local tarball, the current browser entry is `node_modules/solids/dist/solids.js`. The manifest does not yet expose a bare `solids` entry or exported TypeScript declarations. The default tarball includes development material; it is not a curated release package. Package entry points, declarations and a file allowlist must be settled before registry distribution. Existing `solids.js`, `core.js` and `sd-*` APIs stay unchanged.
+
 ## Five layers
 
 | Layer | What it is | Set with |
@@ -67,4 +73,4 @@ MIT
 
 The website loads DM Sans from Google Fonts; font binaries are not bundled and retain their own license.
 
-The site wordmark reuses Materia’s MIT-licensed animation. Its source and license are retained in `site/src/brand/`.
+The current Object wordmark uses CSS motion. Earlier Materia animation code and its MIT license remain retained in `site/src/brand/`; the site does not load that animation script.
