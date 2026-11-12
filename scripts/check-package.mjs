@@ -17,11 +17,11 @@ try {
   // npm can prefix JSON with stdout from the prepack build.
   const packed = JSON.parse(packOutput.slice(packOutput.lastIndexOf('\n[') + 1))[0];
   const files = packed.files.map(f => f.path);
-  for (const file of files) assert(/^(?:dist\/(?:[^/]+\.js(?:\.map)?|types\/.+\.d\.ts)|README\.md|LICENSE|docs\/SKILL\.md|package\.json)$/.test(file), `unexpected packed file: ${file}`);
-  for (const file of ['LICENSE', 'README.md', 'docs/SKILL.md', 'dist/solids.js', 'dist/core.js', 'dist/types/index.d.ts', 'dist/types/core.d.ts']) assert(files.includes(file), `missing ${file}`);
+  for (const file of files) assert(/^(?:dist\/(?:[^/]+\.js(?:\.map)?|types\/.+\.d\.ts)|README\.md|LICENSE|docs\/(?:SKILL|integration)\.md|package\.json)$/.test(file), `unexpected packed file: ${file}`);
+  for (const file of ['LICENSE', 'README.md', 'docs/SKILL.md', 'docs/integration.md', 'dist/solids.js', 'dist/core.js', 'dist/types/index.d.ts', 'dist/types/core.d.ts']) assert(files.includes(file), `missing ${file}`);
   const consumer = join(temp, 'consumer'); mkdirSync(consumer);
   writeFileSync(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
-  execFileSync(npm, ['install', '--ignore-scripts', '--no-audit', '--no-fund', join(temp, packed.filename)], { cwd: consumer, stdio: 'pipe' });
+  execFileSync(npm, ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', join(temp, packed.filename)], { cwd: consumer, stdio: 'pipe' });
   const manifest = JSON.parse(readFileSync(join(consumer, 'node_modules/solids/package.json'), 'utf8'));
   assert.equal(manifest.private, true, 'registry publication safeguard must remain');
   assert.equal(manifest.name, 'solids', 'local identity must not be silently renamed');

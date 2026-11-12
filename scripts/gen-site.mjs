@@ -400,6 +400,8 @@ ${effects.map((e) => row(`data-effect="${e.name}"`, `<a href="effects/${e.name}.
 ${license}` });
 }
 
+page('integration.html', {title:'Integration and lifecycle', description:'Local package paths, connection cleanup, static alternatives and measured limits.', main:md(readFileSync('docs/integration.md','utf8').replaceAll('../examples/', 'examples/'))});
+
 // --- static files ---
 copyFileSync('site/src/styles.css', `${OUT}/styles.css`);
 copyFileSync('site/src/living-brand.css', `${OUT}/living-brand.css`);
@@ -410,6 +412,12 @@ cpSync('site/src/brand', `${OUT}/brand`, { recursive: true });
 copyFileSync('dist/solids.js', `${OUT}/solids.js`);
 copyFileSync('dist/solids.js.map', `${OUT}/solids.js.map`);
 copyFileSync('docs/SKILL.md', `${OUT}/skill.md`);
+writeFileSync(`${OUT}/integration.md`,readFileSync('docs/integration.md','utf8').replaceAll('../examples/', 'examples/'));
+cpSync('docs', `${OUT}/docs`, {recursive:true});
+copyFileSync('README.md', `${OUT}/README.md`);
+cpSync('examples', `${OUT}/examples`, {recursive:true});
+const examplePath=`${OUT}/examples/lifecycle/index.html`;
+writeFileSync(examplePath,readFileSync(examplePath,'utf8').replace('../../dist/solids.js','../../solids.js').replaceAll('../../site/src/','../../'));
 copyFileSync('site/src/favicon.svg', `${OUT}/favicon.svg`);
 if (existsSync('site/src/og')) cpSync('site/src/og', `${OUT}/og`, { recursive: true });
 // llms.txt (llmstxt.org shape): title, a one-paragraph summary, then one link line per page.
@@ -421,6 +429,8 @@ writeFileSync(`${OUT}/llms.txt`, `# Living Object
 ## Contract
 
 - [skill.md](${SKILL}): how to add an object or an effect to solids.
+- [Integration guide](${BASE}integration.md): current local tarball imports, lifecycle, static/mobile alternatives and measured limits; 12 alpha shapes, not registry availability.
+- [Lifecycle example](${BASE}examples/lifecycle/index.html): static-first application policy, one shared scene and explicit cleanup.
 
 ## Objects
 
@@ -450,6 +460,7 @@ ${entries('interactions', interactions)}
 - [Universe](${BASE}universe.html): a scene that fills its box with seeded shapes in 3D, with a camera that spins and drags, a depth of field and optional collisions.
 - [Text](${BASE}text.html): HTML text lifted into 3D with sd-text, in your own font, with depth, a pixel mode and every shade and interaction.
 - [Performance](${BASE}performance.html): bundle sizes, a live frame meter, and a benchmark that runs in the browser.
+- [Integration](${BASE}integration.html): supported runtime versus application-owned policy; local versus live status.
 - [Accessibility](${BASE}accessibility.html): reduced motion, focus, contrast, the context limit.
 - [GitHub](${REPO}): source, README and the contribution flow.
 `);

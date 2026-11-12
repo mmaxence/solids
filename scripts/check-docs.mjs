@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {readFileSync,readdirSync} from 'node:fs';
+const read=p=>readFileSync(p,'utf8'),pkg=JSON.parse(read('package.json'));
+assert.equal(pkg.name,'solids');assert.equal(pkg.version,'0.1.0');assert.equal(pkg.private,true);assert.equal(pkg.sideEffects,true);assert(!pkg.dependencies);assert(pkg.files.includes('docs/integration.md'));
+const shapes=readdirSync('src/objects',{withFileTypes:true}).filter(x=>x.isDirectory());assert.equal(shapes.length,12);
+for(const file of ['docs/integration.md','docs/SKILL.md','README.md'])assert.equal(read('site/dist/'+file),read(file),file);
+assert.equal(read('site/dist/integration.md'),read('docs/integration.md').replaceAll('../examples/','examples/'));
+assert.equal(read('site/dist/skill.md'),read('docs/SKILL.md'));
+for(const file of ['app.js','style.css'])assert.equal(read('site/dist/examples/lifecycle/'+file),read('examples/lifecycle/'+file));
+assert.equal(read('site/dist/examples/lifecycle/index.html'),read('examples/lifecycle/index.html').replace('../../dist/solids.js','../../solids.js').replaceAll('../../site/src/','../../'));
+assert.equal(read('site/dist/solids.js'),read('dist/solids.js'));
+for(const keyword of ['paused','requesting animation frames','12 shapes','210','not SSR-safe','solids/core','scene.remove()','640px'])assert(read('docs/integration.md').includes(keyword),keyword);
+assert(read('site/dist/llms.txt').includes('integration.md')&&read('site/dist/sitemap.xml').includes('examples/lifecycle/index.html'));
+assert(!/fonts.googleapis|<img|<video/.test(read('examples/lifecycle/index.html')+read('examples/lifecycle/style.css')));
+console.log(JSON.stringify({pass:true,catalogShapes:shapes.length,standaloneExamples:1,guideAndExampleMirrors:true,privateSafeguard:true,runtimeDependencies:0}));

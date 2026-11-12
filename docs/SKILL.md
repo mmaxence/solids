@@ -7,6 +7,10 @@ description: Add a new 3D object, effect, shade, interaction or animation to the
 
 solids renders every object as a signed distance field (SDF) raymarched in a fragment shader on a quad. You never touch the renderer. You add one folder and register it in one index file; the element, the site page and the controls all come from the manifest.
 
+## Consuming the library
+
+For application integration rather than extending shaders, read the README and the repository integration guide at docs/integration.md (served as integration.md on the site). The local private tarball has root/core and explicit imports with declarations; unscoped npm solids is unrelated. Use one full/core entry per browser realm. The current catalog is 12 shapes, not the planned expansion. Native disconnection owns cleanup; reduced preference is not zero-RAF static mode. The static-first lifecycle example shows application policy without introducing runtime methods. No registry identity, live-document parity or physical-device certification is implied.
+
 ## The contract
 
 ```

@@ -77,9 +77,15 @@ Native browser imports still use a served module URL or an import map; a browser
 
 Full and core are alternative entry bundles with separate registries; choose one per application realm rather than mixing them. The core entry is for custom registration with `defineObject`; its empty object registry is intentional. Custom dynamic tags and reflected attributes use `setAttribute` or explicit consumer types. Known `document.createElement` tags are typed for the entry that actually registers them. Shape parameters remain attributes, not invented constructor options.
 
-The tarball contains the built JS/source maps, emitted declaration graph, README, MIT license and extension guide. It excludes the site, scratch pages, internal plans, source/build scripts and tests. Custom-shape development uses the repository and [extension guide](docs/SKILL.md); copying the tarball alone is not a shader-source development checkout.
+The tarball contains the built JS/source maps, emitted declaration graph, README, MIT license, integration guide and extension guide. It excludes the site, scratch pages, internal plans, source/build scripts and tests. Custom-shape development uses the repository and [extension guide](docs/SKILL.md); copying the tarball alone is not a shader-source development checkout.
 
 `npm run check:package` builds and packs, installs into a fresh temporary project, checks contents, typechecks NodeNext and Bundler consumers, then checks bundled browser registration for root/core and explicit paths. It requires Chrome (`CHROME` can select it). This contract is validated locally; it does not claim authenticated registry ownership, a registry release, or broad browser/device certification.
+
+## Integration and lifecycle
+
+The current alpha contains **12 shapes**. Start with the [integration guide](docs/integration.md) for client-only imports, connection/disconnection, pause, reduced-motion limits, mobile/static alternatives and rendering costs. Run the [static-first lifecycle example](examples/lifecycle/index.html) after building and serving the checkout. Its application helpers are not runtime APIs.
+
+Visible reduced-motion scenes can still request animation frames; reduced preference is not equivalent to `paused`. A fully static alternative must be authored by the application. Removing an owned scene releases its observers/scheduling and queues context release; no `destroy()` controller is provided. Root/core local tarball imports and declarations work as described above; registry identity and public availability remain separate.
 
 ## Five layers
 
@@ -100,9 +106,12 @@ Objects outside a scene work on their own. Inside a scene they share one canvas 
 ## Develop
 
 ```sh
-npm install
+npm ci
 npm run dev     # builds, generates the site, serves it on http://127.0.0.1:4110
 npm run check   # manifests, shader compile, pixel smoke tests, size budgets, site pages
+npm run check:package  # local tarball, exports/declarations, browser registration
+npm run check:docs     # current guide/example/build mirrors
+npm run check:examples # source/built/installed lifecycle and static alternatives
 ```
 
 `check` needs Chrome for the shader and smoke tests. It looks at `$CHROME`, then the macOS app path, then `google-chrome` and `chromium` on the PATH. Without Chrome it validates manifests and sizes and warns about the rest.
