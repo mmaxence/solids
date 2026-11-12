@@ -11,6 +11,7 @@
  const key=`facet-consent:${site}:${version}`,privacy=()=>navigator.globalPrivacyControl===true||navigator.doNotTrack==='1';
  let choice=null,loaded=false;try{choice=localStorage.getItem(key);}catch{}
  const state=()=>{window.fieldnotesConsent=choice==='allow'&&!privacy();window.facetRouteConsent=window.fieldnotesConsent?version:null;};
+ window.facetConsentCheck=()=>{try{choice=localStorage.getItem(key);}catch{choice=null;}state();return window.fieldnotesConsent===true;};
  const paint=()=>{state();const status=document.getElementById('fn-consent-status');if(status)status.textContent=privacy()?text(2):window.fieldnotesConsent?text(1):text(0);const allow=document.getElementById('fn-allow');if(allow)allow.disabled=privacy();};
  const start=()=>{if(!window.fieldnotesConsent||loaded)return;loaded=true;const tracker=document.createElement('script');tracker.src=origin+'/tracker.js?v=pages-v2';tracker.defer=true;tracker.referrerPolicy='no-referrer';tracker.dataset.project=site;if(config.page)tracker.dataset.page=config.page;tracker.dataset.routeConsent=version;if(config.navigationEvent==='astro:page-load')tracker.dataset.navigationEvent=config.navigationEvent;if(config.test==='true')tracker.dataset.test='true';tracker.onerror=()=>{loaded=false;const status=document.getElementById('fn-consent-status');if(status)status.textContent=text(3);};document.head.append(tracker);};
  const choose=value=>{choice=value;try{localStorage.setItem(key,value);}catch{}paint();start();};
